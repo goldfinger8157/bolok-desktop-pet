@@ -8,6 +8,7 @@
 """
 import json
 import math
+import os
 import pathlib
 import struct
 import sys
@@ -83,6 +84,35 @@ SPECIES = {
                      face='capy', snout=(150, 106, 70), nose='nostrils', wide=1.12, belly=False, eye_k=.75, eye_up=2),
     'koala': dict(name='코알라', fur=(170, 172, 182), shade=(140, 142, 154), cream=(236, 236, 240), ear=(246, 246, 250), ears='big',
                   nose='big'),
+    # 실제 동물 더
+    'panda': dict(name='판다', fur=(246, 246, 242), shade=(214, 214, 210), cream=(255, 255, 252), ear=(60, 56, 60), ear_out=(52, 48, 54),
+                  paw=(66, 62, 68), ears='round', ear_k=.9, marks=('eyepatch',), nose='dark', belly=False),
+    'redpanda': dict(name='레서판다', fur=(196, 88, 46), shade=(160, 66, 34), cream=(252, 244, 232), ear=(252, 244, 232), paw=(64, 38, 30),
+                     ears='pointy', ear_k=.85, face='cheeks', marks=('brows',), tail='ring', nose='dark', belly=False),  # 배는 털색 그대로, 다리는 짙게 (여우와 다르게)
+    'alpaca': dict(name='알파카', fur=(222, 186, 146), shade=(190, 152, 112), cream=(250, 240, 222), ear=(200, 150, 120), ears='long',
+                   ear_k=.8, marks=('topknot',), face='snout', snout=(250, 240, 222), nose='dark'),  # 크림색 긴 귀는 토끼(미피)처럼 보인다 → 갈색 + 큰 털뭉치
+    'pig': dict(name='돼지', fur=(246, 232, 214), shade=(222, 204, 182), cream=(252, 242, 230), ear=(236, 182, 168), ears='pointy',
+                ear_k=.8, tail='curl', nose='pig', marks=('patches',)),  # 밝은 핑크는 페파피그와 겹친다
+    'octopus': dict(name='문어', fur=(236, 130, 150), shade=(206, 100, 124), cream=(252, 196, 206), ears='none', body='octo',
+                    marks=('spots',), nose='none'),
+    # 판타지·옛이야기 (유명 디자인과 겹치지 않게: 슬라임은 뾰족 머리 없는 민트 덩어리, 유령은 연보라에 작은 팔,
+    #  유니콘은 크림색 몸에 한 가지 색 갈기, 버섯은 갈색 갓에 크림 점)
+    'slime': dict(name='슬라임', fur=(150, 226, 196), shade=(110, 196, 166), cream=(196, 244, 224), ears='none', body='blob',
+                  marks=('shine',), nose='none', belly=False, mouth_in=(70, 150, 120)),  # 파란 물방울·빨간 혀는 드래곤퀘스트
+    'ghost': dict(name='유령', fur=(196, 214, 240), shade=(166, 186, 222), cream=(226, 236, 250), ears='none', body='ghost',
+                  nose='none', belly=False, blush=(236, 170, 204), no_cover=True),  # 물결 밑단·흰색은 팩맨·부우와 겹친다 → 연기 꼬리
+    'golem': dict(name='꼬마 골렘', fur=(164, 166, 158), shade=(130, 132, 124), cream=(196, 198, 190), paw=(140, 142, 134), ears='small',
+                  ear_k=.6, marks=('cracks', 'moss'), nose='none', wide=1.1),
+    'unicorn': dict(name='유니콘', fur=(214, 222, 238), shade=(184, 194, 218), cream=(240, 244, 252), ear=(196, 186, 230), ears='pointy',
+                    ear_k=.75, horns='unicorn', marks=('mane',), mane=(112, 100, 184), nose='dark'),  # 흰 몸·무지개 갈기는 마이 리틀 포니
+    'mushroom': dict(name='버섯 요정', fur=(250, 238, 214), shade=(226, 210, 180), cream=(255, 248, 232), ears='none', marks=('cap',),
+                     cap=(160, 104, 64), nose='none'),
+    'imp': dict(name='꼬마 악마', fur=(196, 120, 210), shade=(164, 92, 180), cream=(232, 190, 236), ears='pointy', ear_k=.7,
+                horns='imp', wings='imp', tail='spade', nose='none'),
+    'gumiho': dict(name='구미호', fur=(206, 208, 218), shade=(170, 172, 186), cream=(248, 248, 252), ear=(236, 190, 210), ears='fox',
+                   ear_k=1.15, tail='multi', face='cheeks', nose='dark'),  # 금빛 여우·여우불·한복은 나인테일·아리 → 은회색, 꼬리는 겹친 다발
+    'dokkaebi': dict(name='꼬마 도깨비', fur=(120, 176, 200), shade=(92, 148, 176), cream=(206, 230, 238), ears='small', ear_k=.7,
+                     horns='one', marks=('hair',), nose='dark'),
 }
 
 
@@ -250,6 +280,14 @@ def behind(g, S, c, cx, cy, rx, ry, fx, lie):
         g.ell(cx + rx * .7, cy + ry + .2, 5.5, 2.2, (110, 80, 60))
     elif tail == 'dragon':
         g.poly([(cx + rx * .5, cy + ry * .3), (cx + rx * .6, cy + ry * .95), (cx + rx + 6, cy + ry * .1)], c['shade'])
+    elif tail == 'multi':  # 구미호: 겹친 꼬리 다발 (부채처럼 펼치지 않는다)
+        for i, (dx, dy) in enumerate(((.7, -.55), (.95, -.15), (.85, .25))):
+            g.ell(cx + rx * dx + i * .6, cy + ry * dy, 3.6, ry * .55, c['shade'])
+            g.ell(cx + rx * dx + i * .6 + .8, cy + ry * dy - ry * .42, 2.2, 1.8, c['cream'])
+    elif tail == 'spade':  # 꼬마 악마: 가는 꼬리 끝에 하트
+        for i in range(7):
+            g.ell(cx + rx * .7 + i * .9, cy + ry * .55 - i * .9, .9, .9, c['shade'])
+        heart(g, round(cx + rx * .7 + 5), round(cy + ry * .55 - 9), c['shade'])
     back = S.get('back')
     if back == 'spikes':  # 고슴도치: 위쪽 둘레로 가시
         for k in range(11):
@@ -268,10 +306,16 @@ def behind(g, S, c, cx, cy, rx, ry, fx, lie):
             g.poly([(cx + s * rx * .22, cy - ry * .8), (cx + s * rx * .5, cy - ry * .72), (cx + s * rx * .4, cy - ry - 4)], (244, 220, 140))
         elif horns == 'goat':
             g.poly([(cx + s * rx * .18, cy - ry * .8), (cx + s * rx * .42, cy - ry * .78), (cx + s * rx * .55, cy - ry - 4.5)], (210, 196, 170))
+        elif horns == 'imp':
+            g.poly([(cx + s * rx * .25, cy - ry * .82), (cx + s * rx * .48, cy - ry * .74), (cx + s * rx * .5, cy - ry - 3)], (90, 60, 110))
         elif horns == 'antler':  # 가지 친 뿔
             bx, by = cx + s * rx * .32, cy - ry * .85
             g.pix((176, 140, 100), *[(bx + s * i * .3, by - i) for i in range(7)],
                   *[(bx + s * (1 + i), by - 3 - i * .6) for i in range(4)], *[(bx + s * (2 + i * .2), by - 6 - i) for i in range(2)])
+    if horns == 'unicorn':
+        g.poly([(cx - 1.6, cy - ry * .82), (cx + 2.6, cy - ry * .82), (cx + 1, cy - ry - 5)], (240, 206, 110))
+    elif horns == 'one':  # 도깨비: 가운데 뿔 하나
+        g.poly([(cx - 1.4, cy - ry * .84), (cx + 2.4, cy - ry * .84), (cx + .5, cy - ry - 4)], (246, 236, 210))
     wings = S.get('wings')
     for s in (-1, 1):
         if wings == 'flipper':
@@ -282,6 +326,8 @@ def behind(g, S, c, cx, cy, rx, ry, fx, lie):
             g.ell(cx + s * rx * .95, cy + ry * .1, 2.4, ry * .38, c['shade'])
         elif wings == 'dragon':
             g.poly([(cx + s * rx * .5, cy - ry * .3), (cx + s * (rx + 5.5), cy - ry * .95), (cx + s * (rx + 4), cy + ry * .15)], (150, 214, 186))
+        elif wings == 'imp':  # 작은 박쥐 날개
+            g.poly([(cx + s * rx * .55, cy - ry * .25), (cx + s * (rx + 4.5), cy - ry * .75), (cx + s * (rx + 2.5), cy + ry * .05)], (120, 80, 140))
 
 
 def marks(g, S, c, cx, cy, rx, ry, fx, ey, my, gap, before_outline):
@@ -302,12 +348,49 @@ def marks(g, S, c, cx, cy, rx, ry, fx, ey, my, gap, before_outline):
                 for i in range(3):
                     y = round(cy + ry * (.38 + i * .2))
                     g.pix(mix(c['cream'], C['line'], .25), *[(fx + x, y) for x in range(-3, 5)])
+            elif m == 'eyepatch':  # 판다: 비스듬한 눈 무늬
+                for s in (-1, 1):
+                    g.ell(fx + .5 + s * gap, ey + 1, 3.2, 3.8, (66, 62, 68), True)
+            elif m == 'brows':  # 레서판다: 흰 눈썹 점
+                for s in (-1, 1):
+                    g.ell(fx + .5 + s * gap, ey - 3.5, 1.8, 1.1, c['cream'], True)
+            elif m == 'patches':  # 얼룩 돼지
+                g.ell(cx - rx * .55, cy - ry * .45, 3.4, 2.6, (150, 104, 76), True)
+                g.ell(cx + rx * .62, cy + ry * .35, 3, 2.4, (150, 104, 76), True)
+            elif m == 'spots':  # 문어: 연한 점
+                for x, y in ((-.55, -.55), (.5, -.6), (-.7, .1), (.72, .05)):
+                    g.ell(cx + x * rx, cy + y * ry, 1.3, 1.3, c['cream'], True)
+            elif m == 'cracks':  # 골렘: 갈라진 금
+                d = mix(c['shade'], C['line'], .5)
+                g.pix(d, (cx - rx * .6, cy - ry * .2), (cx - rx * .5, cy - ry * .1), (cx - rx * .55, cy), (cx - rx * .45, cy + ry * .1),
+                      (cx + rx * .55, cy + ry * .35), (cx + rx * .62, cy + ry * .45), (cx + rx * .5, cy + ry * .5))
+            elif m == 'cap':  # 버섯 요정: 머리 위 큰 갓과 크림 점
+                g.ell(fx + .5, cy - ry * .55, rx * 1.25, ry * .62, S['cap'])
+                g.ell(fx + .5, cy - ry * .32, rx * 1.1, 1.2, mix(S['cap'], C['line'], .3))
+                for x, y in ((-.55, -.8), (.15, -1.05), (.6, -.7)):
+                    g.ell(fx + .5 + x * rx, cy + y * ry * .78, 1.4, 1.1, c['cream'])
+            elif m == 'topknot':  # 알파카: 정수리 털뭉치 (귀 사이를 덮는 뭉게구름)
+                for x, y in ((-3.5, .82), (0, .98), (3.5, .82), (-1.8, .7), (1.8, .7)):
+                    g.ell(fx + .5 + x, cy - ry * y, 3, 2.7, c['cream'])
+            elif m == 'moss':  # 골렘: 이끼와 작은 꽃
+                g.ell(fx + .5, cy - ry * .88, rx * .55, 2, (120, 176, 90))
+                g.pix((250, 236, 120), (fx + 2, cy - ry - 2))
+                g.pix((246, 160, 190), (fx + 1, cy - ry - 2), (fx + 3, cy - ry - 2), (fx + 2, cy - ry - 3), (fx + 2, cy - ry - 1))
+            elif m == 'mane':  # 유니콘: 한 가지 색 갈기 (무지개는 피한다)
+                g.ell(fx - 1, cy - ry * .78, rx * .42, 2.6, S['mane'])
+                g.ell(cx + rx * .78, cy - ry * .2, 2, ry * .45, S['mane'])
+            elif m == 'hair':  # 도깨비: 부스스한 머리털
+                g.poly([(fx - 5, cy - ry * .7), (fx - 3, cy - ry - 2), (fx - 1, cy - ry * .75), (fx + 1, cy - ry - 3), (fx + 3, cy - ry * .75),
+                        (fx + 5, cy - ry - 1), (fx + 6, cy - ry * .6)], (60, 70, 90))
             elif m == 'tuft':  # 오리: 정수리 깃
                 g.pix(c['fur'], (fx, cy - ry - 1), (fx + 1, cy - ry - 2), (fx + 1, cy - ry - 1), (fx + 2, cy - ry - 3))
         else:
             if m == 'tabby':  # 고양이: 이마 줄무늬
                 for x, h in ((-2, 2), (0, 3), (2, 2)):
                     g.pix(dark, *[(fx + x, round(ey - 4 - i)) for i in range(h)])
+            elif m == 'shine':  # 슬라임: 반짝이는 윗면
+                g.pix(c['white'], (cx - rx * .55, cy - ry * .55), (cx - rx * .55 + 1, cy - ry * .55), (cx - rx * .55, cy - ry * .55 + 1),
+                      (cx - rx * .3, cy - ry * .72))
             elif m == 'beard':  # 염소 수염
                 g.pix(c['line'], (fx, my + 3), (fx + 1, my + 3), (fx, my + 4), (fx + 1, my + 4), (fx, my + 5))
     if not before_outline and S.get('whisker'):
@@ -323,6 +406,10 @@ def nose_draw(g, kind, fx, my, c):
     elif kind == 'big':  # 코알라: 크고 까만 코
         g.ell(fx + .5, my - 2.2, 2.2, 2.4, c['line'])
         g.put(fx - 1, my - 3, (120, 110, 110))
+    elif kind == 'pig':  # 돼지: 큰 코에 콧구멍 둘
+        g.ell(fx + .5, my - 1.5, 3.2, 2.2, c['line'])
+        g.ell(fx + .5, my - 1.5, 2.3, 1.4, c['ear'])
+        g.pix(c['line'], (fx - 1, my - 2), (fx + 2, my - 2))
     elif kind == 'nostrils':  # 카피바라: 콧구멍 둘
         g.pix(c['line'], (fx - 1, my - 2), (fx + 2, my - 2), (fx - 1, my - 1), (fx + 2, my - 1))
 
@@ -401,6 +488,9 @@ def pet(species, form, cheek, frame):
     if dangle:  # 들렸을 때는 몸이 아래로 늘어진다
         ry, rx = ry + 1, rx - 1
         cy = 19
+    body = S.get('body')
+    if body == 'ghost' and not lie:  # 유령은 살짝 떠 있다
+        cy -= 2
     turn = f.get('turn', 0)
     fx = round(20 + turn * (1 if rx > 9 else .7))  # 고개 돌린 쪽으로 얼굴이 옮겨간다
     gap = round(F['eyegap'] - abs(turn) * .4)      # 옆을 보면 눈 사이가 좁아 보인다
@@ -425,12 +515,35 @@ def pet(species, form, cheek, frame):
     elif ears == 'side':
         for s in (-1, 1):
             g.ell(cx + s * (rx + .6), cy - ry * .4, ear * 1.1, ear * .55, c['fur'])
+    elif ears == 'long':  # 알파카: 길쭉하게 선 귀
+        for s in (-1, 1):
+            g.ell(cx + s * rx * .48, cy - ry - 1.5, 1.7, ear * 1.3, c['fur'])
+    if 'ear_out' in S and ears in ('round', 'small', 'big'):  # 판다: 귀 바깥이 까맣다
+        for x in ear_x:
+            r = ear * {'round': 1, 'small': .75, 'big': 1.7}[ears]
+            g.ell(x, cy - ry * .86, r, r, S['ear_out'])
     g.ell(cx, cy, rx, ry, c['shade'])
+    if body == 'blob' and not lie:  # 슬라임: 바닥이 퍼진 덩어리
+        g.ell(cx, cy + ry * .5, rx * 1.12, ry * .55, c['shade'])
+    elif body == 'ghost' and not lie:  # 유령: 아래가 한쪽으로 가늘어지는 연기 꼬리 (물결 밑단은 팩맨 유령)
+        for i, (x, y, r) in enumerate(((.15, .85, rx * .72), (.55, 1.05, 3.2), (.85, 1.18, 2.1), (1.05, 1.15, 1.3))):
+            g.ell(cx + x * rx, cy + y * ry, r, r * (.7 if i == 0 else 1), c['shade'])
     bulge = cheek * 2.2 + f.get('puff', 0) * 1.2  # 먹은 화면이 많을수록 불룩하다
     if bulge:
         for s in (-1, 1):
             g.ell(fx + .5 + s * rx * .72, cy + ry * .22, 2 + bulge * .75, 2.4 + bulge * .6, c['cream'])
-    if not lie:
+    if body == 'octo' and not lie:  # 문어: 발 대신 다리 다섯
+        step = f.get('step', 0)
+        for i in range(-2, 3):
+            lift = 1 if step and (i + step) % 2 == 0 else 0
+            g.ell(cx + i * rx * .4, cy + ry - lift, 1.9, 2.6, c['shade'])
+    elif body in ('blob', 'ghost') and not lie:
+        if dangle:  # 들리면 작은 팔
+            for s in (-1, 1):
+                g.ell(cx + s * (rx + .2), cy + 1, 2, 1.6, c['shade'])
+    elif body == 'ghost':
+        pass
+    elif not lie:
         step = f.get('step', 0)
         for i, s in enumerate((-1, 1)):
             lift = (step == i + 1) * 1
@@ -442,10 +555,17 @@ def pet(species, form, cheek, frame):
 
     # 2) 안쪽 칠하기 — 테두리 한 겹을 그림자로 남기고 털·배를 올린다
     g.ell(cx, cy - .8, rx - 1, ry - .6, c['fur'], True)
+    if body == 'blob' and not lie:
+        g.ell(cx, cy + ry * .45, rx * 1.05, ry * .45, c['fur'], True)
+    elif body == 'ghost' and not lie:
+        g.ell(cx + rx * .15, cy + ry * .75, rx * .65, ry * .45, c['fur'], True)
     if ears in ('round', 'small', 'big'):
         for x in ear_x:
             r = ear * {'round': .55, 'small': .4, 'big': 1.1}[ears]
             g.ell(x, cy - ry * (.7 if ears == 'big' else .86), r, r, c['ear'])
+    elif ears == 'long':
+        for s in (-1, 1):
+            g.ell(cx + s * rx * .48, cy - ry - 1.5, .8, ear * .9, c['ear'], True)
     elif ears in ('pointy', 'fox'):
         for s in (-1, 1):
             tri = ear_tri(cx, cy, rx, ry, s, ear * (2.1 if ears == 'fox' else 1.7), fx)
@@ -497,7 +617,7 @@ def pet(species, form, cheek, frame):
         elif face == 'frog' and mk == 'w':  # 개구리: 넓게 웃는 입
             g.pix(c['line'], *[(fx + i, my + (1 if abs(i) < 3 else 0)) for i in range(-4, 5)])
         else:
-            mouth(g, mk, fx, my, c)
+            mouth(g, mk, fx, my, dict(c, red=S['mouth_in']) if 'mouth_in' in S else c)
         if S.get('teeth') and mk in ('w', 'chew', 'flat'):  # 비버 앞니
             g.pix(c['line'], (fx - 1, my + 1), (fx + 2, my + 1), (fx - 1, my + 2), (fx + 2, my + 2), (fx, my + 3), (fx + 1, my + 3))
             g.pix(c['white'], (fx, my + 1), (fx + 1, my + 1), (fx, my + 2), (fx + 1, my + 2))
@@ -522,11 +642,12 @@ def pet(species, form, cheek, frame):
     if f.get('blushy'):
         for s in (-1, 1):
             g.ell(fx + .5 + s * (gap + 1.5), cy + ry * .14, 3, 1.5, c['blush'])
-    if f.get('cover'):  # 앞발로 눈을 가리고 볼이 빨개진다
+    if f.get('cover'):  # 앞발로 눈을 가리고 볼이 빨개진다 (유령은 가리지 않는다 — 부우의 특징)
         for s in (-1, 1):
             g.ell(fx + .5 + s * (gap + 1.5), cy + ry * .14, 3, 1.5, c['blush'])
-            g.ell(fx + .5 + s * gap, ey + 1, 3.3, 2.9, c['line'])
-            g.ell(fx + .5 + s * gap, ey + 1, 2.4, 2, c['paw'])
+            if not S.get('no_cover'):
+                g.ell(fx + .5 + s * gap, ey + 1, 3.3, 2.9, c['line'])
+                g.ell(fx + .5 + s * gap, ey + 1, 2.4, 2, c['paw'])
     if 'sweat' in f:
         y = ey - 6 + f['sweat'] * 2
         x = fx + gap + 5
@@ -1078,7 +1199,8 @@ def contact(rows, scale, path):
 def species_sheet(scale, path, poses=('idle', 'walk', 'happy', 'sleep', 'fix', 'held', 'angry', 'love'), forms=('child', 'adult_chubby')):
     """검수용: 캐릭터마다 한 줄, 자세 몇 개씩"""
     bg = (236, 240, 244)
-    grid = [[pet(sp, form, 1, POSES[p][0]) for form in forms for p in poses] for sp in SPECIES]
+    only = os.environ.get('PETS', '').split(',') if os.environ.get('PETS') else list(SPECIES)
+    grid = [[pet(sp, form, 1, POSES[p][0]) for form in forms for p in poses] for sp in only]
     w = max(len(r) for r in grid)
     out = [[bg] * (w * CELL * scale) for _ in range(len(grid) * CELL * scale)]
     for r, row in enumerate(grid):
@@ -1090,6 +1212,103 @@ def species_sheet(scale, path, poses=('idle', 'walk', 'happy', 'sleep', 'fix', '
                             for b in range(scale):
                                 out[r * CELL * scale + y * scale + a][i * CELL * scale + x * scale + b] = g.p[y][x]
     png(out, path)
+
+
+def lzw(data, min_size):
+    """GIF 용 LZW 압축 (가변 길이 코드, 4096 에서 다시 시작)"""
+    clear, end = 1 << min_size, (1 << min_size) + 1
+    size, nxt = min_size + 1, end + 1
+    table = {(i,): i for i in range(clear)}
+    out, bits, nbits = bytearray(), 0, 0
+
+    def put(code):
+        nonlocal bits, nbits
+        bits |= code << nbits
+        nbits += size
+        while nbits >= 8:
+            out.append(bits & 255)
+            bits >>= 8
+            nbits -= 8
+
+    put(clear)
+    w = (data[0],)
+    for k in data[1:]:
+        wk = w + (k,)
+        if wk in table:
+            w = wk
+            continue
+        put(table[w])
+        if nxt < 4096:
+            table[wk] = nxt
+            nxt += 1
+            if nxt > (1 << size) and size < 12:  # 해독기는 한 칸 늦게 표를 채우니 하나 넘었을 때 늘린다
+                size += 1
+        else:
+            put(clear)
+            table, size, nxt = {(i,): i for i in range(clear)}, min_size + 1, end + 1
+        w = (k,)
+    put(table[w])
+    put(end)
+    if nbits:
+        out.append(bits & 255)
+    return bytes(out)
+
+
+def gif(frames, path, delay_ms):
+    """움직이는 GIF (배경 투명, 무한 반복). frames: 같은 크기의 [줄][칸] = (r,g,b) 또는 None"""
+    h, w = len(frames[0]), len(frames[0][0])
+    count = {}
+    for fr in frames:
+        for row in fr:
+            for c in row:
+                if c:
+                    count[c] = count.get(c, 0) + 1
+    colors = sorted(count, key=count.get, reverse=True)[:255]  # 0 번은 투명
+    index = {c: i + 1 for i, c in enumerate(colors)}
+
+    def near(c):
+        if c not in index:
+            index[c] = min(range(len(colors)), key=lambda i: sum((a - b) ** 2 for a, b in zip(colors[i], c))) + 1
+        return index[c]
+
+    pal = b''.join(bytes(c) for c in [(0, 0, 0)] + colors) + b'\0' * 3 * (255 - len(colors))
+    data = bytearray(b'GIF89a' + struct.pack('<HHBBB', w, h, 0xF7, 0, 0) + pal)
+    data += b'\x21\xff\x0bNETSCAPE2.0\x03\x01\x00\x00\x00'  # 무한 반복
+    for fr in frames:
+        data += b'\x21\xf9\x04' + bytes([(2 << 2) | 1]) + struct.pack('<H', delay_ms // 10) + b'\x00\x00'  # 다음 장 전에 지우기, 0 번 투명
+        data += b'\x2c' + struct.pack('<HHHHB', 0, 0, w, h, 0) + b'\x08'
+        packed = lzw([near(c) if c else 0 for row in fr for c in row], 8)
+        for i in range(0, len(packed), 255):
+            data += bytes([len(packed[i:i + 255])]) + packed[i:i + 255]
+        data += b'\x00'
+    pathlib.Path(path).write_bytes(bytes(data + b'\x3b'))
+
+
+def parade(path, cols=9, scale=2):
+    """README 용: 모든 캐릭터가 걷다가 웃고 윙크한다 (캐릭터마다 박자를 어긋나게)"""
+    seq = [('walk', i) for i in range(4)] * 2 + [('happy', 0), ('happy', 1), ('wink', 0), ('idle', 3), ('love', 0), ('love', 1)]
+    species = list(SPECIES)
+    rows = (len(species) + cols - 1) // cols
+    W, H = cols * CELL * scale, rows * CELL * scale
+    cache, frames = {}, []
+    for t in range(len(seq)):
+        fr = [[None] * W for _ in range(H)]
+        for n, sp in enumerate(species):
+            pose, f = seq[(t + n * 5) % len(seq)]
+            key = (sp, pose, f)
+            if key not in cache:
+                cache[key] = pet(sp, 'child', 1, POSES[pose][f % len(POSES[pose])])
+            row, in_row = n // cols, min(cols, len(species) - n // cols * cols)
+            g, oy = cache[key], row * CELL * scale
+            ox = (n % cols) * CELL * scale + (cols - in_row) * CELL * scale // 2  # 마지막 줄은 가운데로
+            for y in range(CELL):
+                for x in range(CELL):
+                    if g.p[y][x]:
+                        for a in range(scale):
+                            for b in range(scale):
+                                fr[oy + y * scale + a][ox + x * scale + b] = g.p[y][x]
+        frames.append(fr)
+    gif(frames, path, 160)
 
 
 def write(rows, png_path, json_path):
@@ -1106,11 +1325,15 @@ def write(rows, png_path, json_path):
 def main():
     """python3 tools/sprites.py                  공통 그림 + 캐릭터 전부
        python3 tools/sprites.py --pets fox,cat   공통 그림 + 고른 캐릭터만
-       python3 tools/sprites.py --look 미리.png   캐릭터 검수용 그림만 (assets 는 안 건드린다)"""
+       python3 tools/sprites.py --look 미리.png   캐릭터 검수용 그림만 (assets 는 안 건드린다)
+       python3 tools/sprites.py --gif 행진.gif    README 용 움직이는 그림"""
     root = pathlib.Path(__file__).resolve().parent.parent
     args = sys.argv[1:]
     if args[:1] == ['--look']:
         species_sheet(3, args[1])
+        return
+    if args[:1] == ['--gif']:
+        parade(args[1])
         return
     pets = list(SPECIES) if args[:1] != ['--pets'] else args[1].split(',')
     (root / 'assets/pets').mkdir(parents=True, exist_ok=True)

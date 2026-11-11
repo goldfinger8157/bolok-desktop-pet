@@ -120,7 +120,8 @@ public sealed class Settings : Form
             card.BorderStyle = current ? BorderStyle.Fixed3D : BorderStyle.FixedSingle;
         }
         string name = sprites.SpeciesNames.GetValueOrDefault(book.Species, book.Species);
-        now.Text = book.IsEgg ? "지금: 알 (무엇이 나올까요?)" : $"지금: {name}";
+        int seen = cards.Keys.Count(id => book.Met.Contains(id) || (id == book.Species && !book.IsEgg));
+        now.Text = (book.IsEgg ? "지금: 알 (무엇이 나올까요?)" : $"지금: {name}") + $"      도감 {seen}/{cards.Count}";
         release.Enabled = !book.IsEgg;
         gone.Text = book.Released.Count == 0 ? "" : $"떠난 친구들 {book.Released.Count}: " + string.Join(", ", book.Released.TakeLast(6).Reverse()
             .Select(r => $"{sprites.SpeciesNames.GetValueOrDefault(r.Species, r.Species)} ({Names.Form(r.Stage)}, {r.At:M/d})"));
