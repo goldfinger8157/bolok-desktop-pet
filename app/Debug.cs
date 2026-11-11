@@ -138,7 +138,7 @@ public sealed class DevLink
             case "minigun": form.MinigunCommand(a); break;
             case "icbm": form.IcbmCommand(a); break;
             case "species": form.SetSpecies(a[1]); break; // 예: species fox
-            case "release": form.Release(ask: false); break;
+            case "release": form.Release(); break;
             case "break": form.BreakCommand(a.Length > 1 ? a[1] : "start", a.Length > 2 ? a[2] : null); break;
             case "run": if (a.Length > 1 && a[1] == "stop") form.StopRun(); else form.StartRun(); break;
             case "game": form.StartGame(a.Length > 1 ? a[1] : null, a.Length > 2 ? a[2] : null); break;
@@ -152,6 +152,7 @@ public sealed class DevLink
             case "giveback": b.GiveBack(); break;
             case "state": Dbg.Log("state", ("pet", p), ("tuning", b.K)); break;
             case "shot": form.Shot(shotPath); break;
+            case "settings-shot": form.SettingsShot(Path.Combine(Path.GetDirectoryName(shotPath)!, "settings-live.png"), a.Length > 1 ? a[1] : "상태"); break; // 화면 밖에서 그려 저장 (화면을 가리지 않는다)
             case "quit": Application.Exit(); break;
             case "set":
                 double v = a[1] == "stage" ? 0 : double.Parse(a[2]);

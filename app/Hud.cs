@@ -47,9 +47,6 @@ public sealed class Hud : Form
         return new string('♥', n) + new string('♡', 4 - n);
     }
 
-    // 설정 창 상태 탭도 이 글을 쓴다 (디버그 줄은 빼고)
-    public string StatusText() => string.Join("\n", Lines().Take(5));
-
     string[] Lines()
     {
         var p = b.P;

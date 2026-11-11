@@ -11,28 +11,38 @@ static class Program
             return Sim.Check(Console.Out);
         }
 
-        if (args.Length == 2 && args[0] == "--settings") // 설정 창 네 탭을 그림으로 (화면 밖 먼 곳에 잠깐 띄워 그린다)
+        if (args.Length == 2 && args[0] == "--settings") // 설정 창 페이지들을 그림으로 (화면 밖 먼 곳에 잠깐 띄워 그린다). 마지막은 풀어주기 확인
         {
             ApplicationConfiguration.Initialize();
-            var book = new PetBook("fox", false, new[] { "hamster", "fox", "penguin" }, new[] { new ReleasedPet("hamster", "adult_chubby", 2900, new DateTime(2026, 11, 11)) });
-            using var f = new Settings(false, false, Sprites.Embedded("fox"), book, () => "볼록이 · 여우 어린이    3시간 20분\n포만 ♥♥♥♡\n기분 ♥♥♥♥\n기운 ♥♥♡♡\n실수 0    볼 속 0입")
-                { StartPosition = FormStartPosition.Manual, Location = new Point(-30000, -30000) };
+            var sp = Sprites.Embedded("fox");
+            var book = new PetBook("fox", false, new[] { "hamster", "fox", "penguin", "slime" },
+                new[] { new ReleasedPet("hamster", "adult_chubby", 2900, new DateTime(2026, 11, 11)), new ReleasedPet("penguin", "adult_sweet", 2500, new DateTime(2026, 11, 12)) });
+            var status = new PetStatus("fox", "child", 200, 72, 88, 18, false, "sleepy", 1, 2, 5, 2080, .06, "어른", new[]
+            {
+                new GameStat("달리기", "Lv.3 · 최고 1,240점", true), new GameStat("벽돌깨기", "최고 86조각", true),
+                new GameStat("포트리스", "아직 못 이겼어요", false), new GameStat("총쏘기", "최고 15번 맞혔어요", true),
+            });
+            using var f = new Settings(false, false, () => sp, () => status, book) { StartPosition = FormStartPosition.Manual, Location = new Point(-30000, -30000) };
             f.Show();
             Application.DoEvents();
-            var tabs = (TabControl)f.Controls[0];
-            using var bmp = new Bitmap(f.Width * 4 + 60, f.Height);
+            var shots = new List<Bitmap>();
+            foreach (var name in Settings.Pages.Append("풀어주기").Append("상태 아래"))
+            {
+                if (name == "풀어주기") { f.SelectTab("도감"); f.AskRelease(); }
+                else if (name == "상태 아래") { f.SelectTab("상태"); f.ScrollToEnd(); }
+                else f.SelectTab(name);
+                Application.DoEvents();
+                var page = new Bitmap(f.Width, f.Height);
+                f.DrawToBitmap(page, new Rectangle(Point.Empty, f.Size));
+                shots.Add(page);
+            }
+            using var bmp = new Bitmap((f.Width + 20) * 3 - 20, (f.Height + 20) * 2 - 20);
             using (var g = Graphics.FromImage(bmp))
             {
                 g.Clear(Color.White);
-                for (int i = 0; i < 4; i++)
-                {
-                    tabs.SelectedIndex = i;
-                    Application.DoEvents();
-                    using var page = new Bitmap(f.Width, f.Height);
-                    f.DrawToBitmap(page, new Rectangle(Point.Empty, f.Size));
-                    g.DrawImage(page, i * (f.Width + 20), 0);
-                }
+                for (int i = 0; i < shots.Count; i++) g.DrawImage(shots[i], i % 3 * (f.Width + 20), i / 3 * (f.Height + 20));
             }
+            foreach (var s in shots) s.Dispose();
             f.Close();
             bmp.Save(args[1]);
             return 0;

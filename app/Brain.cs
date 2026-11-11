@@ -1241,4 +1241,8 @@ public static class Names
         "adult_grumpy" => "심술이",
         _ => stage,
     };
+
+    // 받침이 있으면 b, 없으면 a (를/을, 가/이가)
+    public static string Josa(string word, string a, string b) =>
+        word.Length > 0 && word[^1] is >= '가' and <= '힣' && (word[^1] - '가') % 28 != 0 ? b : a;
 }

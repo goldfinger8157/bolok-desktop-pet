@@ -543,8 +543,7 @@ public sealed class PetForm : Form
     void ShowSettings(string? tab = null)
     {
         if (settings is { IsDisposed: false }) { if (tab != null) settings.SelectTab(tab); settings.Activate(); return; }
-        settings = new Settings(Sfx.On, autoUpdate, sprites, Book(), hud.StatusText);
-        settings.ReleaseAsked += () => Release();
+        settings = new Settings(Sfx.On, autoUpdate, () => sprites, Status, Book()) { ReleaseAsked = Release };
         settings.Changed += () => { (Sfx.On, autoUpdate) = (settings.Sound, settings.AutoUpdate); Save(); };
         settings.RestartAsked += () => { Save(); Updater.Restart(); };
         if (tab != null) settings.SelectTab(tab);
@@ -559,13 +558,34 @@ public sealed class PetForm : Form
     string lastStage = "";
 
     PetBook Book() => new(sprites.Species, b.P.Stage == "egg", met, released);
+    void BookChanged() { if (settings is { IsDisposed: false }) settings.UpdateBook(Book()); }
 
-    public void Release(bool ask = true)
+    // 설정 창 상태 탭에 보여줄 것
+    PetStatus Status()
     {
-        if (leaving || InGame || b.P.Stage == "egg") return;
-        string name = sprites.SpeciesNames.GetValueOrDefault(sprites.Species, "볼록이");
-        if (ask && MessageBox.Show(settings is { IsDisposed: false } ? settings : this, $"{name}{Josa(name, "를", "을")} 자연으로 보내 줄까요?\n다시 돌아오지 않아요. 그 자리에 새 알이 와요.",
-                "풀어주기", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+        var (p, k) = (b.P, b.K);
+        (double? left, double frac, string? to) = p.Stage switch
+        {
+            "egg" => (k.EggMin - p.AgeMin, p.AgeMin / k.EggMin, "깨어나기"),
+            "baby" => (k.BabyMin - p.AgeMin, (p.AgeMin - k.EggMin) / (k.BabyMin - k.EggMin), "어린이"),
+            "child" => (k.ChildMin - p.AgeMin, (p.AgeMin - k.BabyMin) / (k.ChildMin - k.BabyMin), "어른"),
+            _ => ((double?)null, 1.0, (string?)null),
+        };
+        string never = "아직 안 했어요";
+        return new PetStatus(sprites.Species, p.Stage, p.AgeMin, p.Full, p.Mood, p.Energy, p.Asleep, p.Need(k), p.Miss, Math.Max(p.Bites, b.Holes.Count),
+            p.BitesTotal, left is { } l ? Math.Max(0, l) : null, Math.Clamp(frac, 0, 1), to, new GameStat[]
+            {
+                new("달리기", runLast > 0 ? $"Lv.{runLevel} · 최고 {runBest:N0}점" : never, runLast > 0),
+                new("벽돌깨기", breakBest > 0 ? $"최고 {breakBest:N0}조각" : never, breakBest > 0),
+                new("포트리스", wormsWins > 0 ? $"{wormsWins}번 이겼어요" : "아직 못 이겼어요", wormsWins > 0),
+                new("총쏘기", gameBest > 0 ? $"최고 {gameBest}번 맞혔어요" : never, gameBest > 0),
+            });
+    }
+
+    // 확인은 설정 창 도감 탭에서 받는다. 지금 풀어줄 수 없으면 false
+    public bool Release()
+    {
+        if (leaving || InGame || b.P.Stage == "egg") return false;
         released.Add(new ReleasedPet(sprites.Species, b.P.Stage, Math.Round(b.P.AgeMin), DateTime.Now));
         var area = b.Area;
         leaveTo = b.X < area.Left + area.Width / 2.0 ? area.Left - b.CellPx : area.Right + b.CellPx; // 가까운 쪽 화면 밖 자연으로
@@ -574,6 +594,7 @@ public sealed class PetForm : Form
         b.Emote("heart", 2.5);
         Dbg.Log("release", ("species", sprites.Species), ("stage", b.P.Stage), ("age", (int)b.P.AgeMin));
         Save();
+        return true;
     }
 
     void LeaveFrame(double dt)
@@ -591,7 +612,7 @@ public sealed class PetForm : Form
         SetSpecies(next);
         lastStage = "egg";
         b.Emote("ask", 2.5);
-        settings?.UpdateBook(Book());
+        BookChanged();
         Dbg.Log("new-egg", ("species", next));
         Save();
     }
@@ -603,17 +624,13 @@ public sealed class PetForm : Form
         {
             met.Add(sprites.Species);
             string name = sprites.SpeciesNames.GetValueOrDefault(sprites.Species, "볼록이");
-            b.Say(4, $"{name}{Josa(name, "가", "이가")} 태어났어요!");
+            b.Say(4, $"{name}{Names.Josa(name, "가", "이가")} 태어났어요!");
             b.Emote("star", 2);
-            settings?.UpdateBook(Book());
+            BookChanged();
             Save();
         }
         lastStage = b.P.Stage;
     }
-
-    // 받침이 있으면 b, 없으면 a (를/을, 가/이가)
-    static string Josa(string word, string a, string b) =>
-        word.Length > 0 && word[^1] is >= '가' and <= '힣' && (word[^1] - '가') % 28 != 0 ? b : a;
 
     bool InGame => game != null || runner != null || breakout != null || worms != null || minigun != null || icbm != null || leaving;
 
@@ -1107,6 +1124,20 @@ public sealed class PetForm : Form
     }
 
     // 디버그: 앱이 그리는 것만 회색 바탕에 다시 그린다. 실제 화면을 찍지 않아서 일하던 내용이 안 남는다
+    // 진짜 상태로 설정 창을 화면 밖에서 그려 본다 (디버그용: 띄워 둔 설정 창은 건드리지 않는다)
+    public void SettingsShot(string path, string tab)
+    {
+        using var f = new Settings(Sfx.On, autoUpdate, () => sprites, Status, Book()) { StartPosition = FormStartPosition.Manual, Location = new Point(-30000, -30000) };
+        f.Show();
+        f.SelectTab(tab);
+        Application.DoEvents();
+        using var bmp = new Bitmap(f.Width, f.Height);
+        f.DrawToBitmap(bmp, new Rectangle(Point.Empty, f.Size));
+        f.Close();
+        bmp.Save(path);
+        Dbg.Log("settings-shot", ("tab", tab));
+    }
+
     public void Shot(string path)
     {
         var v = SystemInformation.VirtualScreen;
