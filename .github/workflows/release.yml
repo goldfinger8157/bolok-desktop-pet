@@ -1,0 +1,37 @@
+# v1.2.3 같은 태그를 올리면: 자가 검사 → 한 파일 exe → 릴리스에 첨부. 앱의 자동 업데이트가 이 릴리스를 본다
+name: release
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Version from tag
+        shell: pwsh
+        run: |
+          $v = '${{ github.ref_name }}'.TrimStart('v')
+          if ($v -notmatch '^\d+\.\d+\.\d+$') { throw "태그는 v1.2.3 꼴이어야 해요: ${{ github.ref_name }}" }
+          "VERSION=$v" >> $env:GITHUB_ENV
+      - name: Self-check
+        shell: pwsh
+        run: |
+          dotnet build app/Bolok.csproj -c Release -o out/check --nologo
+          $p = Start-Process -FilePath out/check/Bolok.exe -ArgumentList '--selfcheck' -Wait -PassThru -NoNewWindow -RedirectStandardOutput check.txt -RedirectStandardError check-err.txt
+          Get-Content check.txt, check-err.txt -Encoding utf8
+          if ($p.ExitCode -ne 0) { exit 1 }
+      - name: Publish single-file exe
+        run: dotnet publish app/Bolok.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:Version=${{ env.VERSION }} -p:DebugType=none -o out/publish --nologo
+      - name: Create release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create '${{ github.ref_name }}' out/publish/Bolok.exe --title 'Bolok ${{ github.ref_name }}' --generate-notes

@@ -1,0 +1,24 @@
+# 푸시할 때마다 윈도우에서 빌드하고 자가 검사를 돌린다
+name: check
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  selfcheck:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build
+        run: dotnet build app/Bolok.csproj -c Release -o out/check --nologo
+      - name: Self-check
+        shell: pwsh
+        run: |
+          # 창 프로그램(WinExe)이라 끝날 때까지 기다리게 직접 띄운다
+          $p = Start-Process -FilePath out/check/Bolok.exe -ArgumentList '--selfcheck' -Wait -PassThru -NoNewWindow -RedirectStandardOutput check.txt -RedirectStandardError check-err.txt
+          Get-Content check.txt, check-err.txt -Encoding utf8
+          if ($p.ExitCode -ne 0) { exit 1 }
