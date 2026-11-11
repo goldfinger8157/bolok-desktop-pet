@@ -11,6 +11,31 @@ static class Program
             return Sim.Check(Console.Out);
         }
 
+        if (args.Length == 2 && args[0] == "--settings") // 설정 창 두 탭을 그림으로 (화면 밖 먼 곳에 잠깐 띄워 그린다)
+        {
+            ApplicationConfiguration.Initialize();
+            using var f = new Settings(false, false) { StartPosition = FormStartPosition.Manual, Location = new Point(-30000, -30000) };
+            f.Show();
+            Application.DoEvents();
+            var tabs = (TabControl)f.Controls[0];
+            using var bmp = new Bitmap(f.Width * 2 + 20, f.Height);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                g.Clear(Color.White);
+                for (int i = 0; i < 2; i++)
+                {
+                    tabs.SelectedIndex = i;
+                    Application.DoEvents();
+                    using var page = new Bitmap(f.Width, f.Height);
+                    f.DrawToBitmap(page, new Rectangle(Point.Empty, f.Size));
+                    g.DrawImage(page, i * (f.Width + 20), 0);
+                }
+            }
+            f.Close();
+            bmp.Save(args[1]);
+            return 0;
+        }
+
         if (args.Length == 2 && args[0] == "--gun") // 총과 불꽃을 여러 각도로 그려 본다 (화면을 띄우지 않는다)
         {
             var sp = Sprites.Embedded();
@@ -50,11 +75,19 @@ static class Program
             return 0;
         }
 
+        // 모르는 옵션이면 볼록이를 띄우지 않고 끝낸다 (그림 확인용 옵션을 옛 빌드에 줬다가 볼록이가 하나 더 뜬 적이 있다)
+        string[] known = { "--debug", "--after" };
+        if (args.FirstOrDefault(x => x.StartsWith("--") && !known.Contains(x)) is { } unknown)
+        {
+            Console.Error.WriteLine($"모르는 옵션: {unknown}");
+            return 2;
+        }
         bool debug = args.Contains("--debug");
         int after = Array.IndexOf(args, "--after"); // 업데이트 뒤 다시 시작: 앞 프로세스가 끝나길 기다린다
         if (after >= 0 && after + 1 < args.Length && int.TryParse(args[after + 1], out int pid))
             try { System.Diagnostics.Process.GetProcessById(pid).WaitForExit(8000); } catch { /* 이미 끝났다 */ }
-        using var one = new Mutex(true, debug ? @"Local\BolokDebug" : @"Local\Bolok", out bool first);
+        // 볼록이는 한 번에 하나만: 디버그로 켜든 받은 exe 로 켜든 같은 잠금을 쓴다 (따로 쓰다 둘이 동시에 뜬 적이 있다, 2026-11-11)
+        using var one = new Mutex(true, @"Local\Bolok", out bool first);
         if (!first) return 0;
 
         ApplicationConfiguration.Initialize();

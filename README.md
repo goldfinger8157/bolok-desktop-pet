@@ -15,7 +15,7 @@ Get **`Bolok.exe`** from the [latest release](https://github.com/goldfinger8157/
 - Windows 10/11, 64-bit.
 - The exe is not code-signed, so the first run shows a SmartScreen warning: click **More info → Run anyway**.
 - Your pet is saved in `%APPDATA%\Bolok`.
-- **Auto-update:** Bolok checks this repository's releases once a day, downloads a newer `Bolok.exe`, and switches to it the next time it starts. Turn it off from the right-click menu (자동 업데이트).
+- **Updating:** download the new `Bolok.exe` from the releases page and replace the old file. Auto-update is **off by default**; if you turn it on (right-click → 설정... → 업데이트), Bolok checks this repository once a day, downloads a newer `Bolok.exe`, and switches to it the next time it starts.
 
 ## What it does
 
@@ -69,7 +69,7 @@ out\Bolok.exe
 - 윈도우 10/11 64비트에서 돼요.
 - 서명이 없는 exe라 처음 실행할 때 "Windows의 PC 보호" 경고가 떠요. **추가 정보 → 실행**을 누르면 돼요.
 - 키우던 볼록이는 `%APPDATA%\Bolok`에 저장돼요.
-- **자동 업데이트:** 하루에 한 번 이 저장소의 릴리스를 확인해요. 새 버전이 있으면 받아 두고, 다음에 켤 때 새 버전으로 떠요. 오른쪽 클릭 메뉴의 `자동 업데이트`에서 끌 수 있어요.
+- **업데이트:** 릴리스 페이지에서 새 `Bolok.exe`를 받아 쓰던 파일에 덮어쓰면 돼요. 자동 업데이트는 **기본으로 꺼져 있어요.** 오른쪽 클릭 → `설정...` → `업데이트` 탭에서 켜면, 하루에 한 번 이 저장소에서 새 `Bolok.exe`를 자동으로 내려받고 다음에 켤 때 새 버전으로 바뀌어요.
 
 ### 하는 일
 

@@ -13,6 +13,7 @@ public sealed class Icbm
     // 고치러 갈 땐 뛰지 않는다: 평소 걸음(70)보다 조금 빠르게 (YELL)
     public const double ButtonSec = .5, PressSec = .7, AwaySec = 1.2, BoomSec = 1.5, RepairSec = 3, GoSpeed = 100, CraterR = 108, FallSpeed = 2400, Gravity = 1400;
     public const int MaxCraters = 5, Cell = 12;
+    public const double NearChance = .25;   // 가끔은 볼록이 근처에 떨어져서 볼록이도 날아간다 (YELL)
     // 버섯구름 그림(40칸, 배율 3배, 바닥 가운데가 터진 자리): 위로 38칸, 옆으로 17칸까지 퍼진다. 화면에서 잘리지 않게 그만큼 띄워 떨어뜨린다
     public const int CloudScale = 3, CloudUp = 38 * CloudScale, CloudHalf = 17 * CloudScale;
 
@@ -21,7 +22,7 @@ public sealed class Icbm
     public readonly List<Blast> Blasts = new();
     public readonly List<Bit> Bits = new();
     public readonly int K;
-    public double X, Y, Clock, ButtonX, ButtonY, MX, MY, MVx, MVy, TX, TY;   // X,Y: 볼록이 발. M: 미사일, T: 떨어질 자리
+    public double X, Y, Clock, ButtonX, ButtonY, MX, MY, MVx, MVy, TX, TY, BlownVx, BlownVy;   // X,Y: 볼록이 발. M: 미사일, T: 떨어질 자리, Blown: 폭발에 날아가는 속도
     public int Dir = 1, Version, Queued, Launched;
     public string Pose = "idle";
     public bool ButtonDown, HasTarget, MissileOn;
@@ -68,9 +69,21 @@ public sealed class Icbm
     }
 
     // 떨어질 자리: 어느 모니터든, 폭발이 활성 창과 볼록이에 닿지 않는 곳. 없으면 null
-    public static PointF? Pick(IReadOnlyList<Rectangle> screens, Rectangle? active, double petX, double petY, double r, Random rng, double headroom = 0, double sideroom = 0)
+    // near: 볼록이 바로 옆(반지름의 0.5~1.2배)을 노린다. 거기에 알맞은 자리가 없으면 null
+    public static PointF? Pick(IReadOnlyList<Rectangle> screens, Rectangle? active, double petX, double petY, double r, Random rng, double headroom = 0, double sideroom = 0, bool near = false)
     {
         double top = Math.Max(r * 1.1, headroom), side = Math.Max(r * 1.1, sideroom);
+        if (near)
+        {
+            var zone = active is { } act ? Rectangle.Inflate(act, (int)r, (int)r) : Rectangle.Empty;
+            for (int i = 0; i < 60; i++)
+            {
+                double ang = rng.NextDouble() * Math.PI * 2, d = r * (.5 + rng.NextDouble() * .7), x = petX + Math.Cos(ang) * d, y = petY + Math.Sin(ang) * d;
+                bool fits = screens.Any(s => x >= s.Left + side && x <= s.Right - side && y >= s.Top + top && y <= s.Bottom - r * 1.1);
+                if (fits && !zone.Contains((int)x, (int)y)) return new PointF((float)x, (float)y);
+            }
+            return null;
+        }
         var no = active is { } a ? Rectangle.Inflate(a, (int)r, (int)r) : Rectangle.Empty;
         for (int i = 0; i < 300; i++)
         {
@@ -122,7 +135,8 @@ public sealed class Icbm
             case Phase.Away: // 화면 밖에 있는 동안 올려다본다
                 Pose = "look";
                 if (Since < AwaySec) break;
-                if (Pick(Screens, active, X, Y, CraterR * sf, rng, CloudUp * K + 6, CloudHalf * K + 6) is { } t)
+                var spot = rng.NextDouble() < NearChance ? Pick(Screens, active, X, Y - cell * .3, CraterR * sf, rng, CloudUp * K + 6, CloudHalf * K + 6, near: true) : null;
+                if ((spot ?? Pick(Screens, active, X, Y, CraterR * sf, rng, CloudUp * K + 6, CloudHalf * K + 6)) is { } t)
                 {
                     (TX, TY, HasTarget, MissileOn) = (t.X, t.Y, true, true);
                     double side = rng.NextDouble() < .5 ? -1 : 1;
@@ -153,6 +167,13 @@ public sealed class Icbm
                 }
                 Version++;
                 OnEvent?.Invoke("boom");
+                double bx = X - TX, by = Y - cell * .3 - TY, bd = Dist(X, Y - cell * .3, TX, TY), reach = CraterR * sf * 1.7;
+                if (bd < reach) // 가까이서 터지면 볼록이도 날아간다 (가까울수록 세게, 살짝 위로)
+                {
+                    double push = (1100 + 1500 * (1 - bd / reach)) * sf;
+                    (BlownVx, BlownVy) = bd < 1 ? (0, -push) : (bx / bd * push, by / bd * push - 500 * sf);
+                    OnEvent?.Invoke("blown");
+                }
                 Go(Phase.Boom);
                 break;
             case Phase.Boom: // 깜짝 놀라 굳는다

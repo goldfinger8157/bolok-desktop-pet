@@ -16,7 +16,7 @@ public sealed class SaveData
     public List<int[]> Holes { get; set; } = new();
     public int GameBest { get; set; }
     public bool GameSound { get; set; }
-    public bool AutoUpdate { get; set; } = true;
+    public bool AutoUpdate { get; set; }
     public int RunBest { get; set; }
     public int RunLast { get; set; }
     public int RunLevel { get; set; } = 1;
@@ -58,8 +58,9 @@ public sealed class PetForm : Form
     readonly ToolStripMenuItem sleepItem = new("재우기");
     readonly ToolStripMenuItem hideItem = new("숨기기");
     readonly ToolStripMenuItem soundItem = new("게임 소리") { CheckOnClick = true };
-    readonly ToolStripMenuItem autoUpdateItem = new("자동 업데이트") { CheckOnClick = true, Checked = true };
     readonly ToolStripMenuItem updateItem = new("새 버전으로 다시 시작") { Visible = false };
+    bool autoUpdate;        // 기본 꺼짐. 설정 창 「업데이트」 탭에서 켠다
+    Settings? settings;
     readonly NotifyIcon tray = new();
     readonly System.Windows.Forms.Timer timer = new() { Interval = 30 };
     readonly Stopwatch clock = Stopwatch.StartNew();
@@ -101,7 +102,7 @@ public sealed class PetForm : Form
         pad.MouseUp += (_, e) => OnMouseUp(e);
         hud = new Hud(b, debug ? DebugLine : null) { RunLine = () => runLast > 0 ? $"달리기 Lv.{runLevel} {runLast} (최고 {runBest})" : "" };
         if (!debug) // 새 버전을 받아 바꿔 두면 메뉴에 알린다. 그냥 둬도 다음에 켤 때 새 버전이다
-            Updater.Start(() => autoUpdateItem.Checked, tag => BeginInvoke(() => { updateItem.Text = $"새 버전 {tag} 으로 다시 시작"; updateItem.Visible = true; }));
+            Updater.Start(() => autoUpdate, tag => BeginInvoke(() => { updateItem.Text = $"새 버전 {tag} 으로 다시 시작"; updateItem.Visible = true; settings?.ShowReady(); }));
         foreach (var o in overlays) { o.Runner = () => runner; o.Break = () => breakout; o.WormsGame = () => worms; o.MinigunGame = () => minigun; o.IcbmGame = () => icbm; }
         hud.PlaceAt(area);
         if (runDir != null) dev = new DevLink(runDir, assetsDir!, b, this);
@@ -220,7 +221,7 @@ public sealed class PetForm : Form
         if (pendingSave == null) return;
         gameBest = pendingSave.GameBest;
         Sfx.On = pendingSave.GameSound;
-        autoUpdateItem.Checked = pendingSave.AutoUpdate;
+        autoUpdate = pendingSave.AutoUpdate;
         (breakBest, wormsWins) = (pendingSave.BreakBest, pendingSave.WormsWins);
         (runBest, runLast, runLevel, runScores) = (pendingSave.RunBest, pendingSave.RunLast, Math.Max(1, pendingSave.RunLevel), pendingSave.RunScores ?? new());
         if (pendingSave.X != 0) { b.X = pendingSave.X; b.Y = pendingSave.Y; b.Settle(); }
@@ -230,7 +231,7 @@ public sealed class PetForm : Form
 
     void Save()
     {
-        var data = new SaveData { Pet = b.P, X = b.X, Y = b.Y, Holes = b.Holes.Select(h => new[] { h.Cx, h.Cy }).ToList(), GameBest = gameBest, GameSound = Sfx.On, AutoUpdate = autoUpdateItem.Checked, RunBest = runBest, RunLast = runLast, RunLevel = runLevel, RunScores = runScores, BreakBest = breakBest, WormsWins = wormsWins };
+        var data = new SaveData { Pet = b.P, X = b.X, Y = b.Y, Holes = b.Holes.Select(h => new[] { h.Cx, h.Cy }).ToList(), GameBest = gameBest, GameSound = Sfx.On, AutoUpdate = autoUpdate, RunBest = runBest, RunLast = runLast, RunLevel = runLevel, RunScores = runScores, BreakBest = breakBest, WormsWins = wormsWins };
         var tmp = savePath + ".tmp";
         File.WriteAllText(tmp, JsonSerializer.Serialize(data));
         File.Move(tmp, savePath, true);
@@ -261,8 +262,7 @@ public sealed class PetForm : Form
         hideItem.Click += (_, _) => SetHidden(!hiddenByUser);
         menu.Items.Add(hideItem);
         Add("화면 돌려받기", b.GiveBack);
-        autoUpdateItem.Click += (_, _) => Save();
-        menu.Items.Add(autoUpdateItem);
+        Add("설정...", ShowSettings);
         updateItem.Click += (_, _) => { Save(); Updater.Restart(); };
         menu.Items.Add(updateItem);
         menu.Items.Add(new ToolStripSeparator());
@@ -546,6 +546,15 @@ public sealed class PetForm : Form
         Save();
     }
 
+    void ShowSettings()
+    {
+        if (settings is { IsDisposed: false }) { settings.Activate(); return; }
+        settings = new Settings(Sfx.On, autoUpdate);
+        settings.Changed += () => { (Sfx.On, autoUpdate) = (settings.Sound, settings.AutoUpdate); Save(); };
+        settings.RestartAsked += () => { Save(); Updater.Restart(); };
+        settings.Show();
+    }
+
     bool InGame => game != null || runner != null || breakout != null || worms != null || minigun != null || icbm != null;
 
     // 게임판: 그 모니터 위에 1% 판을 깔아 클릭·키를 받는다. 다른 창은 안 눌린다
@@ -597,6 +606,7 @@ public sealed class PetForm : Form
                 case "press": Sfx.Play("empty"); break;
                 case "launch": Sfx.Play("shotgun"); break;
                 case "boom": Sfx.Play("boom"); b.Emote("bang", 1); break;
+                case "blown": b.Throw(ic.BlownVx, ic.BlownVy); break; // 내려앉으면 거기서부터 고치러 간다
                 case "nowhere": b.Say(3, "떨어뜨릴 곳이 없어요"); break;
                 case "repaired": b.P.Energy = Math.Max(0, b.P.Energy - 4); b.Emote("spark", .8); break; // 일은 기운이 든다
             }

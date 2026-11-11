@@ -7,7 +7,7 @@ namespace Bolok;
 
 // 자동 업데이트: 깃허브 릴리스의 최신 버전이 지금보다 높으면 Bolok.exe 를 받아 바꿔치기한다. 다음에 켤 때 새 버전으로 뜬다.
 // 실행 중인 exe 는 덮어쓸 수 없지만 이름은 바꿀 수 있어서: 지금 것 → Bolok.exe.old, 받은 것 → Bolok.exe. .old 는 다음 시작 때 지운다.
-// 일반 실행(배포용 한 파일 exe)에서만 돈다. 디버그 모드와 개발 빌드(버전 0.0.0)는 건드리지 않는다
+// 사용자가 설정에서 켰을 때만 돈다 (기본 꺼짐). 일반 실행(배포용 한 파일 exe)에서만, 디버그 모드와 개발 빌드(버전 0.0.0)는 건드리지 않는다
 public static class Updater
 {
     public const string Repo = "goldfinger8157/bolok-desktop-pet", Asset = "Bolok.exe";
@@ -74,33 +74,54 @@ public static class Updater
             try { File.Delete(leftover); } catch { /* 아직 잠겨 있으면 다음에 */ }
     }
 
-    // 시작하고 20초 뒤, 그 뒤로 하루에 한 번 확인한다. 실패는 조용히 넘긴다 (인터넷이 없을 수도 있다)
+    public static bool IsDevBuild => Current.Major + Current.Minor + Math.Max(0, Current.Build) == 0;
+    static DateTime lastCheck = DateTime.MinValue;
+
+    static HttpClient Http()
+    {
+        var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("bolok-desktop-pet");
+        http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+        return http;
+    }
+
+    // 지금보다 새 릴리스가 있는지 (설정 창의 「지금 확인」도 이걸 쓴다. 받지는 않는다)
+    public static async Task<Release?> Latest()
+    {
+        using var http = Http();
+        return Newer(await http.GetStringAsync($"https://api.github.com/repos/{Repo}/releases/latest"), Current);
+    }
+
+    // 자동 업데이트는 사용자가 설정에서 켰을 때만 (기본 꺼짐). 켜져 있으면 시작 20초 뒤와 그 뒤 하루에 한 번 확인해서 받아 바꿔 둔다.
+    // 실패는 조용히 넘긴다 (인터넷이 없을 수도 있다). 배포용 한 파일 exe 가 아니면(디버그·개발 빌드) 아무것도 안 한다
     public static void Start(Func<bool> enabled, Action<string> onReady)
     {
         string? exe = Environment.ProcessPath;
-        if (exe == null || Path.GetFileName(exe) != Asset || Current.Major + Current.Minor + Current.Build == 0) return;
+        if (exe == null || Path.GetFileName(exe) != Asset || IsDevBuild) return;
         Cleanup(exe);
         _ = Task.Run(async () =>
         {
-            using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("bolok-desktop-pet");
-            http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
             await Task.Delay(TimeSpan.FromSeconds(20));
             while (Ready == null)
             {
-                try
+                if (enabled() && DateTime.Now - lastCheck > TimeSpan.FromHours(24))
                 {
-                    if (enabled() && Newer(await http.GetStringAsync($"https://api.github.com/repos/{Repo}/releases/latest"), Current) is { } r)
+                    lastCheck = DateTime.Now;
+                    try
                     {
-                        string fresh = exe + ".new";
-                        await using (var to = File.Create(fresh))
-                        await using (var from = await http.GetStreamAsync(r.Url)) await from.CopyToAsync(to);
-                        if (Verify(fresh, r) && Swap(exe, fresh)) { Ready = r.Tag; onReady(r.Tag); }
-                        else File.Delete(fresh);
+                        if (await Latest() is { } r)
+                        {
+                            string fresh = exe + ".new";
+                            using var http = Http();
+                            await using (var to = File.Create(fresh))
+                            await using (var from = await http.GetStreamAsync(r.Url)) await from.CopyToAsync(to);
+                            if (Verify(fresh, r) && Swap(exe, fresh)) { Ready = r.Tag; onReady(r.Tag); }
+                            else File.Delete(fresh);
+                        }
                     }
+                    catch (Exception e) { Dbg.Log("update-error", ("msg", e.Message)); }
                 }
-                catch (Exception e) { Dbg.Log("update-error", ("msg", e.Message)); }
-                await Task.Delay(TimeSpan.FromHours(24));
+                await Task.Delay(TimeSpan.FromMinutes(1)); // 설정에서 켜면 1분 안에 확인한다
             }
         });
     }

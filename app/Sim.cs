@@ -401,6 +401,7 @@ static class Sim
         }
         Expect(seen.SequenceEqual(new[] { Icbm.Phase.ToButton, Icbm.Phase.Press, Icbm.Phase.Rise, Icbm.Phase.Away, Icbm.Phase.Fall, Icbm.Phase.Boom, Icbm.Phase.ToCrater, Icbm.Phase.Repair, Icbm.Phase.Done }),
             "차례: " + string.Join(">", seen));
+        events.Remove("blown");
         Expect(string.Join(",", events) == "press,launch,boom,repaired" && ic.Finished && ic.Craters.Count == 0, "터지고 나면 고쳐서 구멍이 사라진다: " + string.Join(",", events));
         Expect(Math.Abs(ic.X - hit.X) < 3 && !active.Contains((int)hit.X, (int)hit.Y), "볼록이가 터진 자리까지 가서 고친다");
 
@@ -432,6 +433,24 @@ static class Sim
             if (walk.X >= 1920) crossed++;
         }
         Expect(crossed >= 2, $"다른 모니터의 구멍도 건너가서 고친다: {crossed}/12");
+
+        // 가끔(4번에 한 번쯤)은 볼록이 근처에 떨어지고, 그러면 볼록이가 폭발 반대쪽으로 날아간다
+        int nearHits = 0;
+        for (int seed = 0; seed < 200; seed++)
+        {
+            var nb = new Icbm(screens, 900, 700, 3, new Random(seed));
+            bool blown = false;
+            nb.OnEvent = e => blown |= e == "blown";
+            nb.Launch();
+            for (int i = 0; i < 60 * 20 && nb.Craters.Count == 0; i++) nb.Update(1 / 60.0, null);
+            var c0 = nb.Craters[0];
+            double dx = 900 - c0.X, dy = 700 - 36 - c0.Y, d = Math.Sqrt(dx * dx + dy * dy);
+            Expect(blown == d < Icbm.CraterR * 1.7, $"폭발 가까이 있을 때만 날아간다 (seed {seed}, {d:F0}px)");
+            if (!blown) continue;
+            nearHits++;
+            Expect(nb.BlownVx * dx + (nb.BlownVy + 500) * dy > 0 && Math.Sqrt(nb.BlownVx * nb.BlownVx + nb.BlownVy * nb.BlownVy) > 900, $"폭발 반대쪽으로 세게 날아간다 (seed {seed})");
+        }
+        Expect(nearHits is >= 25 and <= 80, $"4번에 한 번쯤 볼록이 근처에 떨어진다: {nearHits}/200");
 
         // 잡아서 옮기기: 가는 중에 구멍 옆에 놓아 주면 거기서부터 걸어가 금방 고친다. 고치던 중에 잡으면 처음부터 다시
         var carry = new Icbm(screens, 300, 1000, 3, new Random(5));
