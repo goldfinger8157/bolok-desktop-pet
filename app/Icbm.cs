@@ -16,7 +16,7 @@ public sealed class Icbm
     // 떨어질 땐 콰콰콰콰 울리며 천천히 (YELL: 너무 빨랐다). 거리에 따라 1.6~2.6초. 글자 없이 떨림·불꽃·소리로만
     public const double FallSpeed = 650, FallMinSec = 1.6, FallMaxSec = 2.6;
     // 구멍에서 가끔 떠난 친구가 빼꼼 (YELL). 구멍 하나에 평균 8초에 한 번, 버섯구름이 걷힌 뒤부터, 한 번에 하나만. 몸은 1/3 만 나온다 (그리는 쪽)
-    public const double PeekSec = 2.8, PeekEvery = 8, PeekAfter = 2;
+    public const double PeekSec = 3.6, PeekEvery = 8, PeekAfter = 2; // 올라와서 눈을 몇 번 깜빡일 만큼
     public const int MaxCraters = 5, Cell = 12;
     public const double NearChance = .25;   // 가끔은 볼록이 근처에 떨어져서 볼록이도 날아간다 (YELL)
     // 버섯구름 그림(40칸, 배율 3배, 바닥 가운데가 터진 자리): 위로 38칸, 옆으로 17칸까지 퍼진다. 화면에서 잘리지 않게 그만큼 띄워 떨어뜨린다

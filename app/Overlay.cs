@@ -512,33 +512,101 @@ public sealed class Overlay : Form
         foreach (var (x, y) in cracks) g.FillRectangle(rim, ctr.X + x, ctr.Y + y, c / 2, c / 2);
     }
 
-    // 떠난 친구가 구멍 안에서 빼꼼: 구멍 안쪽만 보이게 잘라서, 구멍 바닥에서 귀와 눈까지만(몸의 1/3쯤) 올라온다 (YELL). 다 올라오면 반가워서 하트
+    // 떠난 친구가 구멍 안에서 빼꼼 (YELL): 구멍 너머로 친구가 사는 자연(하늘·숲·냇물)이 보이고,
+    // 친구는 구멍 아래에서 몸의 1/3 만 올라와 눈만 깜빡깜빡. 다 올라오면 작은 하트
     internal static void PaintPeek(Graphics g, Sprites sp, Icbm.Peek pk, double clock, Point ctr, int k)
     {
         int c = Icbm.Cell;
-        double up = Icbm.Rise(clock - pk.At);
+        double t = clock - pk.At, up = Icbm.Rise(t);
         var inside = CraterShape(pk.Hole).Cells.Where(x => x.Hole).ToList();
         if (inside.Count < 4 || up <= 0) return;
-        var img = sp.Get("thumb/" + pk.Species, 0, k + 1); // 구멍이 커서 한 단계 크게
-        var body = PeekBody(pk.Species, img);
-        // 바닥: 구멍이 몸 너비의 70% 넘게 뚫린 가장 아래 줄 (들쭉날쭉한 바닥 끝에서 올라오면 양옆이 잘려 귀만 보인다)
-        var (holeSet, half) = (inside.Select(x => (x.I, x.J)).ToHashSet(), Math.Max(1, body.Width / c / 2));
+        int ps = Math.Max(1, (int)Math.Round((k + 1) * .6)); // 처음 크기(k+1)의 60% 쯤 (YELL: 너무 크다). 도트가 안 깨지게 정수 배율
+        bool blink = up >= 1 && t % 1.1 is > .8 and < .95;
+        var img = sp.Get("thumb/" + pk.Species, blink ? 1 : 0, ps);
+        var body = PeekBody(pk.Species, sp.Get("thumb/" + pk.Species, 0, ps));
+        // 바닥: 몸 너비보다 양옆 한 칸씩 더 넓게 다 뚫린 가장 아래 줄 (들쭉날쭉한 바닥 끝에서 올라오면 양옆이 잘려 귀만 보인다)
+        var (holeSet, half) = (inside.Select(x => (x.I, x.J)).ToHashSet(), body.Width / c / 2 + 1);
         int floorJ = inside.Select(x => x.J).Distinct().OrderByDescending(j => j)
-            .FirstOrDefault(j => Enumerable.Range(-half, half * 2).Count(i => holeSet.Contains((i, j))) >= half * 2 * .7, 0);
+            .FirstOrDefault(j => Enumerable.Range(-half, half * 2).All(i => holeSet.Contains((i, j)) && holeSet.Contains((i, j - 1))), 0);
         int floor = ctr.Y + (floorJ + 1) * c;
-        int top = floor - (int)(body.Height * .45 * up), x0 = ctr.X - (body.Left + body.Width / 2); // 귀와 눈까지만 (몸의 1/3 남짓)
+        int top = floor - (int)(body.Height / 3.0 * up), x0 = ctr.X - (body.Left + body.Width / 2);
         var state = g.Save();
         using (var clip = new System.Drawing.Drawing2D.GraphicsPath())
         {
             foreach (var (i, j, _) in inside) clip.AddRectangle(new Rectangle(ctr.X + i * c, ctr.Y + j * c, c, c));
             g.SetClip(clip);
         }
+        int minI = inside.Min(x => x.I), maxI = inside.Max(x => x.I), minJ = inside.Min(x => x.J), maxJ = inside.Max(x => x.J);
+        var box = Rectangle.FromLTRB(ctr.X + minI * c, ctr.Y + minJ * c, ctr.X + (maxI + 1) * c, ctr.Y + (maxJ + 1) * c);
+        PaintNature(g, box, floor, (int)(pk.Hole.X * 3 + pk.Hole.Y * 5), clock, k);
+        using (var dark = new SolidBrush(Color.FromArgb(14, 16, 22))) // 열리고 닫힐 때는 칸칸이 (도트 디더)
+            foreach (var (i, j, _) in inside)
+                if (up < (Bayer(i, j) + .5) / 4) g.FillRectangle(dark, ctr.X + i * c, ctr.Y + j * c, c, c);
         g.DrawImageUnscaled(img, x0, top - body.Top);
         g.Restore(state);
-        if (up >= 1 && (clock - pk.At) % .8 < .55)
+        if (up >= 1 && t % .8 < .55)
         {
-            var heart = sp.Get("icon/heart", 0, k);
-            g.DrawImageUnscaled(heart, x0 + body.Right - heart.Width / 3, top - heart.Height);
+            var heart = sp.Get("icon/heart", 0, Math.Max(1, ps - 1)); // 작게 (YELL)
+            g.DrawImageUnscaled(heart, x0 + body.Right - heart.Width / 3, top - heart.Height * 2 / 3);
+        }
+    }
+
+    // 2x2 바이어 순서 (0 2 / 3 1): 반쯤 열리면 체크무늬
+    static int Bayer(int i, int j) => (i & 1) * 2 + (j & 1) * 3 - (i & j & 1) * 4;
+
+    // 구멍 너머 자연: 파란 하늘과 구름, 나무숲, 흐르는 냇물, 풀밭. px 칸 도트로, 자리마다 조금씩 다르게
+    static void PaintNature(Graphics g, Rectangle box, int floor, int seed, double clock, int px)
+    {
+        var rng = new Random(seed);
+        int W = box.Width, horizon = box.Top + (int)((floor - box.Top) * .52) / px * px;
+        Color Lerp(Color a, Color b, double u) => Color.FromArgb((int)(a.R + (b.R - a.R) * u), (int)(a.G + (b.G - a.G) * u), (int)(a.B + (b.B - a.B) * u));
+        void Fill(Color col, int x, int y, int w, int h) { using var br = new SolidBrush(col); g.FillRectangle(br, x, y, w, h); }
+
+        // 하늘: 위는 짙고 지평선 쪽은 옅게 (띠마다 한 색)
+        for (int y = box.Top; y < horizon; y += px * 2)
+            Fill(Lerp(Color.FromArgb(84, 150, 228), Color.FromArgb(178, 218, 248), (y - box.Top) / (double)Math.Max(1, horizon - box.Top)), box.Left, y, W, px * 2);
+        // 구름: 천천히 흘러간다
+        for (int n = 0; n < 2; n++)
+        {
+            int cw = (10 + rng.Next(5)) * px, span = W + cw * 2;
+            int cx = box.Left - cw + (int)((rng.Next(span) + clock * (6 + n * 4) * px) % span) / px * px;
+            int cy = box.Top + (int)((horizon - box.Top) * (.18 + .3 * n)) / px * px;
+            Fill(Color.White, cx, cy + px, cw, px * 2);
+            Fill(Color.White, cx + px * 2, cy, cw - px * 5, px);
+            Fill(Color.FromArgb(222, 236, 250), cx + px, cy + px * 3, cw - px * 2, px);
+        }
+        // 먼 숲: 지평선을 따라 둥근 나무 꼭대기가 이어진다
+        var far = Color.FromArgb(48, 112, 74);
+        for (int x = box.Left; x < box.Right; x += px)
+        {
+            double h = 4 + 2.5 * Math.Sin((x - box.Left) / (double)px * .55 + seed) + 1.5 * Math.Sin((x - box.Left) / (double)px * 1.7 + seed * .3);
+            int top = horizon - (int)h * px;
+            Fill(far, x, top, px, horizon - top + px);
+            if ((x / px + seed) % 5 == 0) Fill(Color.FromArgb(70, 140, 90), x, top + px, px, px); // 잎에 빛
+        }
+        // 풀밭
+        int stream = horizon + (int)((floor - horizon) * .35) / px * px, bank = (floor - horizon) / 4 / px * px + px * 2;
+        Fill(Color.FromArgb(120, 192, 96), box.Left, horizon + px, W, box.Bottom - horizon); // 친구가 올라오는 줄 아래 구멍까지
+        // 냇물: 구불구불 가로질러 흐르고, 반짝이가 흐름 따라 옮겨 간다
+        int step = (int)(clock * 7);
+        for (int x = box.Left; x < box.Right; x += px)
+        {
+            int col = (x - box.Left) / px, mid = stream + (int)(Math.Sin(col * .22 + seed * .7) * 2) * px;
+            Fill(Color.FromArgb(86, 156, 92), x, mid - px, px, px); // 둑
+            Fill(Color.FromArgb(70, 146, 222), x, mid, px, bank);
+            if ((col + step) % 6 == 0) Fill(Color.FromArgb(196, 230, 252), x, mid + px * ((col / 6 + seed) % Math.Max(1, bank / px)), px * 2, px);
+        }
+        // 가까운 나무 두 그루 (양옆)
+        foreach (int side in new[] { -1, 1 })
+        {
+            int tx = side < 0 ? box.Left + W / 6 : box.Right - W / 6, ty = horizon + px * 2, r = (5 + rng.Next(3)) * px;
+            Fill(Color.FromArgb(112, 78, 50), tx - px, ty - r / 2, px * 2, r);
+            for (int dy = -r; dy <= r; dy += px)
+            {
+                int hw = (int)Math.Sqrt(Math.Max(0, r * r - dy * dy)) / px * px;
+                Fill(Color.FromArgb(40, 120, 66), tx - hw, ty - r * 2 + dy, hw * 2, px);
+            }
+            Fill(Color.FromArgb(76, 156, 88), tx - r / 2, ty - r * 2 - r / 2, px * 2, px);
         }
     }
 

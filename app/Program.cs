@@ -97,7 +97,7 @@ static class Program
             while (ic.Craters.Count == 0) ic.Update(1 / 60.0, null);
             var cr = ic.Craters[0];
             g.TranslateTransform(1920, 0);
-            foreach (var (dx, rise) in new[] { (-600, .3), (-200, 1.2), (200, 2.5) }) // 올라오는 중, 다 올라옴, 내려가는 중
+            foreach (var (dx, rise) in new[] { (-600, .25), (-200, 1.2), (200, 1.9) }) // 열리는 중, 다 올라옴, 눈 깜빡
             {
                 var c = new Icbm.Crater { X = 960 + dx, Y = 380, R0 = cr.R0, R = cr.R0 };
                 Overlay.PaintCrater(g, c, new Point((int)c.X, (int)c.Y), rim, hole);

@@ -1151,7 +1151,8 @@ def build():
     rows += [('game/nuke', [nuke(i) for i in range(8)])]
     rows += [('game/flash', [art('..y..|.yyy.|yywyy|.yyy.|..y..', 'r')])]
     rows += [('game/muzzle', [muzzle(a) for a in MUZZLE])]
-    rows += [(f'thumb/{sp}', [pet(sp, 'child', 0, POSES['idle'][0])]) for sp in SPECIES]  # 설정 창 캐릭터 고르기
+    # 설정 창 도감(0번), ICBM 구멍에서 빼꼼하는 떠난 친구(0번 + 눈 감은 1번으로 깜빡)
+    rows += [(f'thumb/{sp}', [pet(sp, 'child', 0, POSES['idle'][0]), pet(sp, 'child', 0, POSES['idle'][3])]) for sp in SPECIES]
     return rows
 
 
