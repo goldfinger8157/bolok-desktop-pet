@@ -14,10 +14,10 @@ static class Program
         if (args.Length == 2 && args[0] == "--settings") // 설정 창 페이지들을 그림으로 (화면 밖 먼 곳에 잠깐 띄워 그린다). 마지막은 풀어주기 확인
         {
             ApplicationConfiguration.Initialize();
-            var sp = Sprites.Embedded("fox");
-            var book = new PetBook("fox", false, new[] { "hamster", "fox", "penguin", "slime" },
+            var sp = Sprites.Embedded();
+            var book = new PetBook("hamster", false, new[] { "hamster", "fox", "penguin", "slime" },
                 new[] { new ReleasedPet("hamster", "adult_chubby", 2900, new DateTime(2026, 11, 11)), new ReleasedPet("penguin", "adult_sweet", 2500, new DateTime(2026, 11, 12)) });
-            var status = new PetStatus("fox", "child", 200, 72, 88, 18, false, "sleepy", 1, 2, 5, 2080, .06, "어른", new[]
+            var status = new PetStatus("hamster", "child", 200, 72, 88, 18, false, "sleepy", 1, 2, 5, 2080, .06, "어른", new[]
             {
                 new GameStat("달리기", "Lv.3 · 최고 1,240점", true), new GameStat("벽돌깨기", "최고 86조각", true),
                 new GameStat("포트리스", "아직 못 이겼어요", false), new GameStat("총쏘기", "최고 15번 맞혔어요", true),
@@ -46,6 +46,17 @@ static class Program
             f.Close();
             bmp.Save(args[1]);
             return 0;
+        }
+
+        if (args.Length == 2 && args[0] == "--pets-check") // 이 exe 가 받을 캐릭터 그림이 저장소(자기 태그)에 다 있고 목록과 맞는지 (릴리스 워크플로가 돌린다)
+        {
+            var ps = new PetSheets(args[1], null, PetSheets.RefFor(Updater.Current, Updater.IsDevBuild));
+            int ok = 0;
+            foreach (var id in ps.Manifest.Keys)
+                if (ps.Fetch(id).GetAwaiter().GetResult() && ps.Read(id) != null) ok++;
+                else Console.WriteLine($"못 받음: {id} ({ps.Url(id + ".png")})");
+            Console.WriteLine($"캐릭터 그림 {ok}/{ps.Manifest.Count} ({ps.GitRef})");
+            return ok == ps.Manifest.Count ? 0 : 1;
         }
 
         if (args.Length == 2 && args[0] == "--gun") // 총과 불꽃을 여러 각도로 그려 본다 (화면을 띄우지 않는다)
@@ -118,7 +129,11 @@ static class Program
 
         var sprites = assets != null ? Sprites.FromDir(assets) : Sprites.Embedded();
         var tuning = run != null ? DevLink.LoadTuning(run) : new Tuning();
-        Application.Run(new PetForm(sprites, tuning, data, run, assets));
+        // 받은 캐릭터 그림: 릴리스는 %LOCALAPPDATA%\Bolok\pets, 개발은 assets 를 바로 읽는다
+        var pets = new PetSheets(Path.Combine(run ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Bolok"), run != null ? "pets-cache" : "pets"),
+            assets, PetSheets.RefFor(Updater.Current, Updater.IsDevBuild));
+        pets.Cleanup();
+        Application.Run(new PetForm(sprites, pets, tuning, data, run, assets));
         return 0;
     }
 }

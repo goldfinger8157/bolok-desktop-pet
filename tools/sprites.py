@@ -1322,8 +1322,24 @@ def write(rows, png_path, json_path):
     return cols
 
 
+def manifest(root):
+    """캐릭터 그림 목록 (크기·sha256). exe 에 들어가고, 앱은 저장소에서 받은 그림이 이것과 맞을 때만 쓴다"""
+    import hashlib
+    pets = root / 'assets/pets'
+    out = {}
+    for sp in SPECIES:
+        e = {}
+        for ext in ('png', 'json'):
+            b = (pets / f'{sp}.{ext}').read_bytes()
+            e[ext] = hashlib.sha256(b).hexdigest()
+            e[ext + '_size'] = len(b)
+        out[sp] = e
+    (pets / 'manifest.json').write_text(json.dumps(out, indent=1, sort_keys=True) + '\n')
+
+
 def main():
     """python3 tools/sprites.py                  공통 그림 + 캐릭터 전부
+       python3 tools/sprites.py --manifest       캐릭터 그림 목록(크기·sha256)만 다시
        python3 tools/sprites.py --pets fox,cat   공통 그림 + 고른 캐릭터만
        python3 tools/sprites.py --look 미리.png   캐릭터 검수용 그림만 (assets 는 안 건드린다)
        python3 tools/sprites.py --gif 행진.gif    README 용 움직이는 그림"""
@@ -1335,10 +1351,14 @@ def main():
     if args[:1] == ['--gif']:
         parade(args[1])
         return
+    if args[:1] == ['--manifest']:
+        manifest(root)
+        return
     pets = list(SPECIES) if args[:1] != ['--pets'] else args[1].split(',')
     (root / 'assets/pets').mkdir(parents=True, exist_ok=True)
     for sp in pets:  # 캐릭터 그림을 먼저, 공통 그림은 마지막에 (떠 있는 앱은 공통 PNG 가 바뀌면 다시 읽는다)
         write(pet_rows(sp), root / f'assets/pets/{sp}.png', root / f'assets/pets/{sp}.json')
+    manifest(root)
     rows = build()
     cols = write(rows, root / 'assets/sprites.png', root / 'assets/sprites.json')
     if args[:1] and args[0] not in ('--pets', '--look'):

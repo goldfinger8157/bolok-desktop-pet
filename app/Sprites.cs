@@ -6,7 +6,8 @@ using System.Text.Json;
 namespace Bolok;
 
 // 그림 두 장을 겹쳐 쓴다: 고른 캐릭터 그림(assets/pets/<종>.png, 형태·볼·자세)이 먼저, 없는 이름은 공통 그림(assets/sprites.png:
-// 알·아이콘·이모티콘·게임·소품·캐릭터 썸네일)에서. 캐릭터는 고른 하나만 읽는다 (21종을 다 읽으면 메모리가 한참 는다).
+// 알·아이콘·이모티콘·게임·소품·캐릭터 썸네일)에서. 캐릭터는 고른 하나만 읽는다 (34종을 다 읽으면 메모리가 한참 는다).
+// exe 에는 햄스터만 들어 있다. 다른 종은 PetSheets 가 받아 둔 것을 With 로 읽는다.
 // 쓴 프레임은 배율별로 캐시한다
 public sealed class Sprites
 {
@@ -49,6 +50,28 @@ public sealed class Sprites
         using var petPng = a.GetManifestResourceStream($"pets/{species}.png")!;
         using var petJson = a.GetManifestResourceStream($"pets/{species}.json")!;
         return new Sprites(new Sheet(png, json), new Sheet(petPng, petJson), species);
+    }
+
+    // 캐릭터 그림은 받은 바이트로, 공통 그림은 개발 폴더(dir)나 exe 에서
+    public static Sprites With(string species, (byte[] Png, byte[] Json) pet, string? dir)
+    {
+        Sheet common;
+        if (dir != null)
+        {
+            using var png = new FileStream(Path.Combine(dir, "sprites.png"), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var json = new FileStream(Path.Combine(dir, "sprites.json"), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            common = new Sheet(png, json);
+        }
+        else
+        {
+            var a = Assembly.GetExecutingAssembly();
+            using var png = a.GetManifestResourceStream("sprites.png")!;
+            using var json = a.GetManifestResourceStream("sprites.json")!;
+            common = new Sheet(png, json);
+        }
+        using var pp = new MemoryStream(pet.Png);
+        using var pj = new MemoryStream(pet.Json);
+        return new Sprites(common, new Sheet(pp, pj), species);
     }
 
     public static Sprites FromDir(string dir, string species = DefaultSpecies)

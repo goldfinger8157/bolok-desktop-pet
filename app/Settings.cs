@@ -196,7 +196,7 @@ public sealed class Settings : Form
         if (page != "상태") return;
 
         string pose = $"{st.Stage}/0/{(st.Asleep ? "sleep" : "idle")}";
-        string key = egg ? "egg/idle" : sp.Has(pose) ? pose : "thumb/" + st.Species;
+        string key = egg ? "egg/idle" : sp.Species == st.Species && sp.Has(pose) ? pose : "thumb/" + st.Species; // 그림을 아직 못 받았으면 썸네일로
         hero.Face = sp.Get(key, frame, 1);
         if (!crops.TryGetValue(st.Species + "|" + key, out var crop)) crops[st.Species + "|" + key] = crop = Ui.Opaque(sp.Get(key, 0, 1), 2);
         hero.Crop = crop;
@@ -246,7 +246,7 @@ public sealed class Settings : Form
     Stack BookPage()
     {
         var s = new Stack();
-        s.Desc("알이 깨지기 전엔 누가 나올지 몰라요. 만나 본 친구는 또렷하게, 아직 못 만난 친구는 흐리게 보여요.");
+        s.Desc("알이 깨지기 전엔 누가 나올지 몰라요. 만나 본 친구는 또렷하게, 아직 못 만난 친구는 흐리게 보여요. 새 알이 오면 그 친구 그림(약 300KB)을 저장소에서 받아 와요.");
         nowCard = s.Group("지금 키우는 아이");
         nowItem = nowCard.Add("");
         grid = new BookGrid(spritesOf().SpeciesNames.Select(kv => (kv.Key, kv.Value, (Image)thumbs[kv.Key].Two, (Image)thumbs[kv.Key].Faded)).ToList());

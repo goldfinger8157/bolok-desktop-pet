@@ -1,0 +1,206 @@
+{
+ "alpaca": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "41971f8a90d29fee2c338f2d8ef2b5aba6fde01ef5281911debda6457478e252",
+  "png_size": 307620
+ },
+ "beaver": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "dbc39e4d0076a31d0e20e7866010c72e9207ce3d2f5b7c90a364f6e1e1270d9c",
+  "png_size": 290781
+ },
+ "capybara": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "8ab63cccd60174b706b5cae48c9a2d0e9c7c1504c9461d6a8b358d0a86f0328e",
+  "png_size": 278638
+ },
+ "cat": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "36adfbc547a7ccc301b0a24a29d8d1696cfe6a07dd1c1b7367291f1a9a11c4a3",
+  "png_size": 329663
+ },
+ "deer": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "401f254a63b95598c2fa1e33f17e43eb1a868c2b981ecad0ba234ff45cb654e0",
+  "png_size": 320294
+ },
+ "dokkaebi": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "a11c922b0975f3620734283272c479095fa8907a328c1e7031c2509e8c887b3b",
+  "png_size": 300080
+ },
+ "dragon": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "258ab64a23ac4fde8ff2ab4cf316ecbd2f97ed72a00fc13f0fcff59eac648d43",
+  "png_size": 329884
+ },
+ "duck": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "5aa65f2b5989ab79d49173e8f458bd4958f4eaa2421be027735fc43496254af3",
+  "png_size": 281497
+ },
+ "fox": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "c0d187fcd0b2ba2618ccb64ce71458cdb4daf939101763ebbda1ef1c5f1bf3dd",
+  "png_size": 335345
+ },
+ "frog": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "9acb44144267165c9dd8a7379e3d28d5ac6c88ddd0f82648bbea97c4b7ddd63f",
+  "png_size": 255691
+ },
+ "ghost": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "e37faabe18269d84e1b3ce1a133febd5282017e45bb7baace78c53b2bce879bb",
+  "png_size": 272036
+ },
+ "goat": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "5fd720a7033270ce68e68f1396fb3e9f827e02baf70cd6a63601fd53b3d9551a",
+  "png_size": 299095
+ },
+ "golem": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "588447a3e84f963ad6897e75c1930a15853ff6c003a6721b88fa3aafda65e24d",
+  "png_size": 299902
+ },
+ "gumiho": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "c0661363179fd7e1a0770c59388e86f800017e8d59436a93e671bc722701b7de",
+  "png_size": 335506
+ },
+ "hamster": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "6215740fe9a5e81090efd39b02ba47837525f1a4619076def5739461c5503827",
+  "png_size": 286092
+ },
+ "hedgehog": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "a86742c7ce64ceb4e2d0093cd481bb13cad4bfae14d0cf76e31d6eec53d0bd86",
+  "png_size": 323893
+ },
+ "imp": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "b9b473b94cd2c251dfb529e58c940387963bcbc6787285de82ec74c94180c527",
+  "png_size": 335829
+ },
+ "koala": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "548a1d75d556f8883e3b3e000796943e691e5ac8f3e768398323fd7ead7f0e0a",
+  "png_size": 296425
+ },
+ "moonbear": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "8e5c0eca2f7e616ccdec3f9c1326a18fc514441f613a6cd4f951431062400cb4",
+  "png_size": 296437
+ },
+ "mushroom": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "ee63748505a60c8c0a3519c67149168ea54ab3e3e6989787a3b79159769f347f",
+  "png_size": 296431
+ },
+ "octopus": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "008c33e4ff0e9927febd3577555af49e33d88b15bb2261e8bf847b1f63d74c5c",
+  "png_size": 282698
+ },
+ "otter": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "370004cec74c6e6d53ab40c2e2ed606d638b1bf8eddebd65f4880fa36b820bda",
+  "png_size": 290232
+ },
+ "owl": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "22fa618903e8e39f92f7398b19087f6bc9b9fd9cc775d7553de407bff9584e5c",
+  "png_size": 299341
+ },
+ "panda": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "dbd61c002fba035ad421229125e6d24e2f87daaa66467fe0f5fa74dfe9269f7f",
+  "png_size": 306812
+ },
+ "penguin": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "dfc92b292b414729892d42482cd96c262f20c9345cef5e1be882f5c06ad35029",
+  "png_size": 283145
+ },
+ "pig": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "102d107c1192d0ff28c54e3a8fc92345848be9d4f0835c15bd3921598c1f1e6d",
+  "png_size": 325256
+ },
+ "quokka": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "b2d66218e96f02354ef18ff540b8bccece8f59e26586b240f8c15dd4288d35e9",
+  "png_size": 276239
+ },
+ "raccoon": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "517326acebef478387a269bf543cf6c788f06791a841470958458dd5886b2290",
+  "png_size": 332017
+ },
+ "redpanda": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "b86496d2fba9979bad00c361d456049fb81957889225c3a353c3f061119a67a4",
+  "png_size": 334401
+ },
+ "sheep": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "5f15bc2a7dc2d43e5952e35d9cd9fc93e9558986e32b33bc38d11cfe4b77946c",
+  "png_size": 310659
+ },
+ "shiba": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "c7cffbc5e9231c52fbf8b30a18fa82809695d1a93de6aa507ecf0ae2192d2166",
+  "png_size": 306230
+ },
+ "slime": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "421b9f18587a910f01b7c17282057d64ee9feaa80595f0f873bdee866ba5c3a2",
+  "png_size": 256245
+ },
+ "squirrel": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "88d3003c666b93fc157c36d01d090c39e6c728152a3ae0585ff453c164a4c952",
+  "png_size": 319860
+ },
+ "unicorn": {
+  "json": "14e8156130807dae61e825010de1fca383369bb9b7c9c243826b31f9e7206532",
+  "json_size": 21072,
+  "png": "1e44c500fca5b52689b407ebcb1b46baf8b0b947b8ccf5c43ad7f5912ddd37be",
+  "png_size": 329673
+ }
+}
