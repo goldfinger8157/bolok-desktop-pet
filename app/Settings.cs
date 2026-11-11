@@ -211,7 +211,9 @@ public sealed class Settings : Form
                 "sleepy" => ("졸려요", Ui.Indigo),
                 _ => (st.Mood >= 70 ? "기분 좋아요" : "잘 지내요", Ui.Ok),
             };
-        (hero.Grow, hero.GrowFrac) = st.GrowTo != null && st.GrowIn is { } left ? ($"{st.GrowTo}까지 {Span(left)}", st.GrowFrac) : ("다 자랐어요", -1);
+        (hero.Grow, hero.GrowFrac) = st.GrowTo == null ? ("다 자랐어요", -1)
+            : st.GrowIn is { } left ? ($"{st.GrowTo}까지 {Span(left)}", st.GrowFrac)
+            : (st.GrowTo, -1); // 남은 시간 없이 글만 (알이 그림을 기다릴 때)
         hero.Invalidate();
 
         (full.Value, mood.Value, energy.Value) = (st.Full, st.Mood, st.Energy);

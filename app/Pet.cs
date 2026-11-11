@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Bolok;
 
 // 볼록이 상태 모델 — 규칙 전부. 화면과 무관하게 돈다.
@@ -101,6 +103,7 @@ public sealed class Pet
     public int Pets { get; set; }
     public int Plays { get; set; }
     public int BitesTotal { get; set; }
+    [JsonIgnore] public bool HoldHatch { get; set; } // 깨어날 친구 그림을 아직 못 받았다: 때가 돼도 알로 기다린다 (앱이 정한다, 저장 안 함)
 
     static double Clamp(double v) => Math.Clamp(v, 0, 100);
 
@@ -118,7 +121,7 @@ public sealed class Pet
         {
             if (afk) return ev;
             AgeMin += m;
-            if (AgeMin >= k.EggMin) { Stage = "baby"; ev.Add("hatch"); }
+            if (AgeMin >= k.EggMin && !HoldHatch) { Stage = "baby"; ev.Add("hatch"); }
             return ev;
         }
         if (afk && !Asleep) { Asleep = true; ev.Add("sleep"); }

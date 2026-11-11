@@ -346,6 +346,7 @@ public sealed class PetForm : Form
         if (leaving) LeaveFrame(dt);
         WatchHatch();
         KeepSheet();
+        GateHatch();
         if (icbm != null) IcbmFrame(dt);
         SyncScale();
         if (game != null)
@@ -600,6 +601,7 @@ public sealed class PetForm : Form
         var (p, k) = (b.P, b.K);
         (double? left, double frac, string? to) = p.Stage switch
         {
+            "egg" when p.AgeMin >= k.EggMin => ((double?)null, 1.0, "깨어날 친구 그림을 받는 중이에요"),
             "egg" => (k.EggMin - p.AgeMin, p.AgeMin / k.EggMin, "깨어나기"),
             "baby" => (k.BabyMin - p.AgeMin, (p.AgeMin - k.EggMin) / (k.BabyMin - k.EggMin), "어린이"),
             "child" => (k.ChildMin - p.AgeMin, (p.AgeMin - k.BabyMin) / (k.ChildMin - k.BabyMin), "어른"),
@@ -649,6 +651,25 @@ public sealed class PetForm : Form
         BookChanged();
         Dbg.Log("new-egg", ("species", next));
         Save();
+    }
+
+    // 깨어날 친구 그림이 확인될 때까지 알은 기다린다. 1시간(활동 시간)이 지나도 못 받으면 그때 가진 친구 중에서 나온다
+    const double HatchWaitMin = 60;
+    bool hatchHeld;
+
+    bool HatchHeld => b.P.Stage == "egg" && sprites.Species != species && b.P.AgeMin < b.K.EggMin + HatchWaitMin;
+
+    void GateHatch()
+    {
+        bool hold = HatchHeld;
+        if (hold && b.P.AgeMin >= b.K.EggMin && !hatchHeld)
+        {
+            hatchHeld = true;
+            b.Say(4, "곧 깨어날 것 같아요…");
+            Dbg.Log("hatch-hold", ("species", species));
+        }
+        if (!hold) hatchHeld = false;
+        b.P.HoldHatch = hold;
     }
 
     // 알이 깨지면 도감에 올리고 알려 준다

@@ -348,6 +348,14 @@ static class Sim
     // 캐릭터 그림 받기: exe 에는 햄스터와 목록만, 받은 그림은 목록의 크기·sha256 과 맞아야만 쓴다
     static void PetSheetChecks()
     {
+        var k = new Tuning();
+        var egg = new Pet { HoldHatch = true };
+        egg.Tick(k, k.EggMin + 30);
+        Expect(egg.Stage == "egg", "그림을 못 받았으면 때가 돼도 알로 기다린다");
+        egg.HoldHatch = false;
+        Expect(egg.Tick(k, .1).Contains("hatch") && egg.Stage == "baby", "그림이 오면 바로 깨어난다");
+        Expect(!System.Text.Json.JsonSerializer.Serialize(new Pet { HoldHatch = true }).Contains("HoldHatch"), "기다림은 저장하지 않는다 (다시 켜면 다시 따진다)");
+
         var manifest = PetSheets.EmbeddedManifest();
         var names = Sprites.Embedded().SpeciesNames;
         Expect(names.Keys.All(manifest.ContainsKey) && manifest.Count == names.Count, $"목록에 모든 종이 있다 ({manifest.Count}/{names.Count})");
