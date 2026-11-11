@@ -5,13 +5,18 @@ namespace Bolok;
 // 판을 깔지 않아 일하던 창은 그대로 쓴다. 화면과 무관한 규칙이라 --selfcheck 로 검사한다
 public sealed class Icbm
 {
-    public sealed class Crater { public double X, Y, R0, R; }
+    public sealed class Crater { public double X, Y, R0, R, At; }
+    public sealed class Peek { public Crater Hole = null!; public string Species = ""; public double At; }
     public sealed class Blast { public double X, Y, At; }
     public sealed class Bit { public double X, Y, Vx, Vy, Life; public int Size; public bool Smoke; }
     public enum Phase { ToButton, Press, Rise, Away, Fall, Boom, ToCrater, Repair, Done }
 
     // 고치러 갈 땐 뛰지 않는다: 평소 걸음(70)보다 조금 빠르게 (YELL)
-    public const double ButtonSec = .5, PressSec = .7, AwaySec = 1.2, BoomSec = 1.5, RepairSec = 3, GoSpeed = 100, CraterR = 108, FallSpeed = 2400, Gravity = 1400;
+    public const double ButtonSec = .5, PressSec = .7, AwaySec = 1.2, BoomSec = 1.5, RepairSec = 3, GoSpeed = 100, CraterR = 108, Gravity = 1400;
+    // 떨어질 땐 「콰콰콰콰~」 하며 천천히 (YELL: 너무 빨랐다). 거리에 따라 1.6~2.6초
+    public const double FallSpeed = 650, FallMinSec = 1.6, FallMaxSec = 2.6;
+    // 구멍에서 가끔 떠난 친구가 빼꼼 (YELL). 구멍 하나에 평균 8초에 한 번, 버섯구름이 걷힌 뒤부터, 한 번에 하나만
+    public const double PeekSec = 2.8, PeekEvery = 8, PeekAfter = 2;
     public const int MaxCraters = 5, Cell = 12;
     public const double NearChance = .25;   // 가끔은 볼록이 근처에 떨어져서 볼록이도 날아간다 (YELL)
     // 버섯구름 그림(40칸, 배율 3배, 바닥 가운데가 터진 자리): 위로 38칸, 옆으로 17칸까지 퍼진다. 화면에서 잘리지 않게 그만큼 띄워 떨어뜨린다
@@ -21,6 +26,8 @@ public sealed class Icbm
     public readonly List<Crater> Craters = new();
     public readonly List<Blast> Blasts = new();
     public readonly List<Bit> Bits = new();
+    public readonly List<Peek> Peeks = new();
+    public IReadOnlyList<string> Friends = Array.Empty<string>();   // 자연으로 떠난 친구들 (빼꼼 나오는 아이)
     public readonly int K;
     public double X, Y, Clock, ButtonX, ButtonY, MX, MY, MVx, MVy, TX, TY, BlownVx, BlownVy;   // X,Y: 볼록이 발. M: 미사일, T: 떨어질 자리, Blown: 폭발에 날아가는 속도
     public int Dir = 1, Version, Queued, Launched;
@@ -31,7 +38,7 @@ public sealed class Icbm
     public bool Finished => Stage == Phase.Done && Craters.Count == 0 && Queued == 0;
     readonly Random rng;
     readonly double sf, cell;
-    double phaseAt, puffAt;
+    double phaseAt, puffAt, fallSec = 1, nextPeek;
     Crater? job;
     readonly World world;                              // 모니터 사이 빈 곳으로는 안 간다: 맞닿은 곳(문)으로 건넌다
     readonly List<(double X, double Y)> path = new();
@@ -47,6 +54,15 @@ public sealed class Icbm
     double Top => Screens.Min(s => s.Top);
     void Go(Phase p) => (Stage, phaseAt) = (p, Clock);
     double Since => Clock - phaseAt;
+    public double FallT => Stage == Phase.Fall ? Math.Clamp(Since / fallSec, 0, 1) : 0; // 떨어진 정도 0~1 (콰콰콰콰 글자 수)
+
+    // 빼꼼 올라온 정도 0~1: 0.5초 올라와서 있다가 0.5초 내려간다
+    public static double Rise(double t)
+    {
+        double u = t < .5 ? t / .5 : t > PeekSec - .5 ? (PeekSec - t) / .5 : 1;
+        u = Math.Clamp(u, 0, 1);
+        return u * u * (3 - 2 * u);
+    }
 
     // 발사 명령. 쏘는 중이면 줄을 세운다. 구멍이 다섯이면 안 받는다
     public bool Launch()
@@ -110,6 +126,7 @@ public sealed class Icbm
         }
         Bits.RemoveAll(b => b.Life <= 0);
         Blasts.RemoveAll(b => Clock - b.At > 1.2);
+        PeekOut(dt);
 
         switch (Stage)
         {
@@ -141,9 +158,10 @@ public sealed class Icbm
                     (TX, TY, HasTarget, MissileOn) = (t.X, t.Y, true, true);
                     double side = rng.NextDouble() < .5 ? -1 : 1;
                     (MX, MY) = (TX + side * 260 * sf, Top - 220);
-                    double d = Dist(MX, MY, TX, TY);
-                    (MVx, MVy) = ((TX - MX) / d * FallSpeed * sf, (TY - MY) / d * FallSpeed * sf);
+                    fallSec = Math.Clamp(Dist(MX, MY, TX, TY) / (FallSpeed * sf), FallMinSec, FallMaxSec);
+                    (MVx, MVy) = ((TX - MX) / fallSec, (TY - MY) / fallSec);
                     Go(Phase.Fall);
+                    OnEvent?.Invoke("fall");
                 }
                 else // 떨어질 데가 없으면 하늘에서 터지고 만다
                 {
@@ -154,11 +172,11 @@ public sealed class Icbm
                 break;
             case Phase.Fall:
                 Pose = "shock";
-                double left = Dist(MX, MY, TX, TY), step = FallSpeed * sf * dt;
-                if (Clock - puffAt > .03) { puffAt = Clock; Smoke(MX, MY); }
+                double left = Dist(MX, MY, TX, TY), step = Math.Sqrt(MVx * MVx + MVy * MVy) * dt;
+                if (Clock - puffAt > .02) { puffAt = Clock; Smoke(MX - MVx * .03, MY - MVy * .03); } // 꼬리에 연기를 굵게
                 if (left > step) { MX += MVx * dt; MY += MVy * dt; break; }
                 (MissileOn, HasTarget) = (false, false);
-                Craters.Add(new Crater { X = TX, Y = TY, R0 = CraterR * sf, R = CraterR * sf });
+                Craters.Add(new Crater { X = TX, Y = TY, R0 = CraterR * sf, R = CraterR * sf, At = Clock });
                 Blasts.Add(new Blast { X = TX, Y = TY, At = Clock });
                 for (int i = 0; i < 40; i++)
                 {
@@ -230,6 +248,18 @@ public sealed class Icbm
         path.Clear();
         if (Stage == Phase.Repair && job != null) { job.R = job.R0; Version++; }
         if (Stage is Phase.ToCrater or Phase.Repair) Go(Phase.ToCrater);
+    }
+
+    // 떠난 친구가 구멍에서 빼꼼. 고치는 구멍에서는 쏙 들어간다
+    void PeekOut(double dt)
+    {
+        Peeks.RemoveAll(p => Clock - p.At > PeekSec || !Craters.Contains(p.Hole) || (Stage == Phase.Repair && p.Hole == job));
+        if (Peeks.Count > 0 || Friends.Count == 0 || Clock < nextPeek) return;
+        var holes = Craters.Where(c => Clock - c.At > PeekAfter && !(Stage == Phase.Repair && c == job)).ToList();
+        if (holes.Count == 0 || rng.NextDouble() >= dt * holes.Count / PeekEvery) return;
+        Peeks.Add(new Peek { Hole = holes[rng.Next(holes.Count)], Species = Friends[rng.Next(Friends.Count)], At = Clock });
+        nextPeek = Clock + PeekSec + 1;
+        OnEvent?.Invoke("peek");
     }
 
     void Next()

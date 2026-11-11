@@ -31,7 +31,7 @@ public static class Sfx
     {
         const int rate = 22050;
         var rng = new Random(name.GetHashCode());
-        double len = name switch { "shotgun" => .3, "pistol" => .18, "mg" => .07, "hit" => .12, "empty" => .03, "reload" => .26, "boom" => .55, _ => .05 };
+        double len = name switch { "shotgun" => .3, "pistol" => .18, "mg" => .07, "hit" => .12, "empty" => .03, "reload" => .26, "boom" => .55, "rumble" => 2.2, _ => .05 };
         int n = (int)(rate * len);
         var s = new short[n];
         double low = 0;
@@ -47,6 +47,7 @@ public static class Sfx
                 case "empty": v = noise * Math.Exp(-t * 300) * .5; break;
                 case "reload": v = (noise * Math.Exp(-t * 250) + (t > .17 ? noise * Math.Exp(-(t - .17) * 250) : 0)) * .5; break;
                 case "boom": low += (noise - low) * .08; v = low * Math.Exp(-t * 5) * 2.2; break;
+                case "rumble": low += (noise - low) * .06; v = low * (.45 + .55 * Math.Max(0, Math.Sin(2 * Math.PI * 7 * t))) * (.5 + .5 * t / 2.2) * 2.6; break; // 콰콰콰콰: 낮게 울리며 점점 커진다
                 default: v = 0; break;
             }
             s[i] = (short)(Math.Clamp(v * .35, -1, 1) * short.MaxValue); // 작게

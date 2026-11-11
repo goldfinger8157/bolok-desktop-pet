@@ -481,8 +481,44 @@ static class Sim
         Expect(seen.SequenceEqual(new[] { Icbm.Phase.ToButton, Icbm.Phase.Press, Icbm.Phase.Rise, Icbm.Phase.Away, Icbm.Phase.Fall, Icbm.Phase.Boom, Icbm.Phase.ToCrater, Icbm.Phase.Repair, Icbm.Phase.Done }),
             "차례: " + string.Join(">", seen));
         events.Remove("blown");
-        Expect(string.Join(",", events) == "press,launch,boom,repaired" && ic.Finished && ic.Craters.Count == 0, "터지고 나면 고쳐서 구멍이 사라진다: " + string.Join(",", events));
+        Expect(string.Join(",", events) == "press,launch,fall,boom,repaired" && ic.Finished && ic.Craters.Count == 0, "터지고 나면 고쳐서 구멍이 사라진다: " + string.Join(",", events));
         Expect(Math.Abs(ic.X - hit.X) < 3 && !active.Contains((int)hit.X, (int)hit.Y), "볼록이가 터진 자리까지 가서 고친다");
+
+        // 떨어지는 건 콰콰콰콰~ 천천히: 1.6~2.6초
+        var slow = new Icbm(screens, 900, 1000, 3, new Random(4));
+        slow.Launch();
+        double fallFrom = -1, fallTo = -1;
+        for (int i = 0; i < 60 * 30 && fallTo < 0; i++)
+        {
+            slow.Update(1 / 60.0, active);
+            if (slow.Stage == Icbm.Phase.Fall && fallFrom < 0) fallFrom = slow.Clock;
+            if (fallFrom >= 0 && slow.Stage != Icbm.Phase.Fall) fallTo = slow.Clock;
+        }
+        Expect(fallTo - fallFrom is >= Icbm.FallMinSec - .05 and <= Icbm.FallMaxSec + .1, $"천천히 떨어진다: {fallTo - fallFrom:F2}초");
+
+        // 구멍에서 떠난 친구가 가끔 빼꼼: 있는 구멍에서만, 고치는 구멍에서는 쏙, 친구가 없으면 안 나온다
+        int peeks = 0;
+        for (int seed = 0; seed < 6; seed++)
+        {
+            var pk = new Icbm(screens, 900, 1000, 3, new Random(seed)) { Friends = new[] { "hamster", "otter" } };
+            pk.OnEvent = e => peeks += e == "peek" ? 1 : 0;
+            for (int i = 0; i < 5; i++) pk.Launch();
+            for (int i = 0; i < 60 * 600 && !pk.Finished; i++)
+            {
+                pk.Update(1 / 60.0, active);
+                Expect(pk.Peeks.Count <= 1 && pk.Peeks.All(p => pk.Craters.Contains(p.Hole) && pk.Friends.Contains(p.Species) && pk.Clock - p.Hole.At >= Icbm.PeekAfter),
+                    $"빼꼼은 하나씩, 있는 구멍에서, 떠난 친구만 (seed {seed})");
+                Expect(!(pk.Stage == Icbm.Phase.Repair && pk.Craters.Count == 1 && pk.Peeks.Count > 0), $"고치는 구멍에서는 안 나온다 (seed {seed})");
+            }
+        }
+        Expect(peeks >= 4, $"구멍이 있으면 가끔 빼꼼: {peeks}번");
+        var lonely = new Icbm(screens, 900, 1000, 3, new Random(1));
+        int lonelyPeeks = 0;
+        lonely.OnEvent = e => lonelyPeeks += e == "peek" ? 1 : 0;
+        for (int i = 0; i < 5; i++) lonely.Launch();
+        for (int i = 0; i < 60 * 600 && !lonely.Finished; i++) lonely.Update(1 / 60.0, active);
+        Expect(lonelyPeeks == 0, "떠난 친구가 없으면 아무도 안 나온다");
+        Expect(Icbm.Rise(0) == 0 && Icbm.Rise(1.4) == 1 && Icbm.Rise(Icbm.PeekSec) == 0, "빼꼼: 올라왔다가 내려간다");
 
         // 고치기 전에 또 쏘면 줄을 서고, 구멍은 다섯까지. 다 고치면 끝난다
         var many = new Icbm(screens, 900, 1000, 3, new Random(3));
@@ -1045,19 +1081,19 @@ static class Sim
         Tick(m, .8, still, Miss);
         Expect(m.Bloom < 3 && Crosshair.Level(m.Bloom) == 0, $"손을 떼면 금방 모인다: {m.Bloom:F1}");
         m.Press(still.X, still.Y, Miss);
-        Tick(m, 3, still, Miss);
+        Tick(m, 2, still, Miss); // 남은 탄을 다 쏘고(약 1.6초) 장전하는 중 (장전 0.9초)
         m.Release();
-        Expect(m.Ammo == 0 && m.ReloadLeft > 0 || m.Ammo == Game.MachineGun.Mag, "다 쏘면 알아서 장전한다");
+        Expect(m.Ammo == 0 && m.ReloadLeft > 0 || m.Ammo == Game.MachineGun.Mag, $"다 쏘면 알아서 장전한다 (탄 {m.Ammo}, 장전 {m.ReloadLeft:F2})");
         Tick(m, Game.MachineGun.ReloadSec + .05, still, Miss);
         Expect(m.Ammo == Game.MachineGun.Mag, "자동 장전이 끝나면 30발");
 
-        // 10초 뒤 조준경이 터지고, 결과는 클릭해야 닫힌다. 결과 중 클릭은 뒤 창으로 가지 않는다
+        // 20초 뒤 조준경이 터지고, 결과는 클릭해야 닫힌다. 결과 중 클릭은 뒤 창으로 가지 않는다
         var end = new Game(arena, 0, 3, rng, Game.Pistol);
         Tick(end, Game.CountSec + .05, still, Miss);
         end.Press(still.X, still.Y, HitAll);
         end.Release();
         Tick(end, Game.PlaySec, still, Miss);
-        Expect(end.Stage == Game.Phase.Boom && !end.Aiming, "10초가 지나면 조준경이 터진다");
+        Expect(end.Stage == Game.Phase.Boom && !end.Aiming, "20초가 지나면 조준경이 터진다");
         Expect(end.Press(500, 500, HitAll) == "wait" && end.Hits == 1, "터지는 동안엔 안 쏴진다");
         Tick(end, Game.BoomSec + .05, still, Miss);
         Expect(end.Stage == Game.Phase.Result && end.NewBest && end.Best == 1, "그다음 결과와 최고 기록");

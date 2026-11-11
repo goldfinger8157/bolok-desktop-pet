@@ -737,13 +737,16 @@ public sealed class PetForm : Form
         if (InGame || b.P.Stage == "egg") return;
         if (b.P.Asleep) { b.Emote("zzz"); return; }
         if (b.P.Energy < 10) { b.Emote("no"); return; } // 고칠 기운이 없으면 안 쏜다
-        var ic = icbm = new Icbm(Screen.AllScreens.Select(s => s.WorkingArea).ToList(), b.X, b.Y, b.Scale, new Random());
+        var ic = icbm = new Icbm(Screen.AllScreens.Select(s => s.WorkingArea).ToList(), b.X, b.Y, b.Scale, new Random())
+            { Friends = released.Select(r => r.Species).Distinct().ToList() }; // 구멍에서 가끔 빼꼼
         ic.OnEvent = e =>
         {
             switch (e)
             {
                 case "press": Sfx.Play("empty"); break;
                 case "launch": Sfx.Play("shotgun"); break;
+                case "fall": Sfx.Play("rumble"); break;
+                case "peek": b.Emote("heart", 1.6); Dbg.Log("icbm-peek", ("friend", ic.Peeks.LastOrDefault()?.Species)); break; // 옛 친구를 알아본다
                 case "boom": Sfx.Play("boom"); b.Emote("bang", 1); break;
                 case "blown": b.Throw(ic.BlownVx, ic.BlownVy, hard: true); break; // 어지러워하다가 거기서부터 고치러 간다
                 case "nowhere": b.Say(3, "떨어뜨릴 곳이 없어요"); break;

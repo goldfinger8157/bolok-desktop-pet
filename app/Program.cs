@@ -78,6 +78,36 @@ static class Program
             return 0;
         }
 
+        if (args.Length == 2 && args[0] == "--icbm-scene") // ICBM 이 콰콰콰 떨어지는 장면과 구멍에서 빼꼼하는 장면 (화면을 띄우지 않는다)
+        {
+            var sp = Sprites.Embedded();
+            const int k = 3;
+            var ic = new Icbm(new List<Rectangle> { new(0, 0, 1920, 1080) }, 1500, 1000, k, new Random(2)) { Friends = new[] { "hamster" } };
+            ic.Launch();
+            using var bmp = new Bitmap(1920 * 2, 1080);
+            using var g = Graphics.FromImage(bmp);
+            g.Clear(Color.FromArgb(150, 160, 170));
+            using var rim = new SolidBrush(Color.FromArgb(70, 60, 52));
+            using var hole = new SolidBrush(Color.FromArgb(14, 16, 22));
+            foreach (double t in new[] { .2, .55, .95 }) // 떨어지는 세 순간을 한 장에
+            {
+                while (!(ic.Stage == Icbm.Phase.Fall && ic.FallT >= t)) ic.Update(1 / 60.0, null);
+                Overlay.PaintMissile(g, sp, ic, new Point((int)ic.MX, (int)ic.MY), k);
+            }
+            while (ic.Craters.Count == 0) ic.Update(1 / 60.0, null);
+            var cr = ic.Craters[0];
+            g.TranslateTransform(1920, 0);
+            foreach (var (dx, rise) in new[] { (-560, .3), (-180, 1.2), (200, 2.5) }) // 올라오는 중, 다 올라옴, 내려가는 중
+            {
+                var c = new Icbm.Crater { X = 960 + dx, Y = 600, R0 = cr.R0, R = cr.R0 };
+                Overlay.PaintCrater(g, c, new Point((int)c.X, (int)c.Y), rim, hole);
+                Overlay.PaintPeek(g, sp, new Icbm.Peek { Hole = c, Species = "hamster", At = 0 }, rise, new Point((int)c.X, (int)c.Y), k);
+            }
+            g.ResetTransform();
+            bmp.Save(args[1]);
+            return 0;
+        }
+
         if (args.Length == 3 && args[0] == "--scene") // 창 위 소품만 그려 본다 (화면을 찍지 않는다)
         {
             var sp = Sprites.Embedded();

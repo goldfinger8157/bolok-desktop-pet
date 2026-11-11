@@ -5,18 +5,19 @@ namespace Bolok;
 public sealed record Weapon(string Name, int Mag, double ReloadSec, double Interval, double Bloom, double MaxBloom, double Kick, bool Auto,
     int Pellets = 1, double Spread = 0);
 
-// 총쏘기 게임 한 판: 3·2·1 → 10초 → 조준경 폭발 → 결과(클릭하면 닫힘). 화면과 무관한 규칙이라 --selfcheck 로 검사한다.
+// 총쏘기 게임 한 판: 3·2·1 → 20초 → 조준경 폭발 → 결과(클릭하면 닫힘). 화면과 무관한 규칙이라 --selfcheck 로 검사한다.
 // Doom 처럼 조준점은 마우스에서 벗어나지 않는다. 반동은 총이 들썩이고 탄이 퍼지는 것으로만 보여 준다
 public sealed class Game
 {
     public enum Phase { Count, Play, Boom, Result, Done }
 
-    public static readonly Weapon Pistol = new("pistol", 6, .7, .16, 9, 18, 1, false);
-    public static readonly Weapon MachineGun = new("mg", 30, 1.4, .09, 4, 34, .55, true);
-    public static readonly Weapon Shotgun = new("shotgun", 5, 1.1, .55, 6, 12, 1.7, false, 8, 46); // 대충 겨눠도 맞는다
+    // 장전은 빠르게 (YELL 2026-11-11): 권총 0.7→0.45, 기관총 1.4→0.9, 산탄총 1.1→0.7초
+    public static readonly Weapon Pistol = new("pistol", 6, .45, .16, 9, 18, 1, false);
+    public static readonly Weapon MachineGun = new("mg", 30, .9, .09, 4, 34, .55, true);
+    public static readonly Weapon Shotgun = new("shotgun", 5, .7, .55, 6, 12, 1.7, false, 8, 46); // 대충 겨눠도 맞는다
     public static readonly Weapon[] Guns = { Pistol, MachineGun, Shotgun };
     public const int MaxHoles = 120;
-    public const double CountSec = 1.8, PlaySec = 10, BoomSec = .9, ResultMinSec = .8, ResultSec = 3.5;
+    public const double CountSec = 1.8, PlaySec = 20, BoomSec = .9, ResultMinSec = .8, ResultSec = 3.5;
 
     public readonly Rectangle Arena;    // 볼록이가 도망 다니는 모니터
     public readonly Weapon Gun;
