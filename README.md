@@ -23,6 +23,7 @@ Get **`Bolok.exe`** from the [latest release](https://github.com/goldfinger8157/
 - **Needs care:** hunger, mood and energy change over the day. Neglect it and it starts eating holes in your screen.
 - **Reacts to you:** click to pet, drag to carry, fling it and it bounces off the screen edges, shake it and it gets dizzy.
 - **Grows up:** egg → baby → child → one of three adult forms, depending on how you raised it.
+- **21 kinds of animals:** hamster, cat, shiba, fox, moon bear, penguin, owl, squirrel, otter, duck, frog, hedgehog, raccoon, baby dragon, sheep, deer, goat, beaver, quokka, capybara, koala. You don't pick one — you find out when the egg hatches. When it's time, **release** your pet to nature (Settings → 도감) and a new mystery egg arrives. The collection book shows who you've met.
 - **Speaks in emotes**, not text.
 
 ### Mini-games (right-click menu)
@@ -77,6 +78,7 @@ out\Bolok.exe
 - **돌봐야 해요:** 배고픔, 기분, 기운이 하루 동안 변해요. 내버려 두면 화면을 뜯어 먹어요.
 - **반응해요:** 클릭하면 쓰다듬기, 끌면 들기, 던지면 화면 끝에서 튕기고, 흔들면 어지러워해요.
 - **자라요:** 알 → 아기 → 어린이 → 키운 방식에 따라 세 가지 어른 모습 중 하나가 돼요.
+- **21종 친구들:** 햄스터, 고양이, 시바견, 여우, 반달가슴곰, 펭귄, 부엉이, 다람쥐, 수달, 오리, 개구리, 고슴도치, 너구리, 아기 용, 양, 사슴, 염소, 비버, 쿼카, 카피바라, 코알라. 고를 수는 없고, 알이 깨져야 누가 나올지 알아요. 때가 되면 설정 → 도감에서 **풀어주기**로 자연에 보내 주고, 무엇이 나올지 모르는 새 알을 키워요. 도감에는 만나 본 친구들이 남아요.
 - **글자 대신 이모티콘**으로 말해요.
 
 ### 미니 게임 (오른쪽 클릭 메뉴)

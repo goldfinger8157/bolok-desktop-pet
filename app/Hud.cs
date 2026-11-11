@@ -10,6 +10,7 @@ public sealed class Hud : Form
     string shown = "";
 
     public Func<string> RunLine = () => "";
+    public Func<string> SpeciesName = () => "";   // 도감 이름 (알이면 빈칸)
 
     public Hud(Brain brain, Func<string>? debugLine)
     {
@@ -46,12 +47,16 @@ public sealed class Hud : Form
         return new string('♥', n) + new string('♡', 4 - n);
     }
 
+    // 설정 창 상태 탭도 이 글을 쓴다 (디버그 줄은 빼고)
+    public string StatusText() => string.Join("\n", Lines().Take(5));
+
     string[] Lines()
     {
         var p = b.P;
+        string kind = SpeciesName() is { Length: > 0 } sp ? $"{sp} {Names.Form(p.Stage)}" : Names.Form(p.Stage);
         return new[]
         {
-            $"볼록이 · {Names.Form(p.Stage)}    {(int)(p.AgeMin / 60)}시간 {(int)(p.AgeMin % 60)}분",
+            $"볼록이 · {kind}    {(int)(p.AgeMin / 60)}시간 {(int)(p.AgeMin % 60)}분",
             $"포만 {Hearts(p.Full)}",
             $"기분 {Hearts(p.Mood)}",
             $"기운 {Hearts(p.Energy)}",

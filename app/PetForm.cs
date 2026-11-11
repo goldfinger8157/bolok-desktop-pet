@@ -18,6 +18,8 @@ public sealed class SaveData
     public bool GameSound { get; set; }
     public bool AutoUpdate { get; set; }
     public string Species { get; set; } = Sprites.DefaultSpecies;
+    public List<string> Met { get; set; } = new();               // 알에서 깨어나 만나 본 종 (도감)
+    public List<ReleasedPet> Released { get; set; } = new();     // 자연으로 떠난 친구들
     public int RunBest { get; set; }
     public int RunLast { get; set; }
     public int RunLevel { get; set; } = 1;
@@ -57,8 +59,6 @@ public sealed class PetForm : Form
     readonly Hud hud;
     readonly ContextMenuStrip menu = new();
     readonly ToolStripMenuItem sleepItem = new("재우기");
-    readonly ToolStripMenuItem hideItem = new("숨기기");
-    readonly ToolStripMenuItem soundItem = new("게임 소리") { CheckOnClick = true };
     readonly ToolStripMenuItem updateItem = new("새 버전으로 다시 시작") { Visible = false };
     bool autoUpdate;        // 기본 꺼짐. 설정 창 「업데이트」 탭에서 켠다
     Settings? settings;
@@ -70,7 +70,7 @@ public sealed class PetForm : Form
     readonly string? assetsDir;   // 디버그: 그림을 assets 폴더에서 읽는다 (일반 실행은 exe 안의 그림)
     double lastSec, nextSave, nextTop, nextBelow, fps, frameMs;
     Rectangle scaledFor;
-    bool locked, hiddenByUser, pressing, moved, below;
+    bool locked, pressing, moved, below;
     Point pressAt;
     PointF pressCell;
     (string, int, bool, int) drawn;
@@ -104,6 +104,7 @@ public sealed class PetForm : Form
         pad.MouseMove += (_, e) => OnMouseMove(e);
         pad.MouseUp += (_, e) => OnMouseUp(e);
         hud = new Hud(b, debug ? DebugLine : null) { RunLine = () => runLast > 0 ? $"달리기 Lv.{runLevel} {runLast} (최고 {runBest})" : "" };
+        hud.SpeciesName = () => b.P.Stage == "egg" ? "" : sprites.SpeciesNames.GetValueOrDefault(sprites.Species, "");
         if (!debug) // 새 버전을 받아 바꿔 두면 메뉴에 알린다. 그냥 둬도 다음에 켤 때 새 버전이다
             Updater.Start(() => autoUpdate, tag => BeginInvoke(() => { updateItem.Text = $"새 버전 {tag} 으로 다시 시작"; updateItem.Visible = true; settings?.ShowReady(); }));
         foreach (var o in overlays) { o.Runner = () => runner; o.Break = () => breakout; o.WormsGame = () => worms; o.MinigunGame = () => minigun; o.IcbmGame = () => icbm; }
@@ -115,7 +116,7 @@ public sealed class PetForm : Form
         tray.Text = "볼록이";
         tray.ContextMenuStrip = menu;
         tray.Visible = true;
-        tray.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) ToggleHud(); };
+        tray.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) ShowSettings("상태"); }; // 상태는 설정 창에서
 
         SystemEvents.SessionSwitch += OnSessionSwitch;
         SystemEvents.DisplaySettingsChanged += (_, _) => BeginInvoke(ReloadScreens);
@@ -189,7 +190,7 @@ public sealed class PetForm : Form
         foreach (var o in overlays) o.Dispose();
         overlays.Clear();
         BuildOverlays();
-        if (!hiddenByUser) ShowOverlays();
+        ShowOverlays();
         hud.PlaceAt(Screen.PrimaryScreen!.WorkingArea);
         Native.Topmost(Handle);
         Dbg.Log("screens-changed", ("screens", DescribeScreens()));
@@ -234,6 +235,8 @@ public sealed class PetForm : Form
         Sfx.On = pendingSave.GameSound;
         autoUpdate = pendingSave.AutoUpdate;
         if (pendingSave.Species != sprites.Species) SetSpecies(pendingSave.Species);
+        (met, released) = (pendingSave.Met?.ToHashSet() ?? new(), pendingSave.Released ?? new());
+        if (b.P.Stage != "egg") met.Add(sprites.Species); // 도감 전부터 키우던 아이도 도감에
         (breakBest, wormsWins) = (pendingSave.BreakBest, pendingSave.WormsWins);
         (runBest, runLast, runLevel, runScores) = (pendingSave.RunBest, pendingSave.RunLast, Math.Max(1, pendingSave.RunLevel), pendingSave.RunScores ?? new());
         if (pendingSave.X != 0) { b.X = pendingSave.X; b.Y = pendingSave.Y; b.Settle(); }
@@ -243,7 +246,7 @@ public sealed class PetForm : Form
 
     void Save()
     {
-        var data = new SaveData { Pet = b.P, X = b.X, Y = b.Y, Holes = b.Holes.Select(h => new[] { h.Cx, h.Cy }).ToList(), GameBest = gameBest, GameSound = Sfx.On, AutoUpdate = autoUpdate, Species = sprites.Species, RunBest = runBest, RunLast = runLast, RunLevel = runLevel, RunScores = runScores, BreakBest = breakBest, WormsWins = wormsWins };
+        var data = new SaveData { Pet = b.P, X = b.X, Y = b.Y, Holes = b.Holes.Select(h => new[] { h.Cx, h.Cy }).ToList(), GameBest = gameBest, GameSound = Sfx.On, AutoUpdate = autoUpdate, Species = sprites.Species, Met = met.ToList(), Released = released, RunBest = runBest, RunLast = runLast, RunLevel = runLevel, RunScores = runScores, BreakBest = breakBest, WormsWins = wormsWins };
         var tmp = savePath + ".tmp";
         File.WriteAllText(tmp, JsonSerializer.Serialize(data));
         File.Move(tmp, savePath, true);
@@ -267,14 +270,8 @@ public sealed class PetForm : Form
         foreach (var gun in Worms.Guns)
             cannon.DropDownItems.Add($"{gun.Label} (HP {gun.Hp}{(gun.Shells > 1 ? $", {gun.Shells}발" : "")})", null, (_, _) => BeginInvoke(() => StartWorms(gun.Name)));
         menu.Items.Add(cannon);
-        soundItem.Click += (_, _) => { Sfx.On = soundItem.Checked; Save(); };
-        menu.Items.Add(soundItem);
         menu.Items.Add(new ToolStripSeparator());
-        Add("상태 보기", ToggleHud);
-        hideItem.Click += (_, _) => SetHidden(!hiddenByUser);
-        menu.Items.Add(hideItem);
-        Add("화면 돌려받기", b.GiveBack);
-        Add("설정...", ShowSettings);
+        Add("설정...", () => ShowSettings());
         updateItem.Click += (_, _) => { Save(); Updater.Restart(); };
         menu.Items.Add(updateItem);
         menu.Items.Add(new ToolStripSeparator());
@@ -282,8 +279,6 @@ public sealed class PetForm : Form
         menu.Opening += (_, _) =>
         {
             sleepItem.Text = b.P.Asleep ? "깨우기" : "재우기";
-            hideItem.Text = hiddenByUser ? "다시 나오기" : "숨기기";
-            soundItem.Checked = Sfx.On;
         };
         menu.Closed += (_, _) =>
         {
@@ -292,28 +287,13 @@ public sealed class PetForm : Form
         };
     }
 
-    void ToggleHud()
-    {
-        if (hud.Visible) hud.Hide();
-        else hud.Show();
-    }
-
-    void SetHidden(bool hide) // 발표·화면 공유 때. 숨은 동안은 자리 비움으로 쳐서 벌이 없다
-    {
-        hiddenByUser = hide;
-        Visible = !hide;
-        foreach (var o in overlays) o.Visible = !hide;
-        if (!hide) Native.Topmost(Handle);
-        Dbg.Log("hidden", ("value", hide));
-    }
-
     void OnSessionSwitch(object? s, SessionSwitchEventArgs e)
     {
         if (e.Reason == SessionSwitchReason.SessionLock) locked = true;
         if (e.Reason == SessionSwitchReason.SessionUnlock) locked = false;
     }
 
-    bool Afk() => dev?.ForceAfk ?? (locked || hiddenByUser || Native.IdleMinutes() >= b.K.AfkMin);
+    bool Afk() => dev?.ForceAfk ?? (locked || Native.IdleMinutes() >= b.K.AfkMin);
 
     void Frame()
     {
@@ -330,6 +310,8 @@ public sealed class PetForm : Form
         if (breakout != null) BreakFrame(dt);
         if (worms != null) WormsFrame(dt);
         if (minigun != null) MinigunFrame(dt);
+        if (leaving) LeaveFrame(dt);
+        WatchHatch();
         if (icbm != null) IcbmFrame(dt);
         SyncScale();
         if (game != null)
@@ -398,7 +380,7 @@ public sealed class PetForm : Form
     // 평소엔 맨 앞이고, 일부러 숨을 때만 그 창 바로 아래로 들어간다
     void SyncPad()
     {
-        bool on = b.ClickPadOn && !b.Behind && !hiddenByUser && game == null;
+        bool on = b.ClickPadOn && !b.Behind && game == null;
         if (on)
         {
             pad.Bounds = Bounds;
@@ -425,7 +407,7 @@ public sealed class PetForm : Form
             nextTop = b.Now + 5;
             Native.Topmost(Handle);
         }
-        else if (b.Now > nextTop && !hiddenByUser)
+        else if (b.Now > nextTop)
         {
             nextTop = b.Now + 5;
             Native.Topmost(Handle);
@@ -500,7 +482,7 @@ public sealed class PetForm : Form
 
     public void StartRun()
     {
-        if (InGame || hiddenByUser || b.P.Stage == "egg") return;
+        if (InGame || b.P.Stage == "egg") return;
         var area = b.Area; // 볼록이가 있는 모니터 아래쪽
         var solids = new Dictionary<string, bool[,]>();
         (int, int, int, int) Measure(string name, int scale)
@@ -558,17 +540,82 @@ public sealed class PetForm : Form
         Save();
     }
 
-    void ShowSettings()
+    void ShowSettings(string? tab = null)
     {
-        if (settings is { IsDisposed: false }) { settings.Activate(); return; }
-        settings = new Settings(Sfx.On, autoUpdate, sprites);
-        settings.SpeciesChosen += id => { SetSpecies(id); Save(); };
+        if (settings is { IsDisposed: false }) { if (tab != null) settings.SelectTab(tab); settings.Activate(); return; }
+        settings = new Settings(Sfx.On, autoUpdate, sprites, Book(), hud.StatusText);
+        settings.ReleaseAsked += () => Release();
         settings.Changed += () => { (Sfx.On, autoUpdate) = (settings.Sound, settings.AutoUpdate); Save(); };
         settings.RestartAsked += () => { Save(); Updater.Restart(); };
+        if (tab != null) settings.SelectTab(tab);
         settings.Show();
     }
 
-    bool InGame => game != null || runner != null || breakout != null || worms != null || minigun != null || icbm != null;
+    // ── 도감·풀어주기: 캐릭터는 고르지 않는다. 풀어주면 자연으로 떠나고 새 알이 온다 (무엇이 나올지는 깨질 때까지 모른다) ──
+    HashSet<string> met = new();
+    List<ReleasedPet> released = new();
+    bool leaving;
+    double leaveTo;
+    string lastStage = "";
+
+    PetBook Book() => new(sprites.Species, b.P.Stage == "egg", met, released);
+
+    public void Release(bool ask = true)
+    {
+        if (leaving || InGame || b.P.Stage == "egg") return;
+        string name = sprites.SpeciesNames.GetValueOrDefault(sprites.Species, "볼록이");
+        if (ask && MessageBox.Show(settings is { IsDisposed: false } ? settings : this, $"{name}{Josa(name, "를", "을")} 자연으로 보내 줄까요?\n다시 돌아오지 않아요. 그 자리에 새 알이 와요.",
+                "풀어주기", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+        released.Add(new ReleasedPet(sprites.Species, b.P.Stage, Math.Round(b.P.AgeMin), DateTime.Now));
+        var area = b.Area;
+        leaveTo = b.X < area.Left + area.Width / 2.0 ? area.Left - b.CellPx : area.Right + b.CellPx; // 가까운 쪽 화면 밖 자연으로
+        leaving = true;
+        b.StartPuppet();
+        b.Emote("heart", 2.5);
+        Dbg.Log("release", ("species", sprites.Species), ("stage", b.P.Stage), ("age", (int)b.P.AgeMin));
+        Save();
+    }
+
+    void LeaveFrame(double dt)
+    {
+        double step = 160 * b.Scale / 3.0 * dt;
+        (b.Dir, b.Pose) = (leaveTo > b.X ? 1 : -1, "walk");
+        b.X += Math.Clamp(leaveTo - b.X, -step, step);
+        if (Math.Abs(leaveTo - b.X) > 1) return;
+        leaving = false;
+        var all = sprites.SpeciesNames.Keys.ToList();
+        string next = all[Random.Shared.Next(all.Count)];
+        b.Reset();
+        var area = b.Area;
+        (b.X, b.Y) = (area.Left + area.Width / 2.0, area.Bottom - b.K.FloorGap);
+        SetSpecies(next);
+        lastStage = "egg";
+        b.Emote("ask", 2.5);
+        settings?.UpdateBook(Book());
+        Dbg.Log("new-egg", ("species", next));
+        Save();
+    }
+
+    // 알이 깨지면 도감에 올리고 알려 준다
+    void WatchHatch()
+    {
+        if (lastStage == "egg" && b.P.Stage != "egg")
+        {
+            met.Add(sprites.Species);
+            string name = sprites.SpeciesNames.GetValueOrDefault(sprites.Species, "볼록이");
+            b.Say(4, $"{name}{Josa(name, "가", "이가")} 태어났어요!");
+            b.Emote("star", 2);
+            settings?.UpdateBook(Book());
+            Save();
+        }
+        lastStage = b.P.Stage;
+    }
+
+    // 받침이 있으면 b, 없으면 a (를/을, 가/이가)
+    static string Josa(string word, string a, string b) =>
+        word.Length > 0 && word[^1] is >= '가' and <= '힣' && (word[^1] - '가') % 28 != 0 ? b : a;
+
+    bool InGame => game != null || runner != null || breakout != null || worms != null || minigun != null || icbm != null || leaving;
 
     // 게임판: 그 모니터 위에 1% 판을 깔아 클릭·키를 받는다. 다른 창은 안 눌린다
     GameLayer OpenLayer(Rectangle field, MouseEventHandler down, MouseEventHandler up, Action quit)
@@ -608,7 +655,7 @@ public sealed class PetForm : Form
     public void StartIcbm()
     {
         if (icbm != null) { if (!icbm.Launch()) b.Emote("no"); return; } // 이미 하는 중이면 한 발 더 (구멍 다섯까지)
-        if (InGame || hiddenByUser || b.P.Stage == "egg") return;
+        if (InGame || b.P.Stage == "egg") return;
         if (b.P.Asleep) { b.Emote("zzz"); return; }
         if (b.P.Energy < 10) { b.Emote("no"); return; } // 고칠 기운이 없으면 안 쏜다
         var ic = icbm = new Icbm(Screen.AllScreens.Select(s => s.WorkingArea).ToList(), b.X, b.Y, b.Scale, new Random());
@@ -664,7 +711,7 @@ public sealed class PetForm : Form
 
     public void StartMinigun()
     {
-        if (InGame || hiddenByUser || b.P.Stage == "egg") return;
+        if (InGame || b.P.Stage == "egg") return;
         gameFocus = Native.GetForegroundWindow();
         var wins = Native.ListWindows();
         var (field, rects) = Worms.Islands(Native.Foreground(), wins, b.Area, Screen.AllScreens.Select(s => s.WorkingArea).ToList(), b.CellPx, 8, topRoom: 0);
@@ -747,7 +794,7 @@ public sealed class PetForm : Form
 
     public void StartWorms(string? gun = null)
     {
-        if (InGame || hiddenByUser || b.P.Stage == "egg") return;
+        if (InGame || b.P.Stage == "egg") return;
         gameFocus = Native.GetForegroundWindow();
         var (field, wins) = PickIslands();
         if (wins.Count == 0)
@@ -827,7 +874,7 @@ public sealed class PetForm : Form
 
     public void StartBreak()
     {
-        if (InGame || hiddenByUser || b.P.Stage == "egg") return;
+        if (InGame || b.P.Stage == "egg") return;
         gameFocus = Native.GetForegroundWindow();
         var screens = Screen.AllScreens.Select(s => s.WorkingArea).ToList();
         if (Breakout.Pick(Native.Foreground(), Native.ListWindows(), b.Area, screens, b.CellPx) is not { } pick)
@@ -931,7 +978,7 @@ public sealed class PetForm : Form
 
     public void StartGame(string? gun, string? theme)
     {
-        if (InGame || hiddenByUser || b.P.Stage == "egg") return;
+        if (InGame || b.P.Stage == "egg") return;
         gameFocus = Native.GetForegroundWindow();
         var rng = new Random();
         var wins = Native.ListWindows();

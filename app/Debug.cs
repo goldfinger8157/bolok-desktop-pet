@@ -138,6 +138,7 @@ public sealed class DevLink
             case "minigun": form.MinigunCommand(a); break;
             case "icbm": form.IcbmCommand(a); break;
             case "species": form.SetSpecies(a[1]); break; // 예: species fox
+            case "release": form.Release(ask: false); break;
             case "break": form.BreakCommand(a.Length > 1 ? a[1] : "start", a.Length > 2 ? a[2] : null); break;
             case "run": if (a.Length > 1 && a[1] == "stop") form.StopRun(); else form.StartRun(); break;
             case "game": form.StartGame(a.Length > 1 ? a[1] : null, a.Length > 2 ? a[2] : null); break;

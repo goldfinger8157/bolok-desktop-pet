@@ -11,18 +11,20 @@ static class Program
             return Sim.Check(Console.Out);
         }
 
-        if (args.Length == 2 && args[0] == "--settings") // 설정 창 세 탭을 그림으로 (화면 밖 먼 곳에 잠깐 띄워 그린다)
+        if (args.Length == 2 && args[0] == "--settings") // 설정 창 네 탭을 그림으로 (화면 밖 먼 곳에 잠깐 띄워 그린다)
         {
             ApplicationConfiguration.Initialize();
-            using var f = new Settings(false, false, Sprites.Embedded("fox")) { StartPosition = FormStartPosition.Manual, Location = new Point(-30000, -30000) };
+            var book = new PetBook("fox", false, new[] { "hamster", "fox", "penguin" }, new[] { new ReleasedPet("hamster", "adult_chubby", 2900, new DateTime(2026, 11, 11)) });
+            using var f = new Settings(false, false, Sprites.Embedded("fox"), book, () => "볼록이 · 여우 어린이    3시간 20분\n포만 ♥♥♥♡\n기분 ♥♥♥♥\n기운 ♥♥♡♡\n실수 0    볼 속 0입")
+                { StartPosition = FormStartPosition.Manual, Location = new Point(-30000, -30000) };
             f.Show();
             Application.DoEvents();
             var tabs = (TabControl)f.Controls[0];
-            using var bmp = new Bitmap(f.Width * 3 + 40, f.Height);
+            using var bmp = new Bitmap(f.Width * 4 + 60, f.Height);
             using (var g = Graphics.FromImage(bmp))
             {
                 g.Clear(Color.White);
-                for (int i = 0; i < 3; i++)
+                for (int i = 0; i < 4; i++)
                 {
                     tabs.SelectedIndex = i;
                     Application.DoEvents();
