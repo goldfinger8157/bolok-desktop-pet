@@ -1,0 +1,503 @@
+<title>볼록이 모델링</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&family=Gowun+Dodum&family=Silkscreen&display=swap">
+<style>
+/* 레이아웃: 바탕화면 한 장과 그 옆의 달걀 기기, 아래로 규칙표. 기기와 바탕화면은 실물이라 테마와 무관하게 색이 같다 */
+:root {
+  --bg: #e6edf2; --fg: #1f2d38; --muted: #566876; --line: #c6d3dc; --panel: #f4f8fa; --accent: #d9344c;
+  --sun: #ffc533; --sun-dark: #e0a200; --seed: #5c4a42; --lcd: #bcc9a6; --lcd-ink: #26301e;
+  --wall-a: #1f6fb2; --wall-b: #8cc4e0; --win: #ffffff; --win-ink: #2a3540; --win-line: #d7dee4; --task: #202a33; --hole: #07090c;
+  --display: "Jua", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --body: "Gowun Dodum", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --digit: "Silkscreen", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #131a20; --fg: #e3ebf1; --muted: #93a4b1; --line: #2c3945; --panel: #1b242c; --accent: #ff7286; color-scheme: dark }
+}
+:root[data-theme="dark"] { --bg: #131a20; --fg: #e3ebf1; --muted: #93a4b1; --line: #2c3945; --panel: #1b242c; --accent: #ff7286; color-scheme: dark }
+
+*, *::before, *::after { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 16px/1.65 var(--body); word-break: keep-all; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-block: 32px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 48px; }
+h1, h2 { font-family: var(--display); font-weight: 400; text-wrap: balance; line-height: 1.25; margin: 0; }
+h1 { font-size: 2.6rem; }
+h2 { font-size: 1.6rem; }
+p { margin: 0; }
+a { color: var(--accent); }
+header { display: grid; gap: 8px; }
+header p { color: var(--muted); max-width: 62ch; }
+section { display: grid; gap: 16px; min-width: 0; }
+section > p { color: var(--muted); max-width: 66ch; }
+
+.play { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
+.desk { position: relative; height: 520px; border-radius: 10px; overflow: hidden; background: linear-gradient(155deg, var(--wall-a), var(--wall-b)); touch-action: none; user-select: none; }
+.win { position: absolute; background: var(--win); color: var(--win-ink); border-radius: 6px; font-size: 13px; line-height: 1.5; box-shadow: 0 6px 18px rgb(0 0 0 / .25); overflow: hidden; }
+.win b { display: block; font-weight: 400; padding: 5px 10px; background: var(--win-line); font-size: 12px; }
+.win div { padding: 8px 10px; }
+.note { left: 5%; top: 7%; width: 44%; }
+.sheet { right: 4%; top: 16%; width: 42%; }
+.sheet table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.sheet td { border: 1px solid var(--win-line); padding: 2px 6px; }
+.taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 40px; background: var(--task); color: var(--win); display: flex; align-items: center; justify-content: space-between; padding-inline: 14px; font-size: 13px; font-variant-numeric: tabular-nums; }
+#stage { position: absolute; inset: 0; width: 100%; height: 100%; cursor: grab; image-rendering: pixelated; }
+
+/* 달걀 기기 — 원작의 세 버튼 셸을 네 버튼으로 */
+.device { display: grid; gap: 16px; justify-items: center; }
+.shell { width: 300px; max-width: 100%; height: 400px; padding: 56px 40px 0; background: radial-gradient(circle at 34% 24%, #ffe08a, var(--sun) 46%, var(--sun-dark)); border-radius: 50% 50% 47% 47% / 58% 58% 42% 42%; box-shadow: inset 0 -10px 18px rgb(120 80 0 / .28), 0 10px 22px rgb(0 0 0 / .22); display: grid; gap: 14px; align-content: start; }
+.lcd { background: var(--lcd); color: var(--lcd-ink); border: 5px solid var(--seed); border-radius: 12px; padding: 8px 10px; display: grid; gap: 2px; font-family: var(--display); font-size: 14px; line-height: 1.35; min-height: 172px; align-content: start; }
+.lcd .row { display: flex; justify-content: space-between; gap: 8px; }
+.lcd .num { font-family: var(--digit); font-size: 12px; }
+.lcd .hearts { letter-spacing: 1px; font-family: system-ui, sans-serif; }
+#say { min-height: 2.7em; margin-top: 2px; border-top: 2px dotted var(--lcd-ink); padding-top: 3px; }
+.btns { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.btns button { aspect-ratio: 1; border: 0; border-radius: 50%; background: var(--seed); color: #fff; font: 13px/1.1 var(--display); cursor: pointer; box-shadow: 0 3px 0 rgb(0 0 0 / .3); padding: 0; }
+.btns button:active { transform: translateY(2px); box-shadow: 0 1px 0 rgb(0 0 0 / .3); }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.clock { width: 100%; display: grid; gap: 8px; font-size: 14px; }
+.speed { display: flex; flex-wrap: wrap; gap: 4px; border: 0; padding: 0; margin: 0; }
+.speed legend { padding: 0; margin-bottom: 4px; color: var(--muted); }
+.speed label { flex: 1; text-align: center; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.speed input { position: absolute; opacity: 0; }
+.speed input:checked + span { color: var(--accent); font-weight: 700; }
+.speed label:has(input:checked) { border-color: var(--accent); }
+.speed label:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 1px; }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tools button { font: inherit; padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--fg); cursor: pointer; }
+
+.gallery { display: flex; flex-wrap: wrap; gap: 8px; }
+.gallery figure, .gallery button { margin: 0; padding: 6px 4px; display: grid; justify-items: center; gap: 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; color: var(--fg); font: 14px/1.3 var(--body); width: 104px; }
+.gallery button { cursor: pointer; }
+.gallery canvas { width: 80px; height: 80px; image-rendering: pixelated; }
+.gallery.tall canvas { width: 96px; height: 96px; }
+
+.scroll { overflow-x: auto; }
+table.t { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+table.t th { font-weight: 400; color: var(--muted); text-align: left; font-size: 14px; }
+table.t th, table.t td { padding: 7px 12px 7px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+td.bad { color: var(--accent); }
+ul.src { margin: 0; padding-left: 18px; color: var(--muted); }
+
+@media (max-width: 880px) {
+  .play { grid-template-columns: minmax(0, 1fr); }
+  .desk { height: 460px; }
+  .note { width: 60%; }
+  .sheet { top: 42%; width: 56%; }
+}
+</style>
+
+<main class="wrap">
+  <header>
+    <h1>볼록이</h1>
+    <p>일하다 한 번씩 돌봐주는 햄스터예요. 안 놀아주면 화면을 뜯어 볼주머니에 넣고, 기분이 풀리면 뱉어서 돌려줘요. 지금은 규칙과 그림을 확인하는 미리보기이고, 윈도우 앱은 아직 만들기 전이에요.</p>
+  </header>
+
+  <section class="play" aria-label="볼록이 돌보기">
+    <div class="desk" id="desk">
+      <div class="win note"><b>회의록.txt - 메모장</b><div>10월 30일 주간 회의<br>1. 다음 주 배포 일정 확인<br>2. 서버 점검은 수요일 밤<br>3. 볼록이 간식 예산 논의<br>4. 사무실 해바라기씨 재고 부족</div></div>
+      <div class="win sheet"><b>간식 정산.xlsx</b><div><table><tr><td>해바라기씨</td><td>120g</td></tr><tr><td>호박씨</td><td>80g</td></tr><tr><td>건포도</td><td>35g</td></tr><tr><td>합계</td><td>235g</td></tr></table></div></div>
+      <div class="taskbar"><span>시작</span><span id="clock">활동 0시간</span></div>
+      <canvas id="stage" aria-label="볼록이가 돌아다니는 바탕화면. 클릭하면 쓰다듬고, 끌면 들어 올려요."></canvas>
+    </div>
+
+    <aside class="device">
+      <div class="shell">
+        <div class="lcd" aria-live="polite">
+          <div class="row"><span id="who">볼록이</span><span class="num" id="age"></span></div>
+          <div class="row"><span>포만</span><span class="hearts" id="mFull"></span></div>
+          <div class="row"><span>기분</span><span class="hearts" id="mMood"></span></div>
+          <div class="row"><span>기운</span><span class="hearts" id="mEnergy"></span></div>
+          <div class="row"><span>실수 <span class="num" id="miss">0</span></span><span>볼 속 <span class="num" id="bites">0</span>입</span></div>
+          <div id="say"></div>
+        </div>
+        <div class="btns">
+          <button id="bFeed" type="button">밥</button>
+          <button id="bPet" type="button">쓰담</button>
+          <button id="bPlay" type="button">놀기</button>
+          <button id="bSleep" type="button">재우기</button>
+        </div>
+      </div>
+      <div class="clock">
+        <fieldset class="speed">
+          <legend>시간 빠르기</legend>
+          <label><input type="radio" name="speed" id="s0" value="0"><span>멈춤</span></label>
+          <label><input type="radio" name="speed" id="s1" value="1"><span>실제</span></label>
+          <label><input type="radio" name="speed" id="s60" value="60" checked><span>1초=1분</span></label>
+          <label><input type="radio" name="speed" id="s600" value="600"><span>1초=10분</span></label>
+        </fieldset>
+        <div class="tools">
+          <button id="bSkip" type="button">1시간 방치</button>
+          <button id="bReset" type="button">알부터 다시</button>
+          <label><input type="checkbox" id="afk"> 자리 비움</label>
+        </div>
+      </div>
+    </aside>
+  </section>
+
+  <section>
+    <h2>자라는 모습</h2>
+    <p>알에서 깨어 월요일엔 아기, 금요일 오후엔 어른이 돼요. 어른은 키운 방식으로 갈려요. 누르면 위 바탕화면의 볼록이가 그 모습으로 바뀌어요.</p>
+    <div class="gallery tall" id="gForms"></div>
+  </section>
+
+  <section>
+    <h2>볼주머니 네 단계</h2>
+    <p>화면을 12입까지 먹고, 4입마다 볼이 한 단계 커져요.</p>
+    <div class="gallery tall" id="gCheeks"></div>
+  </section>
+
+  <section>
+    <h2>자세</h2>
+    <div class="gallery" id="gPoses"></div>
+  </section>
+
+  <section>
+    <h2>일주일 시뮬레이션</h2>
+    <p>9시 출근, 점심 1시간 자리 비움, 18시 퇴근으로 5일을 돌린 결과예요. 위 볼록이와 같은 규칙 코드를 이 페이지에서 그대로 실행했어요.</p>
+    <div class="scroll"><table class="t" id="sim"></table></div>
+  </section>
+
+  <section>
+    <h2>다마고치에서 가져온 것과 바꾼 것</h2>
+    <div class="scroll"><table class="t">
+      <tr><th>항목</th><th>원작 (P1)</th><th>볼록이</th></tr>
+      <tr><td>미터</td><td>배고픔·행복 하트 0~4칸</td><td>포만·기분·기운 4칸 (기운은 VPet의 체력에서)</td></tr>
+      <tr><td>돌봄 실수</td><td>부름을 15분 방치하면 1회</td><td>0에서 15분 방치하면 1회, 이후 1시간마다 1회</td></tr>
+      <tr><td>어른 결정</td><td>돌봄·훈육 실수 횟수로 갈림</td><td>실수와 먹은 화면이면 심술이, 쓰다듬기가 많으면 애교쟁이, 그 외 통통이</td></tr>
+      <tr><td>성장 시간</td><td>알 5분, 아기 65분, 어른까지 약 6일</td><td>알 5분, 아기 65분, 활동 38시간에 어른</td></tr>
+      <tr><td>시간</td><td>현실 시간으로 흐름</td><td>PC를 쓰는 동안만 흐름. 자리 비우면 잠들고 수치가 멈춤</td></tr>
+      <tr><td>방치의 끝</td><td>죽음</td><td>죽지 않음. 대신 화면을 먹음</td></tr>
+      <tr><td>똥·병·훈육</td><td>있음</td><td>1차에서 뺌</td></tr>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>윈도우 앱은 이렇게 만들어요</h2>
+    <div class="scroll"><table class="t">
+      <tr><th>할 일</th><th>방법</th></tr>
+      <tr><td>투명한 펫 창</td><td>C# WinForms(.NET 10)에 TransparencyKey. 투명색 영역은 클릭이 뒤 창으로 지나가요</td></tr>
+      <tr><td>쓰다듬기·들어 올리기</td><td>펫 창의 불투명한 픽셀만 마우스를 받아요</td></tr>
+      <tr><td>화면 먹기</td><td>전체 화면 투명 창에 구멍을 그리고 WS_EX_TRANSPARENT로 클릭을 통과시켜요. 눈으로만 가려지고 작업은 막지 않아요</td></tr>
+      <tr><td>자리 비움</td><td>마지막 입력 시각을 보고 10분 넘으면 재워요</td></tr>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>참고한 곳</h2>
+    <ul class="src">
+      <li><a href="https://thaao.net/tama/p1/">Tamagotchi P1 Care Guide</a>: 15분 규칙, 단계별 시간</li>
+      <li><a href="https://en.wikipedia.org/wiki/Tamagotchi">Tamagotchi 위키백과</a>: 생애 단계, 돌봄 메뉴</li>
+      <li><a href="https://github.com/LorisYounger/VPet">VPet</a>: 포만·기분·체력 구조</li>
+      <li><a href="https://github.com/SeakMengs/WindowPet">WindowPet</a>, <a href="https://github.com/gil/shimeji-ee">Shimeji-ee</a>: 들기·떨어뜨리기·커서 쫓기</li>
+      <li><a href="https://samperson.itch.io/desktop-goose">Desktop Goose</a>: 일을 방해하는 재미</li>
+      <li><a href="https://learn.microsoft.com/en-us/windows/win32/winmsg/window-features">Microsoft Window Features</a>: 레이어드 창의 클릭 통과</li>
+    </ul>
+  </section>
+</main>
+
+<script src="model.js"></script>
+<script>
+(async () => {
+  const $ = id => document.getElementById(id);
+  const meta = await (await fetch('sprites.json')).json();
+  const sheet = new Image();
+  sheet.src = 'sprites.png';
+  await sheet.decode();
+
+  const SCALE = 3, CELL = meta.cell;
+  const FORM_KO = { egg: '알', baby: '아기', child: '어린이', adult_chubby: '통통이', adult_sweet: '애교쟁이', adult_grumpy: '심술이' };
+  const POSE_KO = { idle: '가만히', walk: '걷기', sleep: '잠', eat: '오물오물', happy: '기쁨', sad: '시무룩', hungry: '배고픔', chomp: '화면 먹기', spit: '퉤', held: '들림' };
+  const POSE_MS = { idle: 600, walk: 130, sleep: 800, eat: 180, happy: 220, sad: 500, hungry: 500, chomp: 240, spit: 320, held: 240 };
+  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const start = () => Object.assign(newPet(), { stage: 'child', ageMin: 12 * 60, full: 60, mood: 45, energy: 70 });
+  let p = start(), speed = 60;
+  const cv = $('stage'), ctx = cv.getContext('2d');
+  const V = { x: 200, y: 400, dir: 1, mode: 'wander', pose: 'idle', until: 0, next: 0, tx: 200, ty: 400, seed: null, spot: null,
+    holes: [], bits: [], hearts: [], shake: 0, ptr: null, press: null };
+
+  function spr(c, name, frame, x, y, s, flip) {
+    const [row, n] = meta.rows[name];
+    c.save();
+    c.translate(x, y);
+    if (flip) c.scale(-1, 1);
+    c.drawImage(sheet, (frame % n) * CELL, row * CELL, CELL, CELL, -CELL * s / 2, -CELL * s, CELL * s, CELL * s);
+    c.restore();
+  }
+
+  function fit() {
+    const r = $('desk').getBoundingClientRect();
+    cv.width = r.width; cv.height = r.height;
+    ctx.imageSmoothingEnabled = false;
+  }
+  new ResizeObserver(fit).observe($('desk'));
+  fit();
+
+  const bounds = () => ({ x0: 64, x1: cv.width - 64, y0: 130, y1: cv.height - 46 });
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const clampTo = (v, a, b) => Math.max(a, Math.min(b, v));
+  let sayUntil = 0;
+  const say = t => { $('say').textContent = t; sayUntil = performance.now() + 4000; };
+
+  function play(pose, sec, now) { V.mode = 'anim'; V.pose = pose; V.until = now + sec * 1000; }
+  function refuse(text) { V.shake = performance.now() + 500; say(text); }
+
+  function holeAt(cx, cy) {
+    cx = Math.round(cx / 8) * 8; cy = Math.round(cy / 8) * 8; // 칸을 격자에 맞춰야 칸 사이가 안 비친다
+    const turn = rand(0, Math.PI);
+    const blobs = [[0, 0, 40]];
+    for (let i = 0; i < 6; i++) { // 둘레를 이빨 자국처럼 오톨도톨하게
+      const a = turn + i * Math.PI / 3;
+      blobs.push([Math.cos(a) * 36, Math.sin(a) * 36, rand(20, 26)]);
+    }
+    const cells = [];
+    for (let y = -72; y <= 72; y += 8)
+      for (let x = -72; x <= 72; x += 8)
+        if (blobs.some(([a, b, r]) => Math.hypot(x - a, y - b) < r)) cells.push([cx + x, cy + y]);
+    return { cx, cy, cells };
+  }
+
+  function spray(x, y, n, aim) {
+    if (calm) return;
+    const colors = ['#ffffff', '#1f6fb2', '#8cc4e0', '#2a3540', '#d7dee4'];
+    for (let i = 0; i < n; i++) {
+      const life = rand(.45, .8);
+      V.bits.push(aim
+        ? { x, y, vx: (aim.x - x) / life + rand(-40, 40), vy: (aim.y - y) / life + rand(-40, 40), g: 0, life, c: colors[i % 5] }
+        : { x: x + rand(-40, 40), y: y + rand(-40, 40), vx: rand(-90, 90), vy: rand(-120, 0), g: 420, life, c: colors[i % 5] });
+    }
+  }
+
+  function onEvents(list) {
+    const now = performance.now();
+    for (const e of list) {
+      if (e === 'hatch') { say('알이 깨졌어요! 아기 볼록이예요'); play('happy', 1.6, now); }
+      if (e === 'grow') { say(`${FORM_KO[p.stage]}(으)로 자랐어요!`); play('happy', 1.6, now); }
+      if (e === 'miss') say('돌봄 실수가 하나 늘었어요');
+      if (e === 'sleep') say('새근새근 자요');
+      if (e === 'wake') say('잘 잤어요');
+    }
+  }
+
+  function care(what) {
+    const now = performance.now();
+    if (p.stage === 'egg') return refuse('아직 알이에요. 조금만 기다려요');
+    if (p.asleep && what !== 'wake') return refuse('자고 있어요. 재우기 버튼으로 깨울 수 있어요');
+    if (what === 'feed') {
+      if (p.full >= 100) return refuse('배불러요!');
+      V.seed = { x: clampTo(V.x + rand(-120, 120), 64, cv.width - 64), y: -20, gy: clampTo(V.y, 130, cv.height - 60) };
+      V.mode = 'seek';
+    } else if (what === 'pet') {
+      act(p, 'pet');
+      play('happy', 1.1, now);
+      V.hearts.push({ x: V.x + rand(-30, 30), y: V.y - 110, t: 0 });
+      say('좋아서 눈이 감겨요');
+    } else if (what === 'play') {
+      if (!act(p, 'play')) return refuse('너무 지쳤어요. 재워주세요');
+      V.mode = 'chase'; V.until = now + 6000;
+      say('커서를 움직여 보세요! 쫓아가요');
+    } else if (what === 'sleep') {
+      if (!act(p, 'sleep')) return refuse('아직 안 졸려요');
+      V.mode = 'wander'; say('이불 덮어줬어요');
+    } else if (what === 'wake') {
+      act(p, 'wake'); say('일어났지만 살짝 삐졌어요');
+    }
+  }
+
+  $('bFeed').onclick = () => care('feed');
+  $('bPet').onclick = () => care('pet');
+  $('bPlay').onclick = () => care('play');
+  $('bSleep').onclick = () => care(p.asleep ? 'wake' : 'sleep');
+  $('bSkip').onclick = () => { for (let i = 0; i < 60; i++) onEvents(tick(p, 1, $('afk').checked)); };
+  $('bReset').onclick = () => { p = newPet(); V.holes = []; V.mode = 'wander'; V.seed = null; say('알이에요. 5분 뒤에 깨어나요'); };
+  document.querySelectorAll('input[name=speed]').forEach(r => { r.onchange = () => { speed = +r.value; }; });
+
+  const point = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  const onPet = q => Math.abs(q.x - V.x) < 62 && q.y > V.y - 118 && q.y < V.y + 4;
+  cv.addEventListener('pointerdown', e => {
+    const q = point(e);
+    V.ptr = q;
+    if (onPet(q)) { V.press = { ...q, moved: false }; cv.setPointerCapture(e.pointerId); }
+  });
+  cv.addEventListener('pointermove', e => {
+    const q = V.ptr = point(e);
+    if (!V.press) return;
+    if (Math.hypot(q.x - V.press.x, q.y - V.press.y) > 6) V.press.moved = true;
+    if (V.press.moved && p.stage !== 'egg') { V.mode = 'held'; V.pose = 'held'; }
+  });
+  cv.addEventListener('pointerup', () => {
+    if (V.press && !V.press.moved) care(p.asleep ? 'wake' : 'pet');
+    if (V.mode === 'held') { V.mode = 'wander'; V.next = performance.now() + 1500; }
+    V.press = null;
+  });
+
+  function walk(tx, ty, v, dt) {
+    const dx = tx - V.x, dy = ty - V.y, d = Math.hypot(dx, dy);
+    if (d < 3) return true;
+    const s = Math.min(v * dt, d);
+    V.x += dx / d * s; V.y += dy / d * s;
+    if (Math.abs(dx) > 2) V.dir = dx > 0 ? 1 : -1;
+    return false;
+  }
+
+  function update(dt, now) {
+    let left = dt * speed / 60;
+    const afk = $('afk').checked;
+    while (left > 0) {
+      const m = Math.min(left, .5);
+      left -= m;
+      onEvents(tick(p, m, afk));
+    }
+
+    const b = bounds();
+    if (V.mode === 'anim' && now > V.until) {
+      if (V.pending) { V.holes.push(holeAt(V.pending.x, V.pending.y)); spray(V.pending.x, V.pending.y, 14); V.pending = null; }
+      V.mode = 'wander'; V.next = now + rand(600, 2000);
+    }
+    if (V.mode === 'wander' && !p.asleep && p.stage !== 'egg') {
+      if (V.holes.length > p.bites) {
+        const h = V.holes.pop();
+        spray(V.x + 30 * V.dir, V.y - 70, 12, { x: h.cx, y: h.cy });
+        play('spit', .7, now);
+        say('퉤! 먹은 화면을 뱉었어요');
+      } else if (V.holes.length < p.bites) {
+        V.spot = { x: rand(b.x0 + 70, b.x1 - 20), y: rand(b.y0 - 40, b.y1 - 110) };
+        V.mode = 'gobite';
+      }
+    }
+
+    switch (V.mode) {
+      case 'wander':
+        if (p.asleep || p.stage === 'egg') { V.pose = pose(p); break; }
+        if (now > V.next) {
+          V.tx = rand(b.x0, b.x1); V.ty = rand(b.y0, b.y1);
+          V.next = Infinity;
+        }
+        if (V.next === Infinity) {
+          V.pose = 'walk';
+          if (walk(V.tx, V.ty, 54, dt)) V.next = now + rand(1500, 5000);
+        } else V.pose = pose(p);
+        break;
+      case 'gobite':
+        V.pose = 'walk';
+        if (walk(clampTo(V.spot.x - 70, b.x0, b.x1), clampTo(V.spot.y + 60, b.y0, b.y1), 150, dt)) {
+          V.dir = 1;
+          V.pending = V.spot;
+          play('chomp', 1.3, now);
+          say('와작! 화면을 뜯어 먹어요');
+        }
+        break;
+      case 'seek':
+        if (V.seed.y < V.seed.gy) V.seed.y += 420 * dt;
+        V.pose = 'walk';
+        if (walk(V.seed.x, V.seed.gy, 130, dt) && V.seed.y >= V.seed.gy) {
+          act(p, 'feed');
+          V.seed = null;
+          play('eat', 1.5, now);
+          say('오물오물');
+        }
+        break;
+      case 'chase':
+        V.pose = 'walk';
+        if (V.ptr) walk(clampTo(V.ptr.x, b.x0, b.x1), clampTo(V.ptr.y + 50, b.y0, b.y1), 170, dt);
+        if (now > V.until) { play('happy', 1.2, now); say('재밌었어요!'); }
+        break;
+      case 'held':
+        if (V.ptr) { V.x = clampTo(V.ptr.x, b.x0, b.x1); V.y = clampTo(V.ptr.y + 60, b.y0, b.y1 + 30); }
+        break;
+    }
+
+    for (const f of V.bits) { f.x += f.vx * dt; f.y += f.vy * dt; f.vy += f.g * dt; f.life -= dt; }
+    V.bits = V.bits.filter(f => f.life > 0);
+    for (const h of V.hearts) { h.t += dt; h.y -= 40 * dt; }
+    V.hearts = V.hearts.filter(h => h.t < 1);
+  }
+
+  function bubble(x, y, kind) {
+    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#5c3a28'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(x - 24, y - 46, 48, 40, 10); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x - 6, y - 6); ctx.lineTo(x, y + 4); ctx.lineTo(x + 6, y - 6); ctx.fill(); ctx.stroke();
+    if (kind === 'sleepy') { ctx.fillStyle = '#5c3a28'; ctx.font = '20px Jua, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('zZ', x, y - 18); }
+    else spr(ctx, kind === 'hungry' ? 'icon/seed' : 'icon/heart', 0, x, y - 8, 1);
+  }
+
+  function draw(now) {
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.fillStyle = getComputedStyle(cv).getPropertyValue('--hole');
+    for (const h of V.holes) for (const [x, y] of h.cells) ctx.fillRect(x, y, 8, 8);
+    if (V.seed) spr(ctx, 'icon/seed', 0, V.seed.x, V.seed.y, 1);
+    const off = now < V.shake ? Math.sin(now / 30) * 4 : 0;
+    const f = Math.floor(now / (POSE_MS[V.pose] || 600));
+    const hatching = p.ageMin >= K.eggMin * .6;
+    const name = p.stage === 'egg' ? (hatching ? 'egg/hatch' : 'egg/idle') : `${p.stage}/${cheek(p)}/${V.pose}`;
+    spr(ctx, name, f, V.x + off, V.y, SCALE, V.dir < 0);
+    const n = V.mode === 'wander' ? need(p) : null;
+    if (n) bubble(V.x + 56, V.y - 96, n);
+    for (const h of V.hearts) spr(ctx, 'icon/heart', 0, h.x, h.y, 1);
+    for (const b of V.bits) { ctx.fillStyle = b.c; ctx.fillRect(b.x, b.y, 7, 7); }
+  }
+
+  const hearts = v => '♥'.repeat(Math.ceil(v / 25)) + '♡'.repeat(4 - Math.ceil(v / 25));
+  const hm = m => `${Math.floor(m / 60)}H${String(Math.floor(m % 60)).padStart(2, '0')}`;
+  function lcd() {
+    $('who').textContent = `볼록이 · ${FORM_KO[p.stage]}`;
+    $('age').textContent = hm(p.ageMin);
+    $('mFull').textContent = hearts(p.full);
+    $('mMood').textContent = hearts(p.mood);
+    $('mEnergy').textContent = hearts(p.energy);
+    $('miss').textContent = p.miss;
+    $('bites').textContent = Math.max(p.bites, V.holes.length);
+    $('clock').textContent = `활동 ${Math.floor(p.ageMin / 60)}시간 ${Math.floor(p.ageMin % 60)}분`;
+    $('bSleep').textContent = p.asleep ? '깨우기' : '재우기';
+    if (performance.now() > sayUntil) $('say').textContent = { hungry: '배고파요', bored: '놀아주세요', sleepy: '졸려요' }[need(p)] || '';
+  }
+
+  // 갤러리: 캔버스마다 스프라이트 이름을 달아 두고 같이 돌린다
+  function tile(parent, label, name, ms, onClick) {
+    const el = document.createElement(onClick ? 'button' : 'figure');
+    if (onClick) { el.type = 'button'; el.onclick = onClick; }
+    const c = document.createElement('canvas');
+    c.width = c.height = CELL;
+    el.append(c, document.createTextNode(label));
+    parent.append(el);
+    tiles.push({ c: c.getContext('2d'), name, ms });
+  }
+  const tiles = [];
+  tile($('gForms'), '알', 'egg/idle', 300);
+  for (const form of ['baby', 'child', 'adult_chubby', 'adult_sweet', 'adult_grumpy'])
+    tile($('gForms'), FORM_KO[form], `${form}/0/idle`, 600, () => { p.stage = form; V.mode = 'wander'; say(`${FORM_KO[form]} 모습이에요`); });
+  ['홀쭉 0입', '1~4입', '5~8입', '9~12입'].forEach((t, i) => tile($('gCheeks'), t, `adult_chubby/${i}/idle`, 600));
+  for (const [k, ko] of Object.entries(POSE_KO)) tile($('gPoses'), ko, `child/0/${k}`, POSE_MS[k]);
+
+  function drawTiles(now) {
+    for (const t of tiles) {
+      t.c.clearRect(0, 0, CELL, CELL);
+      t.c.imageSmoothingEnabled = false;
+      spr(t.c, t.name, Math.floor(now / t.ms), CELL / 2, CELL, 1);
+    }
+  }
+
+  const cols = ['방식', '돌봄', '금요일 저녁', '돌봄 실수', '먹은 화면', '첫 입까지', '최저 포만', '최저 기분'];
+  $('sim').innerHTML = `<tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr>` + SCENARIOS.map(s => {
+    const { p: q, log } = week(s.times, s.care);
+    const bad = v => v ? ' class="bad"' : '';
+    return `<tr><td>${s.name}</td><td>${s.desc}</td><td>${FORM_KO[q.stage]}</td><td${bad(q.miss)}>${q.miss}회</td>` +
+      `<td${bad(q.bitesTotal)}>${q.bitesTotal}입</td><td>${log.firstBite === null ? '없음' : `활동 ${(log.firstBite / 60).toFixed(1)}시간`}</td>` +
+      `<td>${log.minFull.toFixed(0)}</td><td>${log.minMood.toFixed(0)}</td></tr>`;
+  }).join('');
+
+  say('볼록이를 클릭해 쓰다듬어 주세요');
+  let last = performance.now(), lastLcd = 0;
+  function frame(now) {
+    const dt = Math.min(.1, (now - last) / 1000);
+    last = now;
+    update(dt, now);
+    draw(now);
+    drawTiles(now);
+    if (now - lastLcd > 200) { lastLcd = now; lcd(); }
+    requestAnimationFrame(frame);
+  }
+  lcd();
+  requestAnimationFrame(frame);
+})();
+</script>

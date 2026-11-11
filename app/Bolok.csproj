@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Bolok</AssemblyName>
+    <RootNamespace>Bolok</RootNamespace>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ForceDesignerDpiUnaware>true</ForceDesignerDpiUnaware>
+    <SatelliteResourceLanguages>ko</SatelliteResourceLanguages>
+    <!-- 개발 빌드는 0.0.0 (자동 업데이트 안 함). 릴리스는 깃허브 액션이 태그 버전을 넣는다 -->
+    <Version>0.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\assets\sprites.png" LogicalName="sprites.png" />
+    <EmbeddedResource Include="..\assets\sprites.json" LogicalName="sprites.json" />
+  </ItemGroup>
+
+</Project>
