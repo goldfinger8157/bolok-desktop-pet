@@ -2,7 +2,7 @@ using System.Diagnostics;
 
 namespace Bolok;
 
-// 설정 창: 일반(게임 소리) / 업데이트(지금 버전, 저장소에서 직접 받기 안내, 지금 확인, 자동 업데이트 — 기본 꺼짐)
+// 설정 창: 캐릭터(21종 중 고르기, 수치는 그대로) / 일반(게임 소리) / 업데이트(지금 버전, 저장소에서 직접 받기 안내, 지금 확인, 자동 업데이트 — 기본 꺼짐)
 public sealed class Settings : Form
 {
     public const string ReleasesUrl = "https://github.com/" + Updater.Repo + "/releases/latest";
@@ -16,8 +16,10 @@ public sealed class Settings : Form
     public bool AutoUpdate => auto.Checked;
     public event Action? Changed;
     public event Action? RestartAsked;
+    public event Action<string>? SpeciesChosen;
+    readonly Dictionary<string, Button> petButtons = new();
 
-    public Settings(bool soundOn, bool autoUpdate)
+    public Settings(bool soundOn, bool autoUpdate, Sprites sprites)
     {
         Text = "볼록이 설정";
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -25,13 +27,31 @@ public sealed class Settings : Form
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterScreen;
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(440, 330);
+        ClientSize = new Size(560, 520);
         TopMost = true;
 
         var tabs = new TabControl { Dock = DockStyle.Fill };
+        var pets = new TabPage("캐릭터") { Padding = new Padding(10) };
         var general = new TabPage("일반") { Padding = new Padding(14) };
         var update = new TabPage("업데이트") { Padding = new Padding(14) };
-        tabs.TabPages.AddRange(new[] { general, update });
+        tabs.TabPages.AddRange(new[] { pets, general, update });
+
+        // 캐릭터: 썸네일을 누르면 바로 바뀐다. 키우던 수치(나이·배부름·기분)는 그대로
+        var grid = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true };
+        foreach (var (id, name) in sprites.SpeciesNames)
+        {
+            var btn = new Button
+            {
+                Text = name, Image = sprites.Get("thumb/" + id, 0, 2), TextImageRelation = TextImageRelation.ImageAboveText,
+                Size = new Size(92, 106), FlatStyle = FlatStyle.Flat, BackColor = Color.White, Margin = new Padding(3), Tag = id,
+            };
+            btn.Click += (_, _) => { Mark(id); SpeciesChosen?.Invoke(id); };
+            petButtons[id] = btn;
+            grid.Controls.Add(btn);
+        }
+        Mark(sprites.Species);
+        pets.Controls.Add(grid);
+        pets.Controls.Add(new Label { Text = "고르면 바로 바뀌어요. 키우던 나이·배부름·기분은 그대로예요.", Dock = DockStyle.Top, Height = 26, ForeColor = SystemColors.GrayText });
         Controls.Add(tabs);
 
         (sound.Checked, auto.Checked) = (soundOn, autoUpdate);
@@ -54,6 +74,16 @@ public sealed class Settings : Form
             auto,
             Note($"켜면 하루에 한 번 저장소(github.com/{Updater.Repo})에서 새 Bolok.exe 를 자동으로 내려받아요. 다음에 볼록이를 켤 때 새 버전으로 바뀌어요. 기본은 꺼져 있어요.")));
         ShowReady();
+    }
+
+    void Mark(string chosen)
+    {
+        foreach (var (id, btn) in petButtons)
+        {
+            btn.FlatAppearance.BorderSize = id == chosen ? 3 : 1;
+            btn.FlatAppearance.BorderColor = id == chosen ? Color.FromArgb(232, 120, 60) : Color.FromArgb(210, 210, 214);
+            btn.BackColor = id == chosen ? Color.FromArgb(255, 243, 224) : Color.White;
+        }
     }
 
     public static string VersionText => Updater.IsDevBuild ? "개발 빌드" : "v" + Updater.Current.ToString(3);

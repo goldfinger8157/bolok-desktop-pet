@@ -11,18 +11,18 @@ static class Program
             return Sim.Check(Console.Out);
         }
 
-        if (args.Length == 2 && args[0] == "--settings") // 설정 창 두 탭을 그림으로 (화면 밖 먼 곳에 잠깐 띄워 그린다)
+        if (args.Length == 2 && args[0] == "--settings") // 설정 창 세 탭을 그림으로 (화면 밖 먼 곳에 잠깐 띄워 그린다)
         {
             ApplicationConfiguration.Initialize();
-            using var f = new Settings(false, false) { StartPosition = FormStartPosition.Manual, Location = new Point(-30000, -30000) };
+            using var f = new Settings(false, false, Sprites.Embedded("fox")) { StartPosition = FormStartPosition.Manual, Location = new Point(-30000, -30000) };
             f.Show();
             Application.DoEvents();
             var tabs = (TabControl)f.Controls[0];
-            using var bmp = new Bitmap(f.Width * 2 + 20, f.Height);
+            using var bmp = new Bitmap(f.Width * 3 + 40, f.Height);
             using (var g = Graphics.FromImage(bmp))
             {
                 g.Clear(Color.White);
-                for (int i = 0; i < 2; i++)
+                for (int i = 0; i < 3; i++)
                 {
                     tabs.SelectedIndex = i;
                     Application.DoEvents();

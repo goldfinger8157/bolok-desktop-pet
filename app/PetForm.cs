@@ -17,6 +17,7 @@ public sealed class SaveData
     public int GameBest { get; set; }
     public bool GameSound { get; set; }
     public bool AutoUpdate { get; set; }
+    public string Species { get; set; } = Sprites.DefaultSpecies;
     public int RunBest { get; set; }
     public int RunLast { get; set; }
     public int RunLevel { get; set; } = 1;
@@ -66,6 +67,7 @@ public sealed class PetForm : Form
     readonly Stopwatch clock = Stopwatch.StartNew();
     DevLink? dev;
     Sprites sprites;
+    readonly string? assetsDir;   // 디버그: 그림을 assets 폴더에서 읽는다 (일반 실행은 exe 안의 그림)
     double lastSec, nextSave, nextTop, nextBelow, fps, frameMs;
     Rectangle scaledFor;
     bool locked, hiddenByUser, pressing, moved, below;
@@ -77,6 +79,7 @@ public sealed class PetForm : Form
     public PetForm(Sprites sprites, Tuning k, string dataDir, string? runDir, string? assetsDir)
     {
         this.sprites = sprites;
+        this.assetsDir = assetsDir;
         debug = runDir != null;
         savePath = Path.Combine(dataDir, "pet.json");
         var area = Screen.PrimaryScreen!.WorkingArea;
@@ -192,7 +195,15 @@ public sealed class PetForm : Form
         Dbg.Log("screens-changed", ("screens", DescribeScreens()));
     }
 
-    public void SwapSprites(Sprites s) { sprites = s; drawn = default; Invalidate(); }
+    public void SwapSprites(Sprites s) { sprites = s; drawn = default; Invalidate(); foreach (var o in overlays) o.Invalidate(); }
+    public string Species => sprites.Species;
+
+    // 캐릭터 바꾸기: 그림만 바뀌고 키우던 수치는 그대로
+    public void SetSpecies(string species)
+    {
+        SwapSprites(assetsDir != null ? Sprites.FromDir(assetsDir, species) : Sprites.Embedded(species));
+        Dbg.Log("species", ("id", sprites.Species));
+    }
 
     string DebugLine() => $"{b.Mode}/{b.Pose} ({(int)b.X},{(int)b.Y}) x{b.Speed:0.#} {fps:0}fps cpu {dev?.Cpu:0.0}%{(Afk() ? " 자리비움" : "")}";
 
@@ -222,6 +233,7 @@ public sealed class PetForm : Form
         gameBest = pendingSave.GameBest;
         Sfx.On = pendingSave.GameSound;
         autoUpdate = pendingSave.AutoUpdate;
+        if (pendingSave.Species != sprites.Species) SetSpecies(pendingSave.Species);
         (breakBest, wormsWins) = (pendingSave.BreakBest, pendingSave.WormsWins);
         (runBest, runLast, runLevel, runScores) = (pendingSave.RunBest, pendingSave.RunLast, Math.Max(1, pendingSave.RunLevel), pendingSave.RunScores ?? new());
         if (pendingSave.X != 0) { b.X = pendingSave.X; b.Y = pendingSave.Y; b.Settle(); }
@@ -231,7 +243,7 @@ public sealed class PetForm : Form
 
     void Save()
     {
-        var data = new SaveData { Pet = b.P, X = b.X, Y = b.Y, Holes = b.Holes.Select(h => new[] { h.Cx, h.Cy }).ToList(), GameBest = gameBest, GameSound = Sfx.On, AutoUpdate = autoUpdate, RunBest = runBest, RunLast = runLast, RunLevel = runLevel, RunScores = runScores, BreakBest = breakBest, WormsWins = wormsWins };
+        var data = new SaveData { Pet = b.P, X = b.X, Y = b.Y, Holes = b.Holes.Select(h => new[] { h.Cx, h.Cy }).ToList(), GameBest = gameBest, GameSound = Sfx.On, AutoUpdate = autoUpdate, Species = sprites.Species, RunBest = runBest, RunLast = runLast, RunLevel = runLevel, RunScores = runScores, BreakBest = breakBest, WormsWins = wormsWins };
         var tmp = savePath + ".tmp";
         File.WriteAllText(tmp, JsonSerializer.Serialize(data));
         File.Move(tmp, savePath, true);
@@ -549,7 +561,8 @@ public sealed class PetForm : Form
     void ShowSettings()
     {
         if (settings is { IsDisposed: false }) { settings.Activate(); return; }
-        settings = new Settings(Sfx.On, autoUpdate);
+        settings = new Settings(Sfx.On, autoUpdate, sprites);
+        settings.SpeciesChosen += id => { SetSpecies(id); Save(); };
         settings.Changed += () => { (Sfx.On, autoUpdate) = (settings.Sound, settings.AutoUpdate); Save(); };
         settings.RestartAsked += () => { Save(); Updater.Restart(); };
         settings.Show();

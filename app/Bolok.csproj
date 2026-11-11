@@ -18,6 +18,8 @@
   <ItemGroup>
     <EmbeddedResource Include="..\assets\sprites.png" LogicalName="sprites.png" />
     <EmbeddedResource Include="..\assets\sprites.json" LogicalName="sprites.json" />
+    <EmbeddedResource Include="..\assets\pets\*.png" LogicalName="pets/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\assets\pets\*.json" LogicalName="pets/%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

@@ -137,6 +137,7 @@ public sealed class DevLink
             case "worms": form.WormsCommand(a); break;
             case "minigun": form.MinigunCommand(a); break;
             case "icbm": form.IcbmCommand(a); break;
+            case "species": form.SetSpecies(a[1]); break; // 예: species fox
             case "break": form.BreakCommand(a.Length > 1 ? a[1] : "start", a.Length > 2 ? a[2] : null); break;
             case "run": if (a.Length > 1 && a[1] == "stop") form.StopRun(); else form.StartRun(); break;
             case "game": form.StartGame(a.Length > 1 ? a[1] : null, a.Length > 2 ? a[2] : null); break;
@@ -185,7 +186,7 @@ public sealed class DevLink
         var t = File.GetLastWriteTimeUtc(Path.Combine(assets, "sprites.png"));
         if (t == spriteTime) return;
         spriteTime = t;
-        form.SwapSprites(Sprites.FromDir(assets));
+        form.SwapSprites(Sprites.FromDir(assets, form.Species));
         Dbg.Log("sprites-reloaded");
     }
 }
