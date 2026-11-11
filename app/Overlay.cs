@@ -97,7 +97,7 @@ public sealed class Overlay : Form
             int k = b.Scale;
             r.Add(Client(new Rectangle((int)ic.ButtonX - 20 * k, (int)ic.ButtonY - 26 * k, 40 * k, 28 * k)));
             if (ic.MissileOn) r.Add(Client(Rectangle.Inflate(new Rectangle((int)ic.MX, (int)ic.MY, 0, 0), ic.Stage == Icbm.Phase.Fall ? 64 * k : 34 * k, ic.Stage == Icbm.Phase.Fall ? 64 * k : 34 * k))); // 떨어질 땐 꼬리 불꽃까지
-            foreach (var pk in ic.Peeks) r.Add(Client(Rectangle.Inflate(new Rectangle((int)pk.Hole.X, (int)pk.Hole.Y, 0, 0), CraterReach(pk.Hole), CraterReach(pk.Hole))));
+            foreach (var cr in ic.Craters) if (cr.Friend != null) r.Add(Client(Rectangle.Inflate(new Rectangle((int)cr.X, (int)cr.Y, 0, 0), CraterReach(cr), CraterReach(cr)))); // 구름·냇물이 움직인다
             if (ic.HasTarget) r.Add(Client(Rectangle.Inflate(new Rectangle((int)ic.TX, (int)ic.TY, 0, 0), 24 * k, 24 * k)));
             foreach (var bit in ic.Bits) r.Add(Client(new Rectangle((int)bit.X - bit.Size, (int)bit.Y - bit.Size, bit.Size * 2, bit.Size * 2)));
             foreach (var bl in ic.Blasts) r.Add(Client(new Rectangle((int)bl.X - 62 * k, (int)bl.Y - 118 * k, 124 * k, 124 * k)));
@@ -440,7 +440,7 @@ public sealed class Overlay : Form
     {
         var sp = sprites();
         int k = b.Scale;
-        foreach (var cr in ic.Craters) PaintCrater(g, cr, ToClient(cr.X, cr.Y), rimBrush, holeFill);
+        foreach (var cr in ic.Craters) PaintCrater(g, cr, ToClient(cr.X, cr.Y), rimBrush, holeFill, ic.Clock, k);
         foreach (var pk in ic.Peeks) PaintPeek(g, sp, pk, ic.Clock, ToClient(pk.Hole.X, pk.Hole.Y), k);
         if (ic.Stage <= Icbm.Phase.Boom) // 빨간 버튼
         {
@@ -504,16 +504,38 @@ public sealed class Overlay : Form
     // 구멍 + 금이 닿을 수 있는 넓이 (다시 칠할 자리)
     internal static int CraterReach(Icbm.Crater cr) => (int)(cr.R0 * 1.4) + 6 * Icbm.Cell;
 
-    internal static void PaintCrater(Graphics g, Icbm.Crater cr, Point ctr, Brush rim, Brush hole)
+    // 친구 구멍(Friend)이면 안쪽에 그 친구가 사는 자연을 터질 때부터 바로 그린다. 아니면 검은 구멍
+    internal static void PaintCrater(Graphics g, Icbm.Crater cr, Point ctr, Brush rim, Brush hole, double clock = 0, int k = 3)
     {
         int c = Icbm.Cell;
         var (cells, cracks) = CraterShape(cr);
-        foreach (var (i, j, inside) in cells) g.FillRectangle(inside ? hole : rim, ctr.X + i * c, ctr.Y + j * c, c, c);
+        foreach (var (i, j, inside) in cells) g.FillRectangle(inside && cr.Friend == null ? hole : rim, ctr.X + i * c, ctr.Y + j * c, c, c);
         foreach (var (x, y) in cracks) g.FillRectangle(rim, ctr.X + x, ctr.Y + y, c / 2, c / 2);
+        if (cr.Friend == null) return;
+        var inner = cells.Where(x => x.Hole).ToList();
+        if (inner.Count == 0) return;
+        var state = g.Save();
+        using (var clip = new System.Drawing.Drawing2D.GraphicsPath())
+        {
+            foreach (var (i, j, _) in inner) clip.AddRectangle(new Rectangle(ctr.X + i * c, ctr.Y + j * c, c, c));
+            g.SetClip(clip);
+        }
+        var box = Rectangle.FromLTRB(ctr.X + inner.Min(x => x.I) * c, ctr.Y + inner.Min(x => x.J) * c, ctr.X + (inner.Max(x => x.I) + 1) * c, ctr.Y + (inner.Max(x => x.J) + 1) * c);
+        PaintNature(g, box, PeekFloor(cr, inner, ctr, Math.Max(1, (int)Math.Round((k + 1) * .6))), (int)(cr.X * 3 + cr.Y * 5), clock, k);
+        g.Restore(state);
     }
 
-    // 떠난 친구가 구멍 안에서 빼꼼 (YELL): 구멍 너머로 친구가 사는 자연(하늘·숲·냇물)이 보이고,
-    // 친구는 구멍 아래에서 몸의 1/3 만 올라와 눈만 깜빡깜빡. 다 올라오면 작은 하트
+    // 친구가 올라오는 바닥: 몸 너비보다 양옆 한 칸씩 더 넓게 다 뚫린 가장 아래 줄 (들쭉날쭉한 바닥 끝에서 올라오면 양옆이 잘려 귀만 보인다)
+    static int PeekFloor(Icbm.Crater cr, List<(int I, int J, bool Hole)> inner, Point ctr, int ps)
+    {
+        int c = Icbm.Cell, half = (cr.Friend == null ? 40 * ps : 30 * ps) / c / 2 + 1;
+        var holeSet = inner.Select(x => (x.I, x.J)).ToHashSet();
+        int floorJ = inner.Select(x => x.J).Distinct().OrderByDescending(j => j)
+            .FirstOrDefault(j => Enumerable.Range(-half, half * 2).All(i => holeSet.Contains((i, j)) && holeSet.Contains((i, j - 1))), 0);
+        return ctr.Y + (floorJ + 1) * c;
+    }
+
+    // 떠난 친구가 친구 구멍(자연이 보이는 구멍)에서 빼꼼 (YELL): 아래에서 몸의 1/3 만 올라와 눈만 깜빡깜빡. 다 올라오면 작은 하트
     internal static void PaintPeek(Graphics g, Sprites sp, Icbm.Peek pk, double clock, Point ctr, int k)
     {
         int c = Icbm.Cell;
@@ -524,24 +546,16 @@ public sealed class Overlay : Form
         bool blink = up >= 1 && t % 1.1 is > .8 and < .95;
         var img = sp.Get("thumb/" + pk.Species, blink ? 1 : 0, ps);
         var body = PeekBody(pk.Species, sp.Get("thumb/" + pk.Species, 0, ps));
-        // 바닥: 몸 너비보다 양옆 한 칸씩 더 넓게 다 뚫린 가장 아래 줄 (들쭉날쭉한 바닥 끝에서 올라오면 양옆이 잘려 귀만 보인다)
-        var (holeSet, half) = (inside.Select(x => (x.I, x.J)).ToHashSet(), body.Width / c / 2 + 1);
-        int floorJ = inside.Select(x => x.J).Distinct().OrderByDescending(j => j)
-            .FirstOrDefault(j => Enumerable.Range(-half, half * 2).All(i => holeSet.Contains((i, j)) && holeSet.Contains((i, j - 1))), 0);
-        int floor = ctr.Y + (floorJ + 1) * c;
-        int top = floor - (int)(body.Height / 3.0 * up), x0 = ctr.X - (body.Left + body.Width / 2);
+        int floor = PeekFloor(pk.Hole, inside, ctr, ps);
+        // 언덕 위로 귀·눈·코까지 (머리가 큰 아이들이라 몸 높이의 절반쯤이 「1/3 빼꼼」으로 보인다)
+        int top = floor - k - (int)(body.Height * .5 * up), x0 = ctr.X - (body.Left + body.Width / 2);
         var state = g.Save();
         using (var clip = new System.Drawing.Drawing2D.GraphicsPath())
         {
             foreach (var (i, j, _) in inside) clip.AddRectangle(new Rectangle(ctr.X + i * c, ctr.Y + j * c, c, c));
             g.SetClip(clip);
         }
-        int minI = inside.Min(x => x.I), maxI = inside.Max(x => x.I), minJ = inside.Min(x => x.J), maxJ = inside.Max(x => x.J);
-        var box = Rectangle.FromLTRB(ctr.X + minI * c, ctr.Y + minJ * c, ctr.X + (maxI + 1) * c, ctr.Y + (maxJ + 1) * c);
-        PaintNature(g, box, floor, (int)(pk.Hole.X * 3 + pk.Hole.Y * 5), clock, k);
-        using (var dark = new SolidBrush(Color.FromArgb(14, 16, 22))) // 열리고 닫힐 때는 칸칸이 (도트 디더)
-            foreach (var (i, j, _) in inside)
-                if (up < (Bayer(i, j) + .5) / 4) g.FillRectangle(dark, ctr.X + i * c, ctr.Y + j * c, c, c);
+        g.IntersectClip(Rectangle.FromLTRB(ctr.X - 2000, ctr.Y - 2000, ctr.X + 2000, floor - k)); // 풀 언덕 뒤에서 몸 1/3 만
         g.DrawImageUnscaled(img, x0, top - body.Top);
         g.Restore(state);
         if (up >= 1 && t % .8 < .55)
@@ -550,9 +564,6 @@ public sealed class Overlay : Form
             g.DrawImageUnscaled(heart, x0 + body.Right - heart.Width / 3, top - heart.Height * 2 / 3);
         }
     }
-
-    // 2x2 바이어 순서 (0 2 / 3 1): 반쯤 열리면 체크무늬
-    static int Bayer(int i, int j) => (i & 1) * 2 + (j & 1) * 3 - (i & j & 1) * 4;
 
     // 구멍 너머 자연: 파란 하늘과 구름, 나무숲, 흐르는 냇물, 풀밭. px 칸 도트로, 자리마다 조금씩 다르게
     static void PaintNature(Graphics g, Rectangle box, int floor, int seed, double clock, int px)
@@ -595,6 +606,13 @@ public sealed class Overlay : Form
             Fill(Color.FromArgb(86, 156, 92), x, mid - px, px, px); // 둑
             Fill(Color.FromArgb(70, 146, 222), x, mid, px, bank);
             if ((col + step) % 6 == 0) Fill(Color.FromArgb(196, 230, 252), x, mid + px * ((col / 6 + seed) % Math.Max(1, bank / px)), px * 2, px);
+        }
+        // 앞 풀 언덕: 친구는 이 뒤에서 빼꼼한다 (언덕 위 줄이 floor)
+        for (int x = box.Left; x < box.Right; x += px)
+        {
+            int col = (x - box.Left) / px, bump = (int)(Math.Sin(col * .5 + seed) * 1.2) * px;
+            Fill(Color.FromArgb(92, 172, 78), x, floor - px + bump, px, box.Bottom - floor + px);
+            if ((col + seed) % 3 == 0) Fill(Color.FromArgb(150, 214, 118), x, floor - px * 2 + bump, px, px); // 풀잎
         }
         // 가까운 나무 두 그루 (양옆)
         foreach (int side in new[] { -1, 1 })

@@ -496,28 +496,32 @@ static class Sim
         }
         Expect(fallTo - fallFrom is >= Icbm.FallMinSec - .05 and <= Icbm.FallMaxSec + .1, $"천천히 떨어진다: {fallTo - fallFrom:F2}초");
 
-        // 구멍에서 떠난 친구가 가끔 빼꼼: 있는 구멍에서만, 고치는 구멍에서는 쏙, 친구가 없으면 안 나온다
-        int peeks = 0;
-        for (int seed = 0; seed < 6; seed++)
+        // 떠난 친구 구멍: 터질 때 정해지고(자연이 바로 보인다), 그 구멍에서만 친구가 빼꼼. 고치는 구멍에서는 쏙, 친구가 없으면 다 검은 구멍
+        int friendHoles = 0, allHoles = 0, peekStarts = 0;
+        for (int seed = 0; seed < 8; seed++)
         {
             var pk = new Icbm(screens, 900, 1000, 3, new Random(seed)) { Friends = new[] { "hamster", "otter" } };
-            pk.OnEvent = e => peeks += e == "peek" ? 1 : 0;
+            var seenHoles = new HashSet<Icbm.Crater>();
             for (int i = 0; i < 5; i++) pk.Launch();
             for (int i = 0; i < 60 * 600 && !pk.Finished; i++)
             {
+                int before = pk.Peeks.Count;
                 pk.Update(1 / 60.0, active);
-                Expect(pk.Peeks.Count <= 1 && pk.Peeks.All(p => pk.Craters.Contains(p.Hole) && pk.Friends.Contains(p.Species) && pk.Clock - p.Hole.At >= Icbm.PeekAfter),
-                    $"빼꼼은 하나씩, 있는 구멍에서, 떠난 친구만 (seed {seed})");
+                foreach (var c in pk.Craters) if (seenHoles.Add(c)) { allHoles++; if (c.Friend != null) friendHoles++; Expect(c.Friend == null || pk.Friends.Contains(c.Friend), "떠난 친구 중 하나"); }
+                peekStarts += Math.Max(0, pk.Peeks.Count - before);
+                Expect(pk.Peeks.All(p => pk.Craters.Contains(p.Hole) && p.Hole.Friend == p.Species && pk.Clock - p.Hole.At >= Icbm.FirstPeek - 1e-6)
+                    && pk.Peeks.GroupBy(p => p.Hole).All(g => g.Count() == 1), $"빼꼼은 친구 구멍에서 그 친구만, 구멍마다 하나씩 (seed {seed})");
                 Expect(!(pk.Stage == Icbm.Phase.Repair && pk.Craters.Count == 1 && pk.Peeks.Count > 0), $"고치는 구멍에서는 안 나온다 (seed {seed})");
             }
         }
-        Expect(peeks >= 4, $"구멍이 있으면 가끔 빼꼼: {peeks}번");
+        Expect(friendHoles > 0 && friendHoles < allHoles && Math.Abs(friendHoles / (double)allHoles - Icbm.FriendChance) < .25,
+            $"구멍 일부만 친구 구멍: {friendHoles}/{allHoles}");
+        Expect(peekStarts >= friendHoles, $"친구 구멍에서는 빼꼼한다: {peekStarts}번 / 친구 구멍 {friendHoles}");
         var lonely = new Icbm(screens, 900, 1000, 3, new Random(1));
-        int lonelyPeeks = 0;
-        lonely.OnEvent = e => lonelyPeeks += e == "peek" ? 1 : 0;
         for (int i = 0; i < 5; i++) lonely.Launch();
-        for (int i = 0; i < 60 * 600 && !lonely.Finished; i++) lonely.Update(1 / 60.0, active);
-        Expect(lonelyPeeks == 0, "떠난 친구가 없으면 아무도 안 나온다");
+        bool anyFriend = false;
+        for (int i = 0; i < 60 * 600 && !lonely.Finished; i++) { lonely.Update(1 / 60.0, active); anyFriend |= lonely.Craters.Any(c => c.Friend != null) || lonely.Peeks.Count > 0; }
+        Expect(!anyFriend, "떠난 친구가 없으면 다 검은 구멍, 아무도 안 나온다");
         Expect(Icbm.Rise(0) == 0 && Icbm.Rise(1.4) == 1 && Icbm.Rise(Icbm.PeekSec) == 0, "빼꼼: 올라왔다가 내려간다");
 
         // 고치기 전에 또 쏘면 줄을 서고, 구멍은 다섯까지. 다 고치면 끝난다

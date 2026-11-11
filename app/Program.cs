@@ -97,16 +97,18 @@ static class Program
             while (ic.Craters.Count == 0) ic.Update(1 / 60.0, null);
             var cr = ic.Craters[0];
             g.TranslateTransform(1920, 0);
-            foreach (var (dx, rise) in new[] { (-600, .25), (-200, 1.2), (200, 1.9) }) // 열리는 중, 다 올라옴, 눈 깜빡
+            // 위: 친구 구멍 — 터지자마자(아직 안 나옴), 다 올라옴, 눈 깜빡
+            foreach (var (dx, at) in new[] { (-600, double.NaN), (-200, 1.2), (200, .85) })
             {
-                var c = new Icbm.Crater { X = 960 + dx, Y = 380, R0 = cr.R0, R = cr.R0 };
-                Overlay.PaintCrater(g, c, new Point((int)c.X, (int)c.Y), rim, hole);
-                Overlay.PaintPeek(g, sp, new Icbm.Peek { Hole = c, Species = "hamster", At = 0 }, rise, new Point((int)c.X, (int)c.Y), k);
+                var c = new Icbm.Crater { X = 960 + dx, Y = 380, R0 = cr.R0, R = cr.R0, Friend = "hamster" };
+                Overlay.PaintCrater(g, c, new Point((int)c.X, (int)c.Y), rim, hole, 3.3, k);
+                if (!double.IsNaN(at)) Overlay.PaintPeek(g, sp, new Icbm.Peek { Hole = c, Species = "hamster", At = 0 }, at == .85 ? 1.95 : at, new Point((int)c.X, (int)c.Y), k);
             }
-            foreach (var (dx, frac) in new[] { (-600, 1.0), (-200, .66), (200, .33), (560, 1.0) }) // 고치며 줄어드는 구멍, 다른 자리의 구멍
+            // 아래: 그냥 검은 구멍, 고치며 줄어드는 친구 구멍
+            foreach (var (dx, frac, friend) in new[] { (-600, 1.0, (string?)null), (-200, .66, "hamster"), (200, .33, "hamster"), (560, 1.0, null) })
             {
-                var c = new Icbm.Crater { X = 960 + dx + (frac == 1 && dx > 0 ? 37 : 0), Y = 820, R0 = cr.R0, R = Math.Ceiling(cr.R0 * frac / Icbm.Cell) * Icbm.Cell };
-                Overlay.PaintCrater(g, c, new Point((int)c.X, (int)c.Y), rim, hole);
+                var c = new Icbm.Crater { X = 960 + dx + (dx > 300 ? 37 : 0), Y = 820, R0 = cr.R0, R = Math.Ceiling(cr.R0 * frac / Icbm.Cell) * Icbm.Cell, Friend = friend };
+                Overlay.PaintCrater(g, c, new Point((int)c.X, (int)c.Y), rim, hole, 3.3, k);
             }
             g.ResetTransform();
             bmp.Save(args[1]);

@@ -5,7 +5,7 @@ namespace Bolok;
 // 판을 깔지 않아 일하던 창은 그대로 쓴다. 화면과 무관한 규칙이라 --selfcheck 로 검사한다
 public sealed class Icbm
 {
-    public sealed class Crater { public double X, Y, R0, R, At; }
+    public sealed class Crater { public double X, Y, R0, R, At, NextPeek; public string? Friend; } // Friend: 떠난 친구가 사는 자연이 보이는 구멍
     public sealed class Peek { public Crater Hole = null!; public string Species = ""; public double At; }
     public sealed class Blast { public double X, Y, At; }
     public sealed class Bit { public double X, Y, Vx, Vy, Life; public int Size; public bool Smoke; }
@@ -15,8 +15,9 @@ public sealed class Icbm
     public const double ButtonSec = .5, PressSec = .7, AwaySec = 1.2, BoomSec = 1.5, RepairSec = 3, GoSpeed = 100, CraterR = 108, Gravity = 1400;
     // 떨어질 땐 콰콰콰콰 울리며 천천히 (YELL: 너무 빨랐다). 거리에 따라 1.6~2.6초. 글자 없이 떨림·불꽃·소리로만
     public const double FallSpeed = 650, FallMinSec = 1.6, FallMaxSec = 2.6;
-    // 구멍에서 가끔 떠난 친구가 빼꼼 (YELL). 구멍 하나에 평균 8초에 한 번, 버섯구름이 걷힌 뒤부터, 한 번에 하나만. 몸은 1/3 만 나온다 (그리는 쪽)
-    public const double PeekSec = 3.6, PeekEvery = 8, PeekAfter = 2; // 올라와서 눈을 몇 번 깜빡일 만큼
+    // 떠난 친구 구멍 (YELL): 터질 때 정한다. 그 구멍은 터지자마자 친구가 사는 자연(하늘·숲·냇물)이 보이고, 친구가 몇 초마다 빼꼼한다.
+    // 아닌 구멍은 그냥 검은 구멍. 빼꼼: 몸 1/3 만 올라와 눈만 깜빡 (그리는 쪽), 3.6초
+    public const double FriendChance = .4, PeekSec = 3.6, FirstPeek = 1, PeekGapMin = 1.5, PeekGapMax = 4;
     public const int MaxCraters = 5, Cell = 12;
     public const double NearChance = .25;   // 가끔은 볼록이 근처에 떨어져서 볼록이도 날아간다 (YELL)
     // 버섯구름 그림(40칸, 배율 3배, 바닥 가운데가 터진 자리): 위로 38칸, 옆으로 17칸까지 퍼진다. 화면에서 잘리지 않게 그만큼 띄워 떨어뜨린다
@@ -38,7 +39,7 @@ public sealed class Icbm
     public bool Finished => Stage == Phase.Done && Craters.Count == 0 && Queued == 0;
     readonly Random rng;
     readonly double sf, cell;
-    double phaseAt, puffAt, fallSec = 1, nextPeek;
+    double phaseAt, puffAt, fallSec = 1;
     Crater? job;
     readonly World world;                              // 모니터 사이 빈 곳으로는 안 간다: 맞닿은 곳(문)으로 건넌다
     readonly List<(double X, double Y)> path = new();
@@ -176,7 +177,9 @@ public sealed class Icbm
                 if (Clock - puffAt > .02) { puffAt = Clock; Smoke(MX - MVx * .03, MY - MVy * .03); } // 꼬리에 연기를 굵게
                 if (left > step) { MX += MVx * dt; MY += MVy * dt; break; }
                 (MissileOn, HasTarget) = (false, false);
-                Craters.Add(new Crater { X = TX, Y = TY, R0 = CraterR * sf, R = CraterR * sf, At = Clock });
+                var hole = new Crater { X = TX, Y = TY, R0 = CraterR * sf, R = CraterR * sf, At = Clock, NextPeek = Clock + FirstPeek };
+                if (Friends.Count > 0 && rng.NextDouble() < FriendChance) hole.Friend = Friends[rng.Next(Friends.Count)];
+                Craters.Add(hole);
                 Blasts.Add(new Blast { X = TX, Y = TY, At = Clock });
                 for (int i = 0; i < 40; i++)
                 {
@@ -251,16 +254,18 @@ public sealed class Icbm
         if (Stage is Phase.ToCrater or Phase.Repair) Go(Phase.ToCrater);
     }
 
-    // 떠난 친구가 구멍에서 빼꼼. 고치는 구멍에서는 쏙 들어간다
+    // 친구 구멍에서 친구가 빼꼼: 올라왔다 들어가고, 조금 쉬었다가 또. 고치는 구멍에서는 쏙 들어간다. 처음 나올 때만 알린다 (볼록이가 반가워한다)
     void PeekOut(double dt)
     {
         Peeks.RemoveAll(p => Clock - p.At > PeekSec || !Craters.Contains(p.Hole) || (Stage == Phase.Repair && p.Hole == job));
-        if (Peeks.Count > 0 || Friends.Count == 0 || Clock < nextPeek) return;
-        var holes = Craters.Where(c => Clock - c.At > PeekAfter && !(Stage == Phase.Repair && c == job)).ToList();
-        if (holes.Count == 0 || rng.NextDouble() >= dt * holes.Count / PeekEvery) return;
-        Peeks.Add(new Peek { Hole = holes[rng.Next(holes.Count)], Species = Friends[rng.Next(Friends.Count)], At = Clock });
-        nextPeek = Clock + PeekSec + 1;
-        OnEvent?.Invoke("peek");
+        foreach (var c in Craters)
+        {
+            if (c.Friend == null || Clock < c.NextPeek || (Stage == Phase.Repair && c == job) || Peeks.Any(p => p.Hole == c)) continue;
+            bool first = c.NextPeek == c.At + FirstPeek;
+            Peeks.Add(new Peek { Hole = c, Species = c.Friend, At = Clock });
+            c.NextPeek = Clock + PeekSec + PeekGapMin + rng.NextDouble() * (PeekGapMax - PeekGapMin);
+            if (first) OnEvent?.Invoke("peek");
+        }
     }
 
     void Next()
