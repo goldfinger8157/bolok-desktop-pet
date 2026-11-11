@@ -96,8 +96,8 @@ public sealed class Overlay : Form
         {
             int k = b.Scale;
             r.Add(Client(new Rectangle((int)ic.ButtonX - 20 * k, (int)ic.ButtonY - 26 * k, 40 * k, 28 * k)));
-            if (ic.MissileOn) r.Add(Client(Rectangle.Inflate(new Rectangle((int)ic.MX, (int)ic.MY, 0, 0), ic.Stage == Icbm.Phase.Fall ? 110 * k : 34 * k, ic.Stage == Icbm.Phase.Fall ? 60 * k : 34 * k))); // 떨어질 땐 옆 글자까지
-            foreach (var pk in ic.Peeks) r.Add(Client(Rectangle.Inflate(new Rectangle((int)pk.Hole.X, (int)pk.Hole.Y, 0, 0), (int)pk.Hole.R0 + 14, (int)pk.Hole.R0 + 30 * k)));
+            if (ic.MissileOn) r.Add(Client(Rectangle.Inflate(new Rectangle((int)ic.MX, (int)ic.MY, 0, 0), ic.Stage == Icbm.Phase.Fall ? 64 * k : 34 * k, ic.Stage == Icbm.Phase.Fall ? 64 * k : 34 * k))); // 떨어질 땐 꼬리 불꽃까지
+            foreach (var pk in ic.Peeks) r.Add(Client(Rectangle.Inflate(new Rectangle((int)pk.Hole.X, (int)pk.Hole.Y, 0, 0), CraterReach(pk.Hole), CraterReach(pk.Hole))));
             if (ic.HasTarget) r.Add(Client(Rectangle.Inflate(new Rectangle((int)ic.TX, (int)ic.TY, 0, 0), 24 * k, 24 * k)));
             foreach (var bit in ic.Bits) r.Add(Client(new Rectangle((int)bit.X - bit.Size, (int)bit.Y - bit.Size, bit.Size * 2, bit.Size * 2)));
             foreach (var bl in ic.Blasts) r.Add(Client(new Rectangle((int)bl.X - 62 * k, (int)bl.Y - 118 * k, 124 * k, 124 * k)));
@@ -169,7 +169,7 @@ public sealed class Overlay : Form
             {
                 (icbmSeen, icbmVersion) = (ic, ic.Version);
                 once.AddRange(craterRects);
-                craterRects = ic.Craters.Select(c => Client(Rectangle.Inflate(new Rectangle((int)c.X, (int)c.Y, 0, 0), (int)c.R0 + 14, (int)c.R0 + 14))).ToList();
+                craterRects = ic.Craters.Select(c => Client(Rectangle.Inflate(new Rectangle((int)c.X, (int)c.Y, 0, 0), CraterReach(c), CraterReach(c)))).ToList();
                 once.AddRange(craterRects);
             }
         }
@@ -458,7 +458,7 @@ public sealed class Overlay : Form
         if (ic.MissileOn)
         {
             var m = ToClient(ic.MX, ic.MY);
-            if (ic.Stage == Icbm.Phase.Fall) m.Offset(Random.Shared.Next(-2, 3) * k / 2, Random.Shared.Next(-2, 3) * k / 2); // 우르르 떨린다
+            if (ic.Stage == Icbm.Phase.Fall) m.Offset(Random.Shared.Next(-3, 4) * k / 2, Random.Shared.Next(-3, 4) * k / 2); // 우르르 덜덜 떨린다
             PaintMissile(g, sp, ic, m, k);
         }
         foreach (var bl in ic.Blasts) // 버섯구름: 바닥 가운데(20, 38)를 터진 자리에
@@ -467,50 +467,78 @@ public sealed class Overlay : Form
 
     // ── ICBM 그리기 (창 좌표만 받는다. --icbm-scene 으로 화면 밖에서도 그려 본다) ──
 
-    // 구멍: 12px 칸으로 계단진 동그라미, 가장자리는 그을린 갈색
-    internal static void PaintCrater(Graphics g, Icbm.Crater cr, Point ctr, Brush rim, Brush hole)
+    // 구멍 모양: 동그라미가 아니라 찢긴 모양. 자리마다 다르고(터진 자리로 정한다), 고치며 줄어도 모양은 그대로
+    // 칸(12px): Hole = 뻥 뚫린 안쪽, 아니면 그을린 가장자리. 바깥으로 금(6px 칸)이 몇 줄 간다
+    internal static (List<(int I, int J, bool Hole)> Cells, List<(int X, int Y)> Cracks) CraterShape(Icbm.Crater cr)
     {
-        int c = Icbm.Cell, rows = (int)(cr.R / c);
-        for (int j = -rows; j < rows; j++)
+        int c = Icbm.Cell;
+        var cells = new List<(int, int, bool)>();
+        var cracks = new List<(int, int)>();
+        if (cr.R < c) return (cells, cracks);
+        var rng = new Random((int)(cr.X * 7 + cr.Y * 13));
+        double p3 = rng.NextDouble() * 6.3, p5 = rng.NextDouble() * 6.3, p7 = rng.NextDouble() * 6.3, p11 = rng.NextDouble() * 6.3;
+        double F(double a) => 1 + .13 * Math.Sin(3 * a + p3) + .09 * Math.Sin(5 * a + p5) + .07 * Math.Sin(7 * a + p7) + .06 * Math.Sin(11 * a + p11);
+        int n = (int)Math.Ceiling(cr.R * 1.4 / c) + 1;
+        for (int j = -n; j <= n; j++)
+            for (int i = -n; i <= n; i++)
+            {
+                double x = (i + .5) * c, y = (j + .5) * c, d = Math.Sqrt(x * x + y * y), r = cr.R * F(Math.Atan2(y, x));
+                if (d < r - c) cells.Add((i, j, true));
+                else if (d < r) cells.Add((i, j, false));
+            }
+        int h = c / 2, count = 3 + rng.Next(3);
+        for (int m = 0; m < count; m++) // 금: 가장자리에서 바깥으로 지그재그
         {
-            double dy = (j + .5) * c;
-            int hw = (int)Math.Round(Math.Sqrt(Math.Max(0, cr.R * cr.R - dy * dy)) / c) * c;
-            if (hw <= 0) continue;
-            g.FillRectangle(rim, ctr.X - hw, ctr.Y + j * c, hw * 2, c);
-            if (j > -rows && j < rows - 1 && hw > c) g.FillRectangle(hole, ctr.X - hw + c, ctr.Y + j * c, hw * 2 - 2 * c, c);
+            double a = rng.NextDouble() * Math.PI * 2, r = cr.R * F(a) - h, side = 0;
+            int len = (int)((5 + rng.Next(6)) * cr.R / Math.Max(cr.R0, 1));
+            for (int t = 0; t < len; t++, r += h)
+            {
+                side = Math.Clamp(side + (rng.NextDouble() - .5) * 1.2, -1.5, 1.5);
+                double x = Math.Cos(a) * r - Math.Sin(a) * side * h, y = Math.Sin(a) * r + Math.Cos(a) * side * h;
+                cracks.Add(((int)Math.Floor(x / h) * h, (int)Math.Floor(y / h) * h));
+            }
         }
+        return (cells, cracks);
     }
 
-    // 떠난 친구가 구멍 안에서 빼꼼: 구멍 안쪽(가장자리 뺀 계단 모양)만 보이게 잘라서, 아래에서 올라온다. 다 올라오면 반가워서 하트
+    // 구멍 + 금이 닿을 수 있는 넓이 (다시 칠할 자리)
+    internal static int CraterReach(Icbm.Crater cr) => (int)(cr.R0 * 1.4) + 6 * Icbm.Cell;
+
+    internal static void PaintCrater(Graphics g, Icbm.Crater cr, Point ctr, Brush rim, Brush hole)
+    {
+        int c = Icbm.Cell;
+        var (cells, cracks) = CraterShape(cr);
+        foreach (var (i, j, inside) in cells) g.FillRectangle(inside ? hole : rim, ctr.X + i * c, ctr.Y + j * c, c, c);
+        foreach (var (x, y) in cracks) g.FillRectangle(rim, ctr.X + x, ctr.Y + y, c / 2, c / 2);
+    }
+
+    // 떠난 친구가 구멍 안에서 빼꼼: 구멍 안쪽만 보이게 잘라서, 구멍 바닥에서 귀와 눈까지만(몸의 1/3쯤) 올라온다 (YELL). 다 올라오면 반가워서 하트
     internal static void PaintPeek(Graphics g, Sprites sp, Icbm.Peek pk, double clock, Point ctr, int k)
     {
-        var cr = pk.Hole;
-        int c = Icbm.Cell, inner = (int)(cr.R - c);
+        int c = Icbm.Cell;
         double up = Icbm.Rise(clock - pk.At);
-        if (inner <= c || up <= 0) return;
+        var inside = CraterShape(pk.Hole).Cells.Where(x => x.Hole).ToList();
+        if (inside.Count < 4 || up <= 0) return;
         var img = sp.Get("thumb/" + pk.Species, 0, k + 1); // 구멍이 커서 한 단계 크게
         var body = PeekBody(pk.Species, img);
+        // 바닥: 구멍이 몸 너비의 70% 넘게 뚫린 가장 아래 줄 (들쭉날쭉한 바닥 끝에서 올라오면 양옆이 잘려 귀만 보인다)
+        var (holeSet, half) = (inside.Select(x => (x.I, x.J)).ToHashSet(), Math.Max(1, body.Width / c / 2));
+        int floorJ = inside.Select(x => x.J).Distinct().OrderByDescending(j => j)
+            .FirstOrDefault(j => Enumerable.Range(-half, half * 2).Count(i => holeSet.Contains((i, j))) >= half * 2 * .7, 0);
+        int floor = ctr.Y + (floorJ + 1) * c;
+        int top = floor - (int)(body.Height * .45 * up), x0 = ctr.X - (body.Left + body.Width / 2); // 귀와 눈까지만 (몸의 1/3 남짓)
         var state = g.Save();
-        using (var hole = new System.Drawing.Drawing2D.GraphicsPath())
+        using (var clip = new System.Drawing.Drawing2D.GraphicsPath())
         {
-            int rows = (int)(cr.R / c);
-            for (int j = -rows + 1; j < rows - 1; j++)
-            {
-                double dy = (j + .5) * c;
-                int hw = (int)Math.Round(Math.Sqrt(Math.Max(0, cr.R * cr.R - dy * dy)) / c) * c - c;
-                if (hw > 0) hole.AddRectangle(new Rectangle(ctr.X - hw, ctr.Y + j * c, hw * 2, c));
-            }
-            g.SetClip(hole);
+            foreach (var (i, j, _) in inside) clip.AddRectangle(new Rectangle(ctr.X + i * c, ctr.Y + j * c, c, c));
+            g.SetClip(clip);
         }
-        // 머리 꼭대기가 구멍 바닥(안 보임)에서 구멍 가운데보다 조금 위까지 올라온다
-        int top = ctr.Y + inner - (int)((inner * 1.3) * up);
-        int x = ctr.X - (body.Left + body.Width / 2);
-        g.DrawImageUnscaled(img, x, top - body.Top);
+        g.DrawImageUnscaled(img, x0, top - body.Top);
         g.Restore(state);
         if (up >= 1 && (clock - pk.At) % .8 < .55)
         {
             var heart = sp.Get("icon/heart", 0, k);
-            g.DrawImageUnscaled(heart, x + body.Right - heart.Width / 3, top - heart.Height / 2);
+            g.DrawImageUnscaled(heart, x0 + body.Right - heart.Width / 3, top - heart.Height);
         }
     }
 
@@ -519,38 +547,27 @@ public sealed class Overlay : Form
     static Rectangle PeekBody(string species, Bitmap img) =>
         peekBodies.TryGetValue((species, img.Width), out var r) ? r : peekBodies[(species, img.Width)] = Ui.Opaque(img, 0);
 
-    // 미사일 (가는 쪽으로 기울여서). 떨어질 땐 옆에 「콰콰콰콰~」
+    // 미사일 (가는 쪽으로 기울여서). 떨어질 땐 꼬리에서 불꽃이 일렁인다 (글자는 쓰지 않는다: 어느 나라 사람이 봐도 같게)
+    static readonly Color[] flame = { Color.FromArgb(255, 236, 120), Color.FromArgb(255, 170, 50), Color.FromArgb(232, 80, 40) };
     internal static void PaintMissile(Graphics g, Sprites sp, Icbm ic, Point m, int k)
     {
+        if (ic.Stage == Icbm.Phase.Fall)
+        {
+            double len = Math.Max(1, Math.Sqrt(ic.MVx * ic.MVx + ic.MVy * ic.MVy)), ux = ic.MVx / len, uy = ic.MVy / len;
+            for (int f = 0; f < 7; f++) // 꼬리 쪽으로 갈수록 작고 붉게, 매번 조금씩 다르게
+            {
+                double back = (16 + f * 5 + Random.Shared.Next(4)) * k, wob = (Random.Shared.NextDouble() - .5) * 6 * k;
+                int size = Math.Max(k, (9 - f) * k + Random.Shared.Next(-1, 2) * k);
+                int x = m.X - (int)(ux * back) + (int)(-uy * wob), y = m.Y - (int)(uy * back) + (int)(ux * wob);
+                using var br = new SolidBrush(flame[Math.Min(2, f / 2 + Random.Shared.Next(2))]);
+                g.FillRectangle(br, x - size / 2, y - size / 2, size, size);
+            }
+        }
         var state = g.Save();
         g.TranslateTransform(m.X, m.Y);
         g.RotateTransform((float)(Math.Atan2(ic.MVy, ic.MVx) * 180 / Math.PI));
         g.DrawImageUnscaled(sp.Get("game/missile", 0, 2 * k), -39 * k, -39 * k);
         g.Restore(state);
-        if (ic.Stage == Icbm.Phase.Fall) Kwa(g, ic, m, k);
-    }
-
-    // 떨어지는 미사일 옆 「콰 → 콰콰 → 콰콰콰 → 콰콰콰콰~」. 노란 글자에 짙은 테두리, 덜덜 떨린다
-    static void Kwa(Graphics g, Icbm ic, Point m, int k)
-    {
-        int n = Math.Min(4, 1 + (int)(ic.FallT * 4));
-        string text = new string('콰', n) + (ic.FallT > .8 ? "~" : "");
-        using var path = new System.Drawing.Drawing2D.GraphicsPath();
-        using var family = new FontFamily("Malgun Gothic");
-        path.AddString(text, family, (int)FontStyle.Bold, 15 * k, PointF.Empty, StringFormat.GenericTypographic);
-        var box = path.GetBounds();
-        bool left = ic.MVx > 0; // 미사일이 오른쪽으로 가면 글자는 왼쪽(꼬리 쪽)에
-        float x = left ? m.X - 30 * k - box.Width : m.X + 30 * k, y = m.Y - 34 * k;
-        using var move = new System.Drawing.Drawing2D.Matrix();
-        move.Translate(x - box.X + Random.Shared.Next(-2, 3) * k / 2f, y - box.Y + Random.Shared.Next(-2, 3) * k / 2f);
-        move.RotateAt(left ? -8 : 8, new PointF(box.X + box.Width / 2, box.Y + box.Height / 2), System.Drawing.Drawing2D.MatrixOrder.Prepend);
-        path.Transform(move);
-        var mode = g.SmoothingMode;
-        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None; // 투명색(마젠타) 창이라 부드럽게 그리면 분홍 테두리가 남는다. 도트처럼 각지게
-        using (var edge = new Pen(Color.FromArgb(70, 24, 10), 3.2f * k) { LineJoin = System.Drawing.Drawing2D.LineJoin.Round })
-            g.DrawPath(edge, path);
-        using (var fill = new SolidBrush(Color.FromArgb(255, 210, 60))) g.FillPath(fill, path);
-        g.SmoothingMode = mode;
     }
 
     // ── 미니건 ──

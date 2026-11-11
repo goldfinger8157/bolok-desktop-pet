@@ -13,9 +13,9 @@ public sealed class Icbm
 
     // 고치러 갈 땐 뛰지 않는다: 평소 걸음(70)보다 조금 빠르게 (YELL)
     public const double ButtonSec = .5, PressSec = .7, AwaySec = 1.2, BoomSec = 1.5, RepairSec = 3, GoSpeed = 100, CraterR = 108, Gravity = 1400;
-    // 떨어질 땐 「콰콰콰콰~」 하며 천천히 (YELL: 너무 빨랐다). 거리에 따라 1.6~2.6초
+    // 떨어질 땐 콰콰콰콰 울리며 천천히 (YELL: 너무 빨랐다). 거리에 따라 1.6~2.6초. 글자 없이 떨림·불꽃·소리로만
     public const double FallSpeed = 650, FallMinSec = 1.6, FallMaxSec = 2.6;
-    // 구멍에서 가끔 떠난 친구가 빼꼼 (YELL). 구멍 하나에 평균 8초에 한 번, 버섯구름이 걷힌 뒤부터, 한 번에 하나만
+    // 구멍에서 가끔 떠난 친구가 빼꼼 (YELL). 구멍 하나에 평균 8초에 한 번, 버섯구름이 걷힌 뒤부터, 한 번에 하나만. 몸은 1/3 만 나온다 (그리는 쪽)
     public const double PeekSec = 2.8, PeekEvery = 8, PeekAfter = 2;
     public const int MaxCraters = 5, Cell = 12;
     public const double NearChance = .25;   // 가끔은 볼록이 근처에 떨어져서 볼록이도 날아간다 (YELL)
@@ -54,7 +54,7 @@ public sealed class Icbm
     double Top => Screens.Min(s => s.Top);
     void Go(Phase p) => (Stage, phaseAt) = (p, Clock);
     double Since => Clock - phaseAt;
-    public double FallT => Stage == Phase.Fall ? Math.Clamp(Since / fallSec, 0, 1) : 0; // 떨어진 정도 0~1 (콰콰콰콰 글자 수)
+    public double FallT => Stage == Phase.Fall ? Math.Clamp(Since / fallSec, 0, 1) : 0; // 떨어진 정도 0~1
 
     // 빼꼼 올라온 정도 0~1: 0.5초 올라와서 있다가 0.5초 내려간다
     public static double Rise(double t)

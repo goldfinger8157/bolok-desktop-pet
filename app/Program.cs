@@ -78,7 +78,7 @@ static class Program
             return 0;
         }
 
-        if (args.Length == 2 && args[0] == "--icbm-scene") // ICBM 이 콰콰콰 떨어지는 장면과 구멍에서 빼꼼하는 장면 (화면을 띄우지 않는다)
+        if (args.Length == 2 && args[0] == "--icbm-scene") // ICBM 이 떨어지는 장면과 구멍(크기별)·빼꼼 장면 (화면을 띄우지 않는다)
         {
             var sp = Sprites.Embedded();
             const int k = 3;
@@ -97,11 +97,16 @@ static class Program
             while (ic.Craters.Count == 0) ic.Update(1 / 60.0, null);
             var cr = ic.Craters[0];
             g.TranslateTransform(1920, 0);
-            foreach (var (dx, rise) in new[] { (-560, .3), (-180, 1.2), (200, 2.5) }) // 올라오는 중, 다 올라옴, 내려가는 중
+            foreach (var (dx, rise) in new[] { (-600, .3), (-200, 1.2), (200, 2.5) }) // 올라오는 중, 다 올라옴, 내려가는 중
             {
-                var c = new Icbm.Crater { X = 960 + dx, Y = 600, R0 = cr.R0, R = cr.R0 };
+                var c = new Icbm.Crater { X = 960 + dx, Y = 380, R0 = cr.R0, R = cr.R0 };
                 Overlay.PaintCrater(g, c, new Point((int)c.X, (int)c.Y), rim, hole);
                 Overlay.PaintPeek(g, sp, new Icbm.Peek { Hole = c, Species = "hamster", At = 0 }, rise, new Point((int)c.X, (int)c.Y), k);
+            }
+            foreach (var (dx, frac) in new[] { (-600, 1.0), (-200, .66), (200, .33), (560, 1.0) }) // 고치며 줄어드는 구멍, 다른 자리의 구멍
+            {
+                var c = new Icbm.Crater { X = 960 + dx + (frac == 1 && dx > 0 ? 37 : 0), Y = 820, R0 = cr.R0, R = Math.Ceiling(cr.R0 * frac / Icbm.Cell) * Icbm.Cell };
+                Overlay.PaintCrater(g, c, new Point((int)c.X, (int)c.Y), rim, hole);
             }
             g.ResetTransform();
             bmp.Save(args[1]);
