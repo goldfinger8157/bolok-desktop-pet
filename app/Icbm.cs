@@ -221,6 +221,7 @@ public sealed class Icbm
                 (X, Y) = (gx, gy);
                 if (path.Count > 0) { path.RemoveAt(0); break; }
                 Go(Phase.Repair);
+                Peeks.RemoveAll(p => p.Hole == job); // 고치러 오면 빼꼼하던 친구는 쏙 들어간다
                 break;
             }
             case Phase.Repair: // 뚝딱뚝딱. 구멍이 한 칸씩 줄어든다
