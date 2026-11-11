@@ -17,12 +17,19 @@ if game=$(python3 tools/playing.py); then
   for _ in $(seq 1 300); do python3 tools/playing.py >/dev/null || break; sleep 2; done
 fi
 
-# grep -q 를 쓰면 일찍 끝나서 pipefail 이 "없음"으로 착각한다
-running() { tasklist.exe /FI "IMAGENAME eq Bolok.exe" 2>/dev/null | grep Bolok.exe >/dev/null; }
-if running; then
+# 개발 폴더(run\bin-*)에서 뜬 볼록이만 다룬다. 받은 판(배포용 exe)은 저장도 따로라 절대 끄지 않는다
+pids() {
+  powershell.exe -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='Bolok.exe'\" | ForEach-Object { \$_.ProcessId.ToString() + ' ' + [int](\$_.ExecutablePath -like '*\\run\\bin-*') }" 2>/dev/null | tr -d '\r'
+}
+dev_pids() { pids | awk '$2 == 1 { print $1 }'; }
+other_pids() { pids | awk '$2 == 0 { print $1 }'; }
+if [ -n "$(other_pids)" ]; then
+  echo '받은 판 볼록이가 떠 있어요 (한 번에 하나만 떠요). 그걸 종료한 뒤 다시 해 주세요'; exit 1
+fi
+if [ -n "$(dev_pids)" ]; then
   echo quit >> run/cmd.txt
-  for _ in 1 2 3 4 5 6 7 8 9 10; do running || break; sleep .5; done
-  running && taskkill.exe /IM Bolok.exe /F >/dev/null 2>&1
+  for _ in 1 2 3 4 5 6 7 8 9 10; do [ -z "$(dev_pids)" ] && break; sleep .5; done
+  for p in $(dev_pids); do taskkill.exe /PID "$p" /F >/dev/null 2>&1; done
 fi
 
 echo "$next" > run/slot
