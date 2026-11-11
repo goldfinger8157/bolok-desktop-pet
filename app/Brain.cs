@@ -276,8 +276,10 @@ public sealed class Brain
         next = Now + 1.5;
     }
 
-    public void Throw(double fx, double fy)
+    // hard: 속도와 상관없이 세게 던진 것처럼 (내려앉으면 어지러워한다). ICBM 폭발에 날아갈 때
+    public void Throw(double fx, double fy, bool hard = false)
     {
+        if (hard) dizzyNext = true;
         double speed = Math.Sqrt(fx * fx + fy * fy), max = K.ThrowMaxSpeed * S;
         if (speed > max) { fx *= max / speed; fy *= max / speed; speed = max; }
         if (P.Asleep) P.Act(K, "wake");

@@ -666,7 +666,7 @@ public sealed class PetForm : Form
                 case "press": Sfx.Play("empty"); break;
                 case "launch": Sfx.Play("shotgun"); break;
                 case "boom": Sfx.Play("boom"); b.Emote("bang", 1); break;
-                case "blown": b.Throw(ic.BlownVx, ic.BlownVy); break; // 내려앉으면 거기서부터 고치러 간다
+                case "blown": b.Throw(ic.BlownVx, ic.BlownVy, hard: true); break; // 어지러워하다가 거기서부터 고치러 간다
                 case "nowhere": b.Say(3, "떨어뜨릴 곳이 없어요"); break;
                 case "repaired": b.P.Energy = Math.Max(0, b.P.Energy - 4); b.Emote("spark", .8); break; // 일은 기운이 든다
             }

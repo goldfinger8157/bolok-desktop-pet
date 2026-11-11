@@ -42,11 +42,11 @@ static class Sim
                $"최저 포만 {r.MinFull:F0} 기분 {r.MinMood:F0} 첫 입 {first}";
     }
 
-    static (Brain, double Floor) Flight(Tuning k, double vx, double vy)
+    static (Brain, double Floor) Flight(Tuning k, double vx, double vy, bool hard = false)
     {
         var area = new Rectangle(0, 0, 1920, 1080);
         var b = new Brain(new Pet { Stage = "child", Mood = 50 }, k, area) { X = 900, Y = 500 };
-        b.Throw(vx, vy);
+        b.Throw(vx, vy, hard);
         for (int i = 0; i < 3000 && b.Mode == Mode.Thrown; i++) b.Update(1 / 60.0, false);
         return (b, area.Bottom - k.FloorGap);
     }
@@ -448,7 +448,10 @@ static class Sim
             Expect(blown == d < Icbm.CraterR * 1.7, $"폭발 가까이 있을 때만 날아간다 (seed {seed}, {d:F0}px)");
             if (!blown) continue;
             nearHits++;
-            Expect(nb.BlownVx * dx + (nb.BlownVy + 500) * dy > 0 && Math.Sqrt(nb.BlownVx * nb.BlownVx + nb.BlownVy * nb.BlownVy) > 900, $"폭발 반대쪽으로 세게 날아간다 (seed {seed})");
+            Expect(nb.BlownVx * dx + nb.BlownVy * dy > 0 && Math.Sqrt(nb.BlownVx * nb.BlownVx + nb.BlownVy * nb.BlownVy) >= new Tuning().DizzySpeed,
+                $"폭발 반대쪽으로 세게 던진 만큼 빠르게 날아간다 (seed {seed})");
+            var (far, _) = Flight(new Tuning(), nb.BlownVx, nb.BlownVy, hard: true);
+            Expect(far.Pose == "dizzy", $"날아갔다 내려앉으면 어지러워한다 (seed {seed})");
         }
         Expect(nearHits is >= 25 and <= 80, $"4번에 한 번쯤 볼록이 근처에 떨어진다: {nearHits}/200");
 
@@ -1467,6 +1470,8 @@ static class Sim
         var (hard, hardY) = Flight(k, -6000, -3000);
         Expect(hard.Mode == Mode.Anim && hard.Pose == "dizzy" && hard.Y == hardY && hard.P.Mood < 50, "세게 던지면 어지러워한다");
         Expect(hard.X >= 60 && hard.X <= 1860, "벽 밖으로 나가지 않는다");
+        var (blast, _) = Flight(k, 1500, -900, hard: true);
+        Expect(blast.Pose == "dizzy" && blast.P.Mood < 50, "폭발에 날아가면 느려도 세게 던진 것처럼 어지러워한다");
 
         var zigzag = Enumerable.Range(0, 20).Select(i => (i * .03, new Point(500 + (i % 2) * 60, 400))).ToList();
         var straight = Enumerable.Range(0, 20).Select(i => (i * .03, new Point(500 + i * 40, 400))).ToList();

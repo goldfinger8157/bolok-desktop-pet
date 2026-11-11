@@ -168,10 +168,10 @@ public sealed class Icbm
                 Version++;
                 OnEvent?.Invoke("boom");
                 double bx = X - TX, by = Y - cell * .3 - TY, bd = Dist(X, Y - cell * .3, TX, TY), reach = CraterR * sf * 1.7;
-                if (bd < reach) // 가까이서 터지면 볼록이도 날아간다 (가까울수록 세게, 살짝 위로)
+                if (bd < reach) // 가까이서 터지면 볼록이도 멀리 날아간다 (가까울수록 세게, 위로 치솟게). 세게 던졌을 때만큼 빠르다
                 {
-                    double push = (1100 + 1500 * (1 - bd / reach)) * sf;
-                    (BlownVx, BlownVy) = bd < 1 ? (0, -push) : (bx / bd * push, by / bd * push - 500 * sf);
+                    double push = (2900 + 1100 * (1 - bd / reach)) * sf, ux = bd < 1 ? 0 : bx / bd, uy = (bd < 1 ? -1 : by / bd) - .35, ul = Math.Sqrt(ux * ux + uy * uy);
+                    (BlownVx, BlownVy) = (ux / ul * push, uy / ul * push); // 방향(폭발 반대쪽 + 조금 위)을 먼저 정하고 세기를 곱한다
                     OnEvent?.Invoke("blown");
                 }
                 Go(Phase.Boom);
