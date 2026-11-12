@@ -18,7 +18,7 @@ public sealed class PetArt
     {
         "name", "note", "fur", "shade", "cream", "ear", "paw", "blush", "form_colors", "ears", "ear_k", "ear_out", "tail", "back", "spike", "horns", "wings",
         "marks", "cap", "mane", "whisker", "face", "snout", "belly", "nose", "beak", "smile", "teeth", "mouth_in", "no_cover", "body", "wide", "eye_k", "eye_up", "blush_k",
-        "eye", "point", "ear_fill", "tongue", "sleepy", "munch", "stubby",
+        "eye", "point", "ear_fill", "tongue", "sleepy", "munch", "stubby", "wing", "horn",
     };
     static readonly string[] ColorKeys = { "fur", "shade", "cream", "ear", "paw", "blush", "eye" }; // eye: 렉돌 파란 눈
     static readonly string[] FrameKeys =
@@ -224,6 +224,13 @@ public sealed class PetArt
                     double a = Math.Abs((x + .5 - cx) / rx), b = Math.Abs((y + .5 - cy) / ry);
                     if (a * a * a + b * b * b < 1) Put(x, y, c, clip);
                 }
+        }
+
+        // 두 점을 잇는 한 칸 굵기 선 (드래곤 날개 뼈대)
+        public void Line(double x0, double y0, double x1, double y1, uint c, bool clip = false)
+        {
+            int n = Math.Max(1, (int)Math.Ceiling(Math.Max(Math.Abs(x1 - x0), Math.Abs(y1 - y0))));
+            for (int i = 0; i <= n; i++) Put(R(x0 + (x1 - x0) * i / n), R(y0 + (y1 - y0) * i / n), c, clip);
         }
 
         // 다각형 채우기 (픽셀 가운데가 안에 들면)
@@ -624,6 +631,13 @@ public sealed class PetArt
                 g.Ell(cx + rx * .92 + .8 * fk, cy - ry * .35, 2.2 * fk, 2 * fk, Mix(tc, c["white"], .22));
                 break;
             }
+            case "long": // 드래곤: 바닥을 따라 길게 뻗다가 끝이 말려 올라가는 꼬리 (칸 밖으로는 안 나가게)
+                for (int i = 0; i < 10; i++)
+                {
+                    double x = Math.Min(cx + rx * .6 + i * 1.2 * fk, 38), y = cy + ry * .78 - (i > 5 ? (i - 5) * 1.1 * fk : 0), r = (2.7 - i * .17) * soft;
+                    g.Ell(x, y, r, r, shade);
+                }
+                break;
             case "taper": // 수달: 굵게 시작해서 가늘어지는 꼬리
                 for (int i = 0; i < 6; i++)
                     g.Ell(cx + rx * .8 + i * 1.3 * fk, cy + ry * .62 - i * .45 * fk, (2.7 - i * .32) * soft, (2.3 - i * .28) * soft, shade);
@@ -668,6 +682,10 @@ public sealed class PetArt
             switch (horns)
             {
                 case "dragon": g.Poly(new[] { (cx + s * rx * .22, cy - ry * .8), (cx + s * rx * .5, cy - ry * .72), (cx + s * rx * .4, cy - ry - 4 * fk) }, Rgb(244, 220, 140)); break;
+                case "swept": // 드래곤: 머리 위 옆에서 바깥 뒤로 뻗은 뿔 (상아색)
+                    g.Poly(new[] { (cx + s * rx * .28, cy - ry * .78), (cx + s * rx * .56, cy - ry * .66), (cx + s * (rx * .62 + 3 * fk), cy - ry - 4.5 * fk) },
+                        S.Has("horn") ? Col(S, "horn") : Rgb(242, 230, 200));
+                    break;
                 case "goat": g.Poly(new[] { (cx + s * rx * .18, cy - ry * .8), (cx + s * rx * .42, cy - ry * .78), (cx + s * rx * .55, cy - ry - 4.5 * fk) }, Rgb(210, 196, 170)); break;
                 case "imp": g.Poly(new[] { (cx + s * rx * .25, cy - ry * .82), (cx + s * rx * .48, cy - ry * .74), (cx + s * rx * .5, cy - ry - 3 * fk) }, Rgb(90, 60, 110)); break;
                 case "antler": // 가지 친 뿔: 아기는 혹 두 개, 자라면서 길어지고 가지를 친다
@@ -691,6 +709,18 @@ public sealed class PetArt
                 case "wing": g.Ell(cx + s * rx * .9, cy + ry * .15, 2.8 * soft, ry * .58, Mix(c["shade"], colors["line"], .2)); break;
                 case "small": g.Ell(cx + s * rx * .95, cy + ry * .1, 2.4 * soft, ry * .38, shade); break;
                 case "dragon": g.Poly(new[] { (cx + s * rx * .5, cy - ry * .3), (cx + s * (rx + 5.5 * fk), cy - ry * (.3 + .65 * fk)), (cx + s * (rx + 4 * fk), cy + ry * .15) }, Rgb(150, 214, 186)); break;
+                case "bat": // 드래곤: 어깨에서 머리 위로 크게 펼친 박쥐 날개 — 날개막 + 뼈대 두 줄, 아랫단은 물결 (칸 밖으로는 안 나가게)
+                {
+                    uint mem = S.Has("wing") ? Col(S, "wing") : Mix(shade, colors["line"], .3), bone = Mix(mem, colors["line"], .55);
+                    double reach = Math.Min(rx + 6.5 * fk, 19.2), top = cy - ry * (.6 + .6 * fk), w = reach - rx * .4;
+                    (double X, double Y) sh = (cx + s * rx * .4, cy - ry * .2), tip = (cx + s * reach, top),            // 맨 위 뼈 끝 (뾰족)
+                        f1 = (cx + s * (reach - .5), cy - ry * .05), v1 = (cx + s * (rx * .4 + w * .72), cy - ry * .1),     // 바깥 뼈 끝, 오목
+                        f2 = (cx + s * (rx * .4 + w * .5), cy + ry * .16), v2 = (cx + s * (rx * .4 + w * .28), cy + ry * .06), // 안쪽 뼈 끝, 오목
+                        inner = (cx + s * rx * .55, cy + ry * .24);
+                    g.Poly(new[] { sh, tip, f1, v1, f2, v2, inner }, mem);
+                    foreach (var end in new[] { tip, f1, f2 }) g.Line(sh.X, sh.Y, end.X, end.Y, bone);
+                    break;
+                }
                 case "imp": g.Poly(new[] { (cx + s * rx * .55, cy - ry * .25), (cx + s * (rx + 4.5 * fk), cy - ry * (.25 + .5 * fk)), (cx + s * (rx + 2.5 * fk), cy + ry * .05) }, Rgb(120, 80, 140)); break; // 작은 박쥐 날개
             }
     }

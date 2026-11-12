@@ -911,6 +911,18 @@
   "pt": "Dragãozinho",
   "ru": "Дракончик"
  },
+ "sp.drake": {
+  "en": "Dragon",
+  "ko": "드래곤",
+  "ja": "ドラゴン",
+  "zh-Hans": "飞龙",
+  "zh-Hant": "飛龍",
+  "es": "Dragón",
+  "de": "Drache",
+  "fr": "Dragon",
+  "pt": "Dragão",
+  "ru": "Дракон"
+ },
  "sp.sheep": {
   "en": "Sheep",
   "ko": "양",

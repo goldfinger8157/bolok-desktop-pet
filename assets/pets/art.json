@@ -94,6 +94,7 @@
     "hedgehog": {"name": "고슴도치", "fur": "#E8D2B2", "shade": "#CCB492", "ears": "small", "ear_k": 0.7, "back": "spikes", "spike": "#7A5C46", "nose": "dark", "note": "파랑 없이 (소닉)"},
     "raccoon": {"name": "너구리", "fur": "#A0A0A4", "shade": "#808086", "cream": "#F0F0EC", "ear": "#5A5A60", "ears": "pointy", "ear_k": 0.8, "tail": "ring", "marks": ["mask"], "nose": "dark"},
     "dragon": {"name": "아기 용", "fur": "#68BE96", "shade": "#4C9E78", "cream": "#F4ECAA", "paw": "#7CCCA6", "ears": "none", "horns": "dragon", "wings": "dragon", "tail": "dragon", "marks": ["plates"]},
+    "drake": {"name": "드래곤", "fur": "#C8464C", "shade": "#A0323C", "cream": "#F4C86C", "paw": "#B43C44", "snout": "#DC6A66", "wing": "#7C2632", "horn": "#F4E8CC", "ears": "none", "horns": "swept", "wings": "bat", "tail": "long", "marks": ["plates"], "face": "snout", "nose": "nostrils", "note": "YELL 이 보낸 드래곤 그림의 특징(크게 펼친 박쥐 날개·뒤로 뻗은 뿔·주둥이·배 비늘·긴 꼬리)을 살리고 색은 진홍 몸·금빛 배로. 리자몽(주황 몸·크림 배·청록 날개·꼬리 불꽃)과 겹치지 않게"},
     "sheep": {"name": "양", "fur": "#FAF6EC", "shade": "#E2DCCE", "cream": "#ECD4B4", "ear": "#ECC8AA", "ears": "side", "back": "wool", "face": "wool", "note": "검은 얼굴 없이 (숀더쉽)"},
     "deer": {"name": "사슴", "fur": "#CE925A", "shade": "#B07646", "ears": "side", "horns": "antler", "face": "snout", "snout": "#F4E2C8", "nose": "dark", "note": "흰 점 없이 (밤비)"},
     "goat": {"name": "염소", "fur": "#E0D6C4", "shade": "#C4B8A4", "cream": "#FAF6EE", "ear": "#E6C4B4", "ears": "side", "horns": "goat", "marks": ["beard"], "nose": "dark"},

@@ -74,7 +74,7 @@ for sp, en, ko in [
     ('corgi', 'Welsh corgi', '웰시코기'), ('pug', 'Pug', '퍼그'), ('pomeranian', 'Pomeranian', '포메라니안'), ('fox', 'Fox', '여우'),
     ('moonbear', 'Moon bear', '반달가슴곰'), ('penguin', 'Penguin', '펭귄'), ('owl', 'Owl', '부엉이'), ('squirrel', 'Squirrel', '다람쥐'),
     ('otter', 'Otter', '수달'), ('duck', 'Duck', '오리'), ('frog', 'Frog', '개구리'), ('hedgehog', 'Hedgehog', '고슴도치'),
-    ('raccoon', 'Raccoon dog', '너구리'), ('dragon', 'Baby dragon', '아기 용'), ('sheep', 'Sheep', '양'), ('deer', 'Deer', '사슴'),
+    ('raccoon', 'Raccoon dog', '너구리'), ('dragon', 'Baby dragon', '아기 용'), ('drake', 'Dragon', '드래곤'), ('sheep', 'Sheep', '양'), ('deer', 'Deer', '사슴'),
     ('goat', 'Goat', '염소'), ('beaver', 'Beaver', '비버'), ('quokka', 'Quokka', '쿼카'), ('capybara', 'Capybara', '카피바라'),
     ('koala', 'Koala', '코알라'), ('panda', 'Panda', '판다'), ('redpanda', 'Red panda', '레서판다'), ('alpaca', 'Alpaca', '알파카'),
     ('pig', 'Pig', '돼지'), ('octopus', 'Octopus', '문어'), ('slime', 'Slime', '슬라임'), ('ghost', 'Ghost', '유령'),
