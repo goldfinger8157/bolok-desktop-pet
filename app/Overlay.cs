@@ -15,6 +15,7 @@ public sealed class Overlay : Form
     public Func<Visitor?> Guest = () => null;           // 놀러 온 떠난 친구
     public Func<Sprites?> GuestSprites = () => null;
     public Func<(string Kind, string From, double X, double Y, double At)?> Present = () => null; // 친구가 두고 간 선물
+    public Func<(double X, double Y)?> Clover = () => null; // 바닥에 돋은 네잎클로버
     public Func<IReadOnlyList<string>> Dreams = () => Array.Empty<string>();                     // 꿈 말풍선 그림들
     internal Func<IReadOnlyList<IGameMode>> Modes = () => Array.Empty<IGameMode>();               // 게임 모듈 (app/Games)
     public Sprites Art => sprites();
@@ -140,6 +141,7 @@ public sealed class Overlay : Form
         foreach (var m in Modes()) if (m.Running) m.Dirty(this, r);
         if (Guest() is { } gv) r.Add(Client(GuestRect(gv)));
         if (Present() is { } pr) r.Add(Client(Around(pr.X, pr.Y - 8 * b.Scale, 14 * b.Scale, 14 * b.Scale)));
+        if (Clover() is { } cl) r.Add(Client(Around(cl.X, cl.Y - 10 * b.Scale, 16 * b.Scale, 16 * b.Scale)));
         if (Dreams().Count > 0) r.Add(Client(DreamRect()));
         if (game() is { } gm)
         {
@@ -296,6 +298,12 @@ public sealed class Overlay : Form
             int k = b.Scale, hop = Math.Sin(Environment.TickCount64 / 180.0) > .6 ? k : 0;
             Put(g, sp.Get("item/" + pr.Kind, 0, k), (int)pr.X, (int)pr.Y - 6 * k - hop);
             if (Environment.TickCount64 / 400 % 3 == 0) Put(g, sp.Get("game/spark", 0, Math.Max(1, k - 1)), (int)pr.X + 6 * k, (int)pr.Y - 12 * k);
+        }
+        if (Clover() is { } cl) // 네잎클로버: 바닥에서 살랑, 가끔 반짝 (줄기 끝이 땅에)
+        {
+            int k = b.Scale, s = Bolok.Clover.Scale(k), sway = Math.Sin(Environment.TickCount64 / 260.0) > .7 ? 1 : 0;
+            Put(g, sp.Get("item/clover", 0, s), (int)cl.X + sway, (int)cl.Y - 3 * s);
+            if (Environment.TickCount64 / 500 % 4 == 0) Put(g, sp.Get("game/spark", 0, s), (int)cl.X + 5 * s, (int)cl.Y - 12 * s);
         }
         if (Dreams() is { Count: > 0 } dreams) DrawDream(g, dreams);
     }

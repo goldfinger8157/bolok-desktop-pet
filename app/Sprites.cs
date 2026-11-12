@@ -76,6 +76,8 @@ public sealed class Sprites
         return drawn[name] = d;
     }
 
+    public int Frames(string name) => Row(name) is { } d ? d.Frames : common.Rows.TryGetValue(name, out var r) ? r.Frames : 1;
+
     public bool Has(string name) => (ThumbOf(name) is { } id ? art.Can(id) : art.HasRow(name)) || common.Rows.ContainsKey(name);
 
     public Bitmap Get(string name, int frame, int scale, bool flip = false)

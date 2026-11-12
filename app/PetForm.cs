@@ -31,6 +31,7 @@ public sealed class SaveData
     public Dictionary<string, DateTime> Visits { get; set; } = new(); // 종마다 마지막으로 놀러 온 때
     public string? Language { get; set; }             // 설정에서 고른 언어. 없으면 윈도우 언어
     public Dictionary<string, string> GameData { get; set; } = new(); // 게임 모듈 기록 (id → JSON 글)
+    public Clover.Saved? Clover { get; set; }         // 네잎클로버 (바닥·머리·오늘 돋았나)
     public List<GiftRecord> Gifts { get; set; } = new();     // 추억: 친구가 두고 간 선물
     public List<PhotoRecord> Album { get; set; } = new();    // 추억: 자랄 때마다 찍힌 사진
     public List<CardRecord> Cards { get; set; } = new();     // 추억: 놀러 왔던 친구가 보낸 엽서
@@ -128,7 +129,7 @@ public sealed class PetForm : Form, IGameHost
         hud.SpeciesName = () => b.P.Stage == "egg" ? "" : L.Species(species);
         if (!debug) // 새 버전을 받아 바꿔 두면 메뉴에 알린다. 그냥 둬도 다음에 켤 때 새 버전이다
             Updater.Start(() => autoUpdate, tag => BeginInvoke(() => { updateTag = tag; updateItem.Text = L.T("menu.update", tag); updateItem.Visible = true; settings?.ShowReady(); }));
-        foreach (var o in overlays) { o.Runner = () => runner; o.Break = () => breakout; o.WormsGame = () => worms; o.MinigunGame = () => minigun; o.IcbmGame = () => icbm; o.Guest = () => visitor; o.GuestSprites = () => visitorSprites; o.Present = () => present; o.Dreams = Dreams; o.Modes = () => modes; }
+        foreach (var o in overlays) { o.Runner = () => runner; o.Break = () => breakout; o.WormsGame = () => worms; o.MinigunGame = () => minigun; o.IcbmGame = () => icbm; o.Guest = () => visitor; o.GuestSprites = () => visitorSprites; o.Present = () => present; o.Clover = () => clover.State == Clover.Phase.Ground ? (clover.X, clover.Y) : null; o.Dreams = Dreams; o.Modes = () => modes; }
         hud.PlaceAt(area);
         if (runDir != null) dev = new DevLink(runDir, assetsDir!, b, this);
 
@@ -218,7 +219,7 @@ public sealed class PetForm : Form, IGameHost
         Dbg.Log("screens-changed", ("screens", DescribeScreens()));
     }
 
-    public void SwapSprites(Sprites s) { sprites = s; drawn = default; Invalidate(); foreach (var o in overlays) o.Invalidate(); }
+    public void SwapSprites(Sprites s) { sprites = s; drawn = default; capSpot.Clear(); cloverSpot.Clear(); Invalidate(); foreach (var o in overlays) o.Invalidate(); } // 머리 자리는 그림마다 다시 잰다
 
     // 키우는 종. 그림(sprites)은 아직 못 받았으면 다른 종일 수 있다 — 알일 때는 공통 그림만 쓰니 티가 안 난다
     string species;
@@ -287,6 +288,7 @@ public sealed class PetForm : Form, IGameHost
         language = pendingSave.Language;
         L.Use(language);
         foreach (var m in modes) m.LoadState(pendingSave.GameData?.GetValueOrDefault(m.Id));
+        clover.Load(pendingSave.Clover);
         (gifts, album, cards, visitCounts) = (pendingSave.Gifts ?? new(), pendingSave.Album ?? new(), pendingSave.Cards ?? new(), pendingSave.VisitCounts ?? new());
         (cardFrom, cardForm, cardDay, morningDay, nightDay) = (pendingSave.CardFrom, pendingSave.CardForm ?? "child", pendingSave.CardDay ?? "", pendingSave.MorningDay ?? "", pendingSave.NightDay ?? "");
         (runBest, runLast, runLevel, runScores) = (pendingSave.RunBest, pendingSave.RunLast, Math.Max(1, pendingSave.RunLevel), pendingSave.RunScores ?? new());
@@ -297,7 +299,7 @@ public sealed class PetForm : Form, IGameHost
 
     void Save()
     {
-        var data = new SaveData { Pet = b.P, X = b.X, Y = b.Y, Holes = b.Holes.Select(h => new[] { h.Cx, h.Cy }).ToList(), GameBest = gameBest, GameSound = Sfx.On, AutoUpdate = autoUpdate, Species = species, Met = met.ToList(), Released = released, RunBest = runBest, RunLast = runLast, RunLevel = runLevel, RunScores = runScores, BreakBest = breakBest, WormsWins = wormsWins, VisitDay = visitDay, VisitMin = visitMin, LastVisitDay = lastVisitDay, Visits = visits, Language = language,
+        var data = new SaveData { Pet = b.P, X = b.X, Y = b.Y, Holes = b.Holes.Select(h => new[] { h.Cx, h.Cy }).ToList(), GameBest = gameBest, GameSound = Sfx.On, AutoUpdate = autoUpdate, Species = species, Met = met.ToList(), Released = released, RunBest = runBest, RunLast = runLast, RunLevel = runLevel, RunScores = runScores, BreakBest = breakBest, WormsWins = wormsWins, VisitDay = visitDay, VisitMin = visitMin, LastVisitDay = lastVisitDay, Visits = visits, Language = language, Clover = clover.Snapshot(),
             GameData = modes.Select(m => (m.Id, Json: m.SaveState())).Where(x => x.Json != null).ToDictionary(x => x.Id, x => x.Json!),
             Gifts = gifts, Album = album, Cards = cards, VisitCounts = visitCounts, CardFrom = cardFrom, CardForm = cardForm, CardDay = cardDay, MorningDay = morningDay, NightDay = nightDay };
         var tmp = savePath + ".tmp";
@@ -403,6 +405,7 @@ public sealed class PetForm : Form, IGameHost
         foreach (var m in modes) if (m.Running) m.Frame(dt);
         if (leaving) LeaveFrame(dt);
         WatchHatch();
+        CloverTick();
         VisitTick();
         PresentTick();
         if (visitor != null) visitor.Update(dt, b.X, b.Y, b.Mode is Mode.Wander or Mode.Anim || b.P.Asleep, b.P.Asleep, b.Area);
@@ -531,6 +534,7 @@ public sealed class PetForm : Form, IGameHost
             e.Graphics.DrawImage(bmp, new Rectangle(8 + shake, 0, bmp.Width, bmp.Height), 0, 0, bmp.Width, bmp.Height, GraphicsUnit.Pixel, white);
         }
         else e.Graphics.DrawImageUnscaled(bmp, 8 + shake, 0);
+        DrawClover(e.Graphics, name, frame, flip, shake);
         DrawCap(e.Graphics, name, frame, flip, shake);
     }
 
@@ -898,6 +902,79 @@ public sealed class PetForm : Form, IGameHost
             (dreamUntil, nextDream) = (now + 4, now + 25 + Random.Shared.NextDouble() * 20);
         }
         return now < dreamUntil ? dreamNow : Array.Empty<string>();
+    }
+
+    // ── 네잎클로버 (규칙은 Clover.cs): 돋으면 "!" 하고 주우러 가서 머리에 꽂는다. 던져지면 떨어지고 다시 줍는다 ──
+    readonly Clover clover = new();
+    long nextCloverRoll, nextCloverWalk, nextCloverTick;
+
+    void CloverTick()
+    {
+        long t = Environment.TickCount64;
+        if (t < nextCloverTick) return;
+        nextCloverTick = t + 250;
+        double now = t / 1000.0, ground = b.Area.Bottom - b.K.FloorGap;
+        void Changed(string ev) { Dbg.Log("clover", ("event", ev), ("x", (int)clover.X), ("y", (int)clover.Y), ("petX", (int)b.X), ("petY", (int)b.Y)); Invalidate(); foreach (var o in overlays) o.Invalidate(); Save(); }
+        if (clover.Wilt(Today, now)) { Changed("wilt"); return; }
+        if (b.Mode == Mode.Thrown && clover.Drop(b.X, ground, now)) { Changed("drop"); return; } // 던져지면 머리에서 떨어진다
+        bool free = b.Mode == Mode.Wander && !b.P.Asleep && !InGame && !b.Behind && b.P.Stage != "egg" && !leaving;
+        if (clover.State == Clover.Phase.Ground)
+        {
+            if (free && clover.TryPick(b.X, b.Y, b.CellPx)) { b.Greet("happy", 1.6); b.Emote("heart", 1.6); Changed("pick"); }
+            else if (clover.Lost(now)) Changed("lost");
+            else if (free && t > nextCloverWalk) { nextCloverWalk = t + 3000; b.GoTo(clover.X, clover.Y); }
+            return;
+        }
+        if (clover.State == Clover.Phase.None && free && t > nextCloverRoll)
+        {
+            nextCloverRoll = t + 60_000;
+            if (clover.TrySprout(Today, now, b.X, b.Dir, ground, b.CellPx, b.Area, Random.Shared)) { b.Emote("bang", 1.2); Changed("sprout"); }
+        }
+    }
+
+    // 디버그: clover (지금 돋기) / clover wear (바로 머리에) / clover drop / clover off
+    public void CloverCommand(string[] a)
+    {
+        double now = Environment.TickCount64 / 1000.0, ground = b.Area.Bottom - b.K.FloorGap;
+        string what = a.Length > 1 ? a[1] : "";
+        if (what == "wear") clover.Force(Clover.Phase.Worn, b.X, ground, Today, now);
+        else if (what == "drop") clover.Force(Clover.Phase.Ground, b.X, ground, Today, now);
+        else if (what == "off") clover.Force(Clover.Phase.None, 0, 0, "", now);
+        else { clover.Force(Clover.Phase.None, 0, 0, "", now); clover.TrySprout(Today, now, b.X, b.Dir, ground, b.CellPx, b.Area, Random.Shared, 1); b.Emote("bang", 1.2); }
+        Dbg.Log("clover", ("event", "cmd-" + (what == "" ? "sprout" : what)), ("x", (int)clover.X), ("y", (int)clover.Y), ("petX", (int)b.X), ("petY", (int)b.Y));
+        Invalidate();
+        foreach (var o in overlays) o.Invalidate();
+    }
+
+    // 머리에 꽂은 네잎클로버: 머리 왼쪽(뒤집히면 오른쪽) 위. 그 열에서 가장 위 칸에 줄기 끝을 꽂는다 (프레임마다 몸이 들썩이면 같이)
+    readonly Dictionary<(string, int, bool), (int X, int Top)> cloverSpot = new();
+    (int X, int Y)? cloverStem;
+    void DrawClover(Graphics g, string name, int frame, bool flip, int shake)
+    {
+        if (clover.State != Clover.Phase.Worn || b.Pose is "fly" or "roll" or "flop" || !sprites.Has("item/clover") || name.StartsWith("egg")) return;
+        int n = sprites.Frames(name), f = (frame % n + n) % n;
+        if (!cloverSpot.TryGetValue((name, f, flip), out var spot))
+        {
+            var one = sprites.Get(name, f, 1, flip);
+            int top = one.Height;
+            for (int x = one.Width * 3 / 10; x < one.Width * 6 / 10; x++)
+                for (int y = 0; y < one.Height; y++)
+                    if (one.GetPixel(x, y).A > 0) { top = Math.Min(top, y); break; }
+            int row = Math.Min(one.Height - 1, top + 4), x0 = one.Width, x1 = 0;
+            for (int x = 0; x < one.Width; x++) if (one.GetPixel(x, row).A > 0) (x0, x1) = (Math.Min(x0, x), Math.Max(x1, x));
+            int col = Math.Clamp((x0 + x1) / 2 + (flip ? 4 : -4), 0, one.Width - 1), surface = one.Height - 1;
+            for (int y = 0; y < one.Height; y++) if (one.GetPixel(col, y).A > 0) { surface = y; break; }
+            cloverSpot[(name, f, flip)] = spot = (col, surface);
+        }
+        if (cloverStem == null) // 클로버 그림의 줄기 끝 (가장 아래 칸)
+        {
+            var icon1 = sprites.Get("item/clover", 0, 1);
+            for (int y = icon1.Height - 1; y >= 0 && cloverStem == null; y--)
+                for (int x = 0; x < icon1.Width; x++) if (icon1.GetPixel(x, y).A > 0) { cloverStem = (x, y); break; }
+        }
+        int k = b.Scale, s = Clover.Scale(k);
+        var (sx, sy) = cloverStem ?? (20, 23);
+        g.DrawImageUnscaled(sprites.Get("item/clover", 0, s), 8 + shake + spot.X * k - sx * s, (spot.Top + 2) * k - sy * s);
     }
 
     // 밤에 자는 동안 수면 모자 (머리 꼭대기: 몸 가운데 열에서 가장 위 칸)
@@ -1478,6 +1555,7 @@ public sealed class PetForm : Form, IGameHost
             g.DrawImageUnscaled(sprites.Get(name, frame, b.Scale, flip), Left - v.X + 8, Top - v.Y);
             var at = g.Transform;
             g.TranslateTransform(Left - v.X, Top - v.Y);
+            DrawClover(g, name, frame, flip, 0);
             DrawCap(g, name, frame, flip, 0); // 수면 모자도 (본체 창과 같은 자리)
             g.Transform = at;
         }

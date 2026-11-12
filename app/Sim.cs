@@ -1648,7 +1648,8 @@ static class Sim
         PetSheetChecks();
         VisitorChecks();
         foreach (var check in GameModes.Checks) o.WriteLine(check()); // 게임 모듈은 제 규칙을 스스로 검사한다
-        o.WriteLine(PetArt.Check()); // 데이터로 그린 캐릭터 = 파이썬 생성기 그림
+        o.WriteLine(PetArt.Check()); // 데이터로 그린 캐릭터
+        o.WriteLine(Clover.Check());
         LangChecks();
         MemoryChecks();
         ClickChecks(k);
