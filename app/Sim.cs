@@ -342,7 +342,7 @@ static class Sim
                 Expect(got.SequenceEqual(want), $"자리표시자가 영어와 같다: {key} ({code})");
             }
         }
-        foreach (var sp in Sprites.Embedded().SpeciesNames.Keys) Expect(L.Has("sp." + sp, "en"), $"종 이름: {sp}");
+        foreach (var sp in Sprites.Embedded().SpeciesList) Expect(L.Has("sp." + sp, "en"), $"종 이름: {sp}");
         var was = L.Code;
         L.Use("ko");
         Expect(L.T("menu.feed") == "밥 주기" && L.With("여우", "를", "을") == "여우를" && L.With("곰", "를", "을") == "곰을", "한국어와 조사");
@@ -424,8 +424,7 @@ static class Sim
     static void PetSheetChecks()
     {
         var art = PetArt.Embedded;
-        var names = Sprites.Embedded().SpeciesNames;
-        Expect(names.Keys.All(art.Can) && art.Species.Count == names.Count, $"도감의 모든 종을 데이터로 그린다 ({art.Species.Count}/{names.Count})");
+        Expect(art.Species.Count == 34 && art.Species.All(art.Can), $"34종 모두 데이터로 그린다 ({art.Species.Count})");
         foreach (var id in new[] { "fox", "octopus", "ghost" })
             Expect(Sprites.Drawn(art, id, null) is { } sp && sp.Species == id && sp.Has("adult_grumpy/3/fix") && sp.Has("thumb/" + id), $"그린 그림에 모든 줄이 있다: {id}");
         Expect(Sprites.Embedded("no-such-pet").Species == Sprites.DefaultSpecies, "모르는 종이면 햄스터");

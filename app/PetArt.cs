@@ -6,8 +6,8 @@ using System.Text.Json;
 namespace Bolok;
 
 // 캐릭터 그림을 그림 파일 대신 데이터로 그린다 (YELL 2026-11-12: 색만 바꾼 분홍 볼록이도 그림 추가 없이 데이터 한 줄로).
-// 데이터는 assets/pets/art.json (색·형태·자세·종) 하나. tools/sprites.py 의 pet() 을 그대로 옮겨서 둘은 픽셀 하나까지 같다
-// (자가 검사가 저장소의 assets/pets/<종>.png 와 비교한다).
+// 데이터는 assets/pets/art.json (색·형태·자세·종) 하나. 처음엔 tools/sprites.py 의 pet() 을 옮겨 34종 × 700줄을 픽셀까지 맞췄고(2026-11-12),
+// 그 뒤로는 여기가 캐릭터 그리기의 유일한 원본이다. 디버그 메뉴 「캐릭터 확인」으로 보며 고친다.
 // 종 특징(귀 모양·꼬리·등·뿔·날개·무늬·얼굴·코·부리·몸 모양)까지 다 그린다. 모르는 데이터 키가 있는 종은 Can 이 false
 public sealed class PetArt
 {
@@ -128,40 +128,50 @@ public sealed class PetArt
     public bool Can(string id) => species.TryGetValue(id, out var s) && s.Keys.All(Known.Contains);
     public IEnumerable<string> Rows => forms.SelectMany(f => Enumerable.Range(0, Cheeks).SelectMany(c => poses.Select(p => $"{f.Name}/{c}/{p.Name}")));
 
-    // 한 종의 그림 전부: 형태 × 볼 단계 × 자세 줄, 줄마다 프레임 (tools/sprites.py 의 pet_rows·sheet 와 같은 배치)
-    public (Bitmap Bmp, Dictionary<string, (int Row, int Frames)> Rows) Sheet(string id)
+    // 줄 이름 "형태/볼/자세" 가 있나
+    public bool HasRow(string name)
     {
-        if (!Can(id)) throw new ArgumentException($"아직 데이터로 못 그리는 종: {id}");
-        var S = species[id];
-        int cols = poses.Max(p => p.Frames.Length), rows = forms.Count * Cheeks * poses.Count, width = cols * Cell;
-        var px = new int[rows * Cell * width];
-        var index = new Dictionary<string, (int, int)>();
-        int r = 0;
-        foreach (var (form, F) in forms)
-            for (int cheek = 0; cheek < Cheeks; cheek++)
-                foreach (var (pose, frames) in poses)
-                {
-                    index[$"{form}/{cheek}/{pose}"] = (r, frames.Length);
-                    for (int i = 0; i < frames.Length; i++)
-                    {
-                        var g = Pet(S, form, F, cheek, frames[i]);
-                        for (int y = 0; y < Cell; y++)
-                            for (int x = 0; x < Cell; x++)
-                                px[(r * Cell + y) * width + i * Cell + x] = unchecked((int)g.P[y * Cell + x]);
-                    }
-                    r++;
-                }
-        var bmp = new Bitmap(width, rows * Cell, PixelFormat.Format32bppArgb);
-        var data = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
-        try
-        {
-            for (int y = 0; y < bmp.Height; y++) Marshal.Copy(px, y * width, data.Scan0 + y * data.Stride, width);
-        }
-        finally { bmp.UnlockBits(data); }
-        return (bmp, index);
+        var p = name.Split('/');
+        return p.Length == 3 && forms.Any(f => f.Name == p[0]) && int.TryParse(p[1], out int c) && c >= 0 && c < Cheeks && poses.Any(x => x.Name == p[2]);
     }
 
-    // ── 그리기 (tools/sprites.py 와 줄마다 같게. 반올림은 파이썬 round 처럼 짝수 쪽, int() 는 0 쪽으로 자른다) ──
+    // 한 줄: 그 자세의 프레임들을 옆으로 이어 붙인 그림 (Sprites 가 처음 쓸 때 부른다)
+    public (Bitmap Bmp, int Frames) Row(string id, string name)
+    {
+        if (!Can(id) || !HasRow(name)) throw new ArgumentException($"못 그리는 줄: {id} {name}");
+        var p = name.Split('/');
+        var F = forms.First(f => f.Name == p[0]).F;
+        var frames = poses.First(x => x.Name == p[2]).Frames;
+        return (Strip(frames.Select(f => Pet(species[id], p[0], F, int.Parse(p[1]), f))), frames.Length);
+    }
+
+    // 도감 썸네일: 어린이가 서 있는 그림 + 눈 감은 그림 (설정 창 도감, ICBM 구멍에서 빼꼼, 꿈)
+    public Bitmap Thumb(string id)
+    {
+        var F = forms.First(f => f.Name == "child").F;
+        var idle = poses.First(x => x.Name == "idle").Frames;
+        return Strip(new[] { idle[0], idle[3] }.Select(f => Pet(species[id], "child", F, 0, f)));
+    }
+
+    static Bitmap Strip(IEnumerable<Canvas> frames)
+    {
+        var list = frames.ToList();
+        int width = list.Count * Cell;
+        var px = new int[width * Cell];
+        for (int i = 0; i < list.Count; i++)
+            for (int y = 0; y < Cell; y++)
+                for (int x = 0; x < Cell; x++) px[y * width + i * Cell + x] = unchecked((int)list[i].P[y * Cell + x]);
+        var bmp = new Bitmap(width, Cell, PixelFormat.Format32bppArgb);
+        var data = bmp.LockBits(new Rectangle(0, 0, width, Cell), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+        try
+        {
+            for (int y = 0; y < Cell; y++) Marshal.Copy(px, y * width, data.Scan0 + y * data.Stride, width);
+        }
+        finally { bmp.UnlockBits(data); }
+        return bmp;
+    }
+
+    // ── 그리기 (반올림은 짝수 쪽, 정수로 바꿀 땐 0 쪽으로 자른다: 파이썬에서 옮겨 올 때 맞춘 그대로) ──
 
     static uint Rgb(string hex) => 0xFF000000u | Convert.ToUInt32(hex[1..], 16);
     static uint Rgb(int r, int g, int b) => 0xFF000000u | (uint)(r << 16 | g << 8 | b);
@@ -831,71 +841,39 @@ public sealed class PetArt
         }
     }
 
-    // ── 자가 검사: 저장소에서 돌릴 때(개발·CI)는 파이썬이 만든 assets/pets/<종>.png 와 픽셀까지 같아야 한다 ──
+    // ── 자가 검사: 모든 종·형태·자세를 그려 보고(빈 그림이 없게), 색만 바꾼 종은 모양이 같은지 ──
     public static string Check()
     {
         var art = Embedded;
-        if (!art.Species.All(art.Can) || art.With("typo", "{\"tial\": \"thin\"}").Can("typo")) throw new Exception("자가 검사 실패: 모든 종을 데이터로 그리고, 모르는 키가 있는 종은 못 그린다");
-        var (ham, hrows) = art.Sheet("hamster");
-        using (ham)
+        static void Expect(bool ok, string what) { if (!ok) throw new Exception("자가 검사 실패: " + what); }
+        Expect(art.Species.All(art.Can) && !art.With("typo", "{\"tial\": \"thin\"}").Can("typo"), "모든 종을 데이터로 그리고, 모르는 키가 있는 종은 못 그린다");
+        Expect(art.HasRow("adult_grumpy/3/fix") && !art.HasRow("adult/0/idle") && !art.HasRow("child/9/idle") && !art.HasRow("child/0/dance"), "줄 이름은 형태/볼/자세");
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        int rows = 0;
+        foreach (var id in art.Species)
+            foreach (var (form, _) in art.forms)
+                foreach (var (pose, frames) in art.poses)
+                {
+                    var (bmp, n) = art.Row(id, $"{form}/0/{pose}");
+                    using (bmp)
+                    {
+                        var px = Pixels(bmp);
+                        for (int i = 0; i < n; i++)
+                            Expect(Enumerable.Range(0, Cell * Cell).Any(j => px[j / Cell * bmp.Width + i * Cell + j % Cell] != 0), $"{id} {form}/0/{pose} {i}번이 비었다");
+                    }
+                    rows++;
+                }
+        double perSpecies = sw.Elapsed.TotalMilliseconds / art.Species.Count;
+        var pink = art.With("pink", "{\"fur\": \"#FAB2CC\", \"shade\": \"#E48AB0\"}");
+        foreach (var pose in new[] { "idle", "walk", "sleep", "happy" })
         {
-            if (hrows.Count != art.forms.Count * art.Cheeks * art.poses.Count || !hrows.ContainsKey("adult_grumpy/3/fix"))
-                throw new Exception("자가 검사 실패: 햄스터 줄 수");
-            // 색만 바꾼 종(분홍 볼록이)은 모양이 같고 털색만 다르다
-            var pink = art.With("pink", "{\"fur\": \"#FAB2CC\", \"shade\": \"#E48AB0\"}");
-            using var p = pink.Sheet("pink").Bmp;
-            var (a, b) = (Pixels(ham), Pixels(p));
-            int same = 0, changed = 0;
-            for (int i = 0; i < a.Length; i++)
-            {
-                if ((a[i] == 0) != (b[i] == 0)) throw new Exception("자가 검사 실패: 색만 바꾼 종은 모양이 같다");
-                if (a[i] != 0) { if (a[i] == b[i]) same++; else changed++; }
-            }
-            if (changed == 0 || same == 0) throw new Exception("자가 검사 실패: 색만 바꾼 종은 털색만 다르다");
+            var (h, _) = art.Row("hamster", $"child/0/{pose}");
+            var (k, _) = pink.Row("pink", $"child/0/{pose}");
+            var (a, b) = (Pixels(h), Pixels(k));
+            Expect(a.Zip(b).All(t => (t.First == 0) == (t.Second == 0)) && a.Zip(b).Any(t => t.First != t.Second), "색만 바꾼 종은 모양이 같고 색만 다르다");
+            h.Dispose(); k.Dispose();
         }
-        for (var d = new DirectoryInfo(Directory.GetCurrentDirectory()); d != null; d = d.Parent)
-        {
-            var dir = Path.Combine(d.FullName, "assets");
-            if (!File.Exists(Path.Combine(dir, "pets", "art.json"))) continue;
-            var repo = FromDir(dir);
-            var lines = new List<string>();
-            foreach (var id in repo.Species.Where(repo.Can)) lines.Add(Compare(repo, id, dir));
-            return "그림 데이터: " + string.Join(", ", lines);
-        }
-        return "그림 데이터: 햄스터 그리기 확인 (저장소 밖이라 파이썬 그림과 비교는 건너뜀)";
-    }
-
-    // 데이터로 그린 것과 파이썬이 만든 그림을 줄 이름·프레임 수·픽셀까지 비교한다
-    public static string Compare(PetArt art, string id, string assetsDir)
-    {
-        string png = Path.Combine(assetsDir, "pets", id + ".png"), json = Path.Combine(assetsDir, "pets", id + ".json");
-        var (bmp, rows) = art.Sheet(id);
-        using (bmp)
-        using (var raw = new Bitmap(png))
-        using (var made = raw.Clone(new Rectangle(0, 0, raw.Width, raw.Height), PixelFormat.Format32bppArgb))
-        {
-            using var doc = JsonDocument.Parse(File.ReadAllBytes(json));
-            var want = doc.RootElement.GetProperty("rows").EnumerateObject().Select(r => (r.Name, r.Value[0].GetInt32(), r.Value[1].GetInt32())).ToList();
-            var got = rows.Select(r => (r.Key, r.Value.Row, r.Value.Frames)).OrderBy(r => r.Row).ToList();
-            if (!want.SequenceEqual(got)) throw new Exception($"자가 검사 실패: {id} 줄 이름·순서·프레임 수가 파이썬과 다르다");
-            if (made.Width != bmp.Width || made.Height != bmp.Height) throw new Exception($"자가 검사 실패: {id} 그림 크기 {bmp.Size} ≠ {made.Size}");
-            var (a, b) = (Pixels(bmp), Pixels(made));
-            int diff = 0, first = -1;
-            for (int i = 0; i < a.Length; i++)
-            {
-                bool ea = (a[i] >>> 24) == 0, eb = (b[i] >>> 24) == 0;
-                if (ea && eb || a[i] == b[i]) continue;
-                diff++;
-                if (first < 0) first = i;
-            }
-            if (diff > 0)
-            {
-                int y = first / bmp.Width, x = first % bmp.Width;
-                string row = rows.First(r => r.Value.Row == y / Cell).Key;
-                throw new Exception($"자가 검사 실패: {id} 가 파이썬 그림과 {diff}픽셀 다르다 (처음: {row} {x / Cell}번 프레임 ({x % Cell},{y % Cell}))");
-            }
-            return $"{id} {rows.Count}줄 파이썬과 같음";
-        }
+        return $"그림 데이터: {art.Species.Count}종 × {rows / art.Species.Count}줄(볼 0) 그림 확인, 한 종 {perSpecies:0}ms";
     }
 
     static uint[] Pixels(Bitmap bmp)

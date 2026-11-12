@@ -119,6 +119,12 @@ static class Program
             return 0;
         }
 
+        if (args.Length == 2 && args[0] == "--art-gif") // README 용 움직이는 그림 (34종 행진)
+        {
+            Gif.Parade(Directory.Exists("assets") ? PetArt.FromDir("assets") : PetArt.Embedded, args[1]);
+            return 0;
+        }
+
         if (args.Length >= 3 && args[0] == "--art-look") // 데이터로 그린 캐릭터 보기: --art-look 그림.png hamster '{"fur":"#FAB2CC",...}' (화면을 띄우지 않는다)
         {
             ApplicationConfiguration.Initialize();

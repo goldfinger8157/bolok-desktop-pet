@@ -139,8 +139,8 @@ t('game.fortress_none', 'No wins yet', '아직 못 이겼어요')
 t('game.shoot', 'Shooting', '총쏘기')
 t('game.shoot_val', 'Best {0} hits', '최고 {0}번 맞혔어요')
 # 도감
-t('bk.desc', "You won't know who it is until the egg hatches. Friends you've met are shown clearly; the rest are faded. When a new egg arrives, that friend's picture (about 300 KB) is downloaded from the repository.",
-  '알이 깨지기 전엔 누가 나올지 몰라요. 만나 본 친구는 또렷하게, 아직 못 만난 친구는 흐리게 보여요. 새 알이 오면 그 친구 그림(약 300KB)을 저장소에서 받아 와요.')
+t('bk.desc', "You won't know who it is until the egg hatches. Friends you've met are shown clearly; the rest are faded.",
+  '알이 깨지기 전엔 누가 나올지 몰라요. 만나 본 친구는 또렷하게, 아직 못 만난 친구는 흐리게 보여요.')
 t('bk.now', 'Your pet now', '지금 키우는 아이')
 t('bk.book', 'Collection  {0} / {1}', '도감  {0} / {1}')
 t('bk.gone', 'Friends who left', '떠난 친구들')

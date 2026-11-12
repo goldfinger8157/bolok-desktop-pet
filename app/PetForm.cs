@@ -924,7 +924,7 @@ public sealed class PetForm : Form, IGameHost
     // 새 알의 종: 34종 중 아무나 (처음 알도, 풀어준 뒤 오는 알도)
     string RandomSpecies()
     {
-        var all = sprites.SpeciesNames.Keys.ToList();
+        var all = sprites.SpeciesList.ToList();
         return all[Random.Shared.Next(all.Count)];
     }
 

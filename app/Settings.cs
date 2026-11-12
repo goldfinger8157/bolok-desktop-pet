@@ -77,7 +77,7 @@ public sealed class Settings : Form
         TopMost = true;
 
         var sp = spritesOf();
-        foreach (var id in sp.SpeciesNames.Keys)
+        foreach (var id in sp.SpeciesList)
         {
             var two = new Bitmap(sp.Get("thumb/" + id, 0, 2));
             thumbs[id] = (new Bitmap(sp.Get("thumb/" + id, 0, 1)), two, Ui.Faded(two));
@@ -257,7 +257,7 @@ public sealed class Settings : Form
         s.Desc(L.T("bk.desc"));
         nowCard = s.Group(L.T("bk.now"));
         nowItem = nowCard.Add("");
-        grid = new BookGrid(spritesOf().SpeciesNames.Keys.Select(id => (id, L.Species(id), (Image)thumbs[id].Two, (Image)thumbs[id].Faded)).ToList()) { NowText = L.T("bk.now_pill") };
+        grid = new BookGrid(spritesOf().SpeciesList.Select(id => (id, L.Species(id), (Image)thumbs[id].Two, (Image)thumbs[id].Faded)).ToList()) { NowText = L.T("bk.now_pill") };
         s.Group(L.T("page.book"), null, out var head, out _).AddBody(grid, 14);
         bookTitle = head!;
         goneCard = s.Group(L.T("bk.gone"), "", out _, out var foot);
@@ -269,7 +269,7 @@ public sealed class Settings : Form
     public void UpdateBook(PetBook b)
     {
         book = b;
-        var names = spritesOf().SpeciesNames;
+        var names = spritesOf().SpeciesList;
         string name = L.Species(b.Species);
 
         nowItem.Icon = b.IsEgg ? spritesOf().Get("egg/idle", 0, 1) : thumbs.TryGetValue(b.Species, out var t) ? t.One : null;
@@ -279,7 +279,7 @@ public sealed class Settings : Form
         if (b.IsEgg) (nowItem.Label, nowItem.Desc) = (L.Stage("egg"), L.T("bk.egg_desc"));
         else (nowItem.Label, nowItem.Desc) = ($"{name} · {Names.Form(statusOf().Stage)}", L.T("bk.release_desc"));
 
-        int seen = names.Keys.Count(id => b.Met.Contains(id) || (id == b.Species && !b.IsEgg));
+        int seen = names.Count(id => b.Met.Contains(id) || (id == b.Species && !b.IsEgg));
         bookTitle.Text = L.T("bk.book", seen, names.Count);
         grid.Met = b.Met.ToHashSet();
         grid.Current = b.IsEgg ? null : b.Species;

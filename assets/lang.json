@@ -1716,16 +1716,16 @@
   "ru": "Рекорд: {0} попаданий"
  },
  "bk.desc": {
-  "en": "You won't know who it is until the egg hatches. Friends you've met are shown clearly; the rest are faded. When a new egg arrives, that friend's picture (about 300 KB) is downloaded from the repository.",
-  "ko": "알이 깨지기 전엔 누가 나올지 몰라요. 만나 본 친구는 또렷하게, 아직 못 만난 친구는 흐리게 보여요. 새 알이 오면 그 친구 그림(약 300KB)을 저장소에서 받아 와요.",
-  "ja": "たまごが孵るまで、だれが出てくるかはわからないよ。出会った友だちはくっきり、まだの友だちはぼんやり表示されるよ。新しいたまごが来ると、その友だちの絵(約300KB)をリポジトリから受け取るよ。",
-  "zh-Hans": "蛋孵化之前,谁也不知道会是谁。见过的朋友会清晰显示,没见过的会淡淡显示。新蛋到来时,会从仓库下载这位朋友的图片(约 300KB)。",
-  "zh-Hant": "蛋孵化之前,誰也不知道會是誰。見過的朋友會清楚顯示,沒見過的會淡淡顯示。新蛋到來時,會從儲存庫下載這位朋友的圖片(約 300KB)。",
-  "es": "No sabrás quién es hasta que el huevo eclosione. Los amigos que ya conoces se ven nítidos; los demás, difuminados. Cuando llega un huevo nuevo, se descarga del repositorio la imagen de ese amigo (unos 300 KB).",
-  "de": "Wer da schlüpft, weißt du erst, wenn das Ei aufgeht. Bekannte Freunde sind deutlich zu sehen, die anderen verblasst. Wenn ein neues Ei kommt, wird das Bild dieses Freundes (ca. 300 KB) aus dem Repository geladen.",
-  "fr": "Tu ne sauras qui c'est qu'à l'éclosion de l'œuf. Les amis rencontrés sont nets, les autres estompés. Quand un nouvel œuf arrive, l'image de cet ami (environ 300 Ko) est téléchargée depuis le dépôt.",
-  "pt": "Você só saberá quem é quando o ovo chocar. Os amigos que você já conheceu aparecem nítidos; os outros, esmaecidos. Quando chega um ovo novo, a imagem desse amigo (cerca de 300 KB) é baixada do repositório.",
-  "ru": "Кто это, станет известно, только когда яйцо вылупится. Знакомые друзья показаны чётко, остальные бледно. Когда приходит новое яйцо, картинка этого друга (около 300 КБ) скачивается из репозитория."
+  "en": "You won't know who it is until the egg hatches. Friends you've met are shown clearly; the rest are faded.",
+  "ko": "알이 깨지기 전엔 누가 나올지 몰라요. 만나 본 친구는 또렷하게, 아직 못 만난 친구는 흐리게 보여요.",
+  "ja": "たまごが孵るまで、だれが出てくるかはわからないよ。出会った友だちはくっきり、まだの友だちはぼんやり表示されるよ。",
+  "zh-Hans": "蛋孵化之前,谁也不知道会是谁。见过的朋友会清晰显示,没见过的会淡淡显示。",
+  "zh-Hant": "蛋孵化之前,誰也不知道會是誰。見過的朋友會清楚顯示,沒見過的會淡淡顯示。",
+  "es": "No sabrás quién es hasta que el huevo eclosione. Los amigos que ya conoces se ven nítidos; los demás, difuminados.",
+  "de": "Wer da schlüpft, weißt du erst, wenn das Ei aufgeht. Bekannte Freunde sind deutlich zu sehen, die anderen verblasst.",
+  "fr": "Tu ne sauras qui c'est qu'à l'éclosion de l'œuf. Les amis rencontrés sont nets, les autres estompés.",
+  "pt": "Você só saberá quem é quando o ovo chocar. Os amigos que você já conheceu aparecem nítidos; os outros, esmaecidos.",
+  "ru": "Кто это, станет известно, только когда яйцо вылупится. Знакомые друзья показаны чётко, остальные бледно."
  },
  "bk.now": {
   "en": "Your pet now",

@@ -56,7 +56,8 @@ out\Bolok.exe
 ```
 
 - `app/` — the C# WinForms app. Game and pet rules are plain classes checked by `--selfcheck`.
-- `tools/sprites.py` — generates every sprite (`assets/sprites.png`, `assets/sprites.json`) with the Python standard library only.
+- `assets/pets/art.json` — every pet as data: colors, body shapes per growth stage, poses, and each pet's features. The app draws all 34 pets from it (`app/PetArt.cs`); `out\Bolok.exe --art-gif assets/parade.gif` remakes the parade above.
+- `tools/sprites.py` — generates the shared sprites (eggs, icons, emotes, games, props: `assets/sprites.png`, `assets/sprites.json`) with the Python standard library only.
 - Pushing a tag like `v1.2.3` builds the single-file exe and publishes a release (`.github/workflows/release.yml`).
 
 ## License
@@ -113,5 +114,7 @@ dotnet build app/Bolok.csproj -c Release -o out
 out\Bolok.exe --selfcheck
 out\Bolok.exe
 ```
+
+캐릭터 34종은 그림 파일 없이 `assets/pets/art.json`(색·성장 단계별 체형·자세·종마다의 특징) 데이터로 앱이 그려요(`app/PetArt.cs`). 위의 행진 그림은 `out\Bolok.exe --art-gif assets/parade.gif` 로 다시 만들어요. 알·아이콘·게임 같은 공통 그림은 `tools/sprites.py` 가 만들어요.
 
 `v1.2.3` 같은 태그를 올리면 깃허브 액션이 exe 한 파일을 만들어 릴리스에 올려요.

@@ -5,26 +5,19 @@ using System.Text.Json;
 
 namespace Bolok;
 
-// 그림 두 장을 겹쳐 쓴다: 고른 캐릭터 그림(형태·볼·자세)이 먼저, 없는 이름은 공통 그림(assets/sprites.png:
-// 알·아이콘·이모티콘·게임·소품·캐릭터 썸네일)에서. 캐릭터는 고른 하나만 읽는다 (34종을 다 읽으면 메모리가 한참 는다).
-// 캐릭터 그림은 데이터(assets/pets/art.json)로 PetArt 가 그린다 (Drawn). 그림 파일을 받지 않는다.
+// 그림은 두 군데서 온다: 캐릭터(형태/볼/자세 줄과 도감 썸네일 thumb/<종>)는 데이터(assets/pets/art.json)로 PetArt 가 그리고,
+// 나머지(알·아이콘·이모티콘·게임·소품)는 공통 그림(assets/sprites.png). 캐릭터 줄은 처음 쓸 때 그 줄만 그린다 (한 벌을 다 그리면 0.3초 걸린다).
 // 쓴 프레임은 배율별로 캐시한다
 public sealed class Sprites
 {
     public const string DefaultSpecies = "hamster";
 
+    // 공통 그림: PNG 한 장 + 줄 목록 (tools/sprites.py 가 만든다)
     sealed class Sheet
     {
         public readonly Bitmap Bmp;
         public readonly Dictionary<string, (int Row, int Frames)> Rows = new();
-        public readonly Dictionary<string, string> Names = new();   // 공통 그림에만: 종 → 이름
         public readonly int Cell;
-
-        public Sheet((Bitmap Bmp, Dictionary<string, (int Row, int Frames)> Rows) drawn) // PetArt 가 그린 것
-        {
-            (Bmp, Cell) = (drawn.Bmp, PetArt.Cell);
-            foreach (var (k, v) in drawn.Rows) Rows[k] = v;
-        }
 
         public Sheet(Stream png, Stream json)
         {
@@ -34,24 +27,27 @@ public sealed class Sprites
             Cell = doc.RootElement.GetProperty("cell").GetInt32();
             foreach (var r in doc.RootElement.GetProperty("rows").EnumerateObject())
                 Rows[r.Name] = (r.Value[0].GetInt32(), r.Value[1].GetInt32());
-            if (doc.RootElement.TryGetProperty("species", out var sp))
-                foreach (var s in sp.EnumerateObject()) Names[s.Name] = s.Value.GetString() ?? s.Name;
         }
     }
 
-    readonly Sheet common, pet;
+    readonly Sheet common;
+    readonly PetArt art;
+    readonly Dictionary<string, (Bitmap Bmp, int Frames)> drawn = new();
     readonly Dictionary<(string, int, int, bool), Bitmap> cache = new();
     public readonly int Cell;
     public readonly string Species;
-    public IReadOnlyDictionary<string, string> SpeciesNames => common.Names;   // 고를 수 있는 캐릭터 (생성기 순서)
+    public IReadOnlyList<string> SpeciesList => art.Species; // 고를 수 있는 캐릭터 (art.json 순서)
 
-    Sprites(Sheet common, Sheet pet, string species) => (this.common, this.pet, Cell, Species) = (common, pet, common.Cell, species);
+    Sprites(Sheet common, PetArt art, string species) => (this.common, this.art, Cell, Species) = (common, art, common.Cell, species);
 
     // exe 안 데이터로. 못 그리는 종이면 햄스터
-    public static Sprites Embedded(string species = DefaultSpecies) => Drawn(PetArt.Embedded, PetArt.Embedded.Can(species) ? species : DefaultSpecies, null);
+    public static Sprites Embedded(string species = DefaultSpecies) => Drawn(PetArt.Embedded, species, null);
 
-    // 데이터로 그린 캐릭터 + 공통 그림(개발 폴더 dir 이나 exe 에서)
-    public static Sprites Drawn(PetArt art, string species, string? dir) => new(Common(dir), new Sheet(art.Sheet(species)), species);
+    // 데이터로 그리는 캐릭터 + 공통 그림(개발 폴더 dir 이나 exe 에서)
+    public static Sprites Drawn(PetArt art, string species, string? dir) => new(Common(dir), art, art.Can(species) ? species : DefaultSpecies);
+
+    // 개발: 저장소 assets 의 데이터·공통 그림으로
+    public static Sprites FromDir(string dir, string species = DefaultSpecies) => Drawn(PetArt.FromDir(dir), species, dir);
 
     static Sheet Common(string? dir)
     {
@@ -68,19 +64,30 @@ public sealed class Sprites
         return new Sheet(epng, ejson);
     }
 
-    // 개발: 저장소 assets 의 데이터·공통 그림으로 (못 그리는 종이면 햄스터)
-    public static Sprites FromDir(string dir, string species = DefaultSpecies)
+    static string? ThumbOf(string name) => name.StartsWith("thumb/") ? name[6..] : null;
+
+    // 데이터로 그리는 줄: 이 종의 형태/볼/자세, 아무 종의 thumb/<종>. 처음 물을 때 그린다
+    (Bitmap Bmp, int Frames)? Row(string name)
     {
-        var art = PetArt.FromDir(dir);
-        return Drawn(art, art.Can(species) ? species : DefaultSpecies, dir);
+        if (drawn.TryGetValue(name, out var d)) return d;
+        if (ThumbOf(name) is { } id) { if (!art.Can(id)) return null; d = (art.Thumb(id), 2); }
+        else if (art.HasRow(name)) d = art.Row(Species, name);
+        else return null;
+        return drawn[name] = d;
     }
 
-    public bool Has(string name) => pet.Rows.ContainsKey(name) || common.Rows.ContainsKey(name);
+    public bool Has(string name) => (ThumbOf(name) is { } id ? art.Can(id) : art.HasRow(name)) || common.Rows.ContainsKey(name);
 
     public Bitmap Get(string name, int frame, int scale, bool flip = false)
     {
-        var sheet = pet.Rows.ContainsKey(name) ? pet : common;
-        var (row, n) = sheet.Rows[name];
+        Bitmap src;
+        int n, y;
+        if (Row(name) is { } d) (src, n, y) = (d.Bmp, d.Frames, 0);
+        else
+        {
+            var (row, rn) = common.Rows[name];
+            (src, n, y) = (common.Bmp, rn, row * Cell);
+        }
         var key = (name, frame % n, scale, flip);
         if (cache.TryGetValue(key, out var hit)) return hit;
 
@@ -89,8 +96,7 @@ public sealed class Sprites
         {
             g.InterpolationMode = InterpolationMode.NearestNeighbor;
             g.PixelOffsetMode = PixelOffsetMode.Half;
-            g.DrawImage(sheet.Bmp, new Rectangle(0, 0, b.Width, b.Height),
-                new Rectangle((frame % n) * Cell, row * Cell, Cell, Cell), GraphicsUnit.Pixel);
+            g.DrawImage(src, new Rectangle(0, 0, b.Width, b.Height), new Rectangle((frame % n) * Cell, y, Cell, Cell), GraphicsUnit.Pixel);
         }
         if (flip) b.RotateFlip(RotateFlipType.RotateNoneFlipX);
         return cache[key] = b;
