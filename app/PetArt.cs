@@ -1032,6 +1032,9 @@ public sealed class PetArt
             case "w": g.Pix(c["line"], (fx - 2, my), (fx - 1, my + 1), (fx, my), (fx + 1, my + 1), (fx + 2, my)); break;
             case "chew": g.Pix(c["line"], (fx - 2, my + 1), (fx - 1, my), (fx, my + 1), (fx + 1, my), (fx + 2, my + 1)); break;
             case "flat": g.Pix(c["line"], (fx - 1, my + 1), (fx, my + 1), (fx + 1, my + 1)); break;
+            case "y": g.Pix(c["line"], (fx, my), (fx - 2, my + 1), (fx - 1, my + 1), (fx + 1, my + 1), (fx + 2, my + 1)); break;      // ㅅ 입 (곰·사슴처럼 주둥이 있는 동물)
+            case "smile": g.Pix(c["line"], (fx - 2, my), (fx - 1, my + 1), (fx, my + 1), (fx + 1, my + 1), (fx + 2, my)); break; // 방긋 (여우·유니콘·슬라임)
+            case "dot": g.Pix(c["line"], (fx, my + 1), (fx + 1, my + 1)); break;                                                 // 콩알 입 (몽마·유령·고슴도치)
             case "frown": g.Pix(c["line"], (fx - 2, my + 1), (fx - 1, my), (fx, my), (fx + 1, my), (fx + 2, my + 1)); break;
             case "o": g.Ell(fx + .5, my + 1.5, 1.8, 1.8, c["line"]); break;
             case "open" or "wide":
