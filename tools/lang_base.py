@@ -54,7 +54,7 @@ t('note.worms_fire', 'Hold and release: Fire', '누르고 있다 놓기: 쏘기'
 t('note.worms_walk', '←→: Walk  Space: Jump', '←→: 걷기  Space: 점프')
 t('note.worms_wind', 'Up arrow: Wind', '위 화살표: 바람')
 t('note.raid_move', '←→ / Mouse: Move', '←→ / 마우스: 움직이기')
-t('note.raid_fire', 'Space / Hold left click: Fire', 'Space / 왼쪽 누르고 있기: 쏘기')
+t('note.raid_fire', 'Fires automatically', '쏘는 건 자동이에요')
 # 단계
 t('stage.egg', 'Egg', '알')
 t('stage.baby', 'Baby', '아기')

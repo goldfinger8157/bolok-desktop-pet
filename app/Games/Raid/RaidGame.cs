@@ -4,13 +4,13 @@ namespace Bolok;
 
 // 버그 습격 모듈: 앱에 붙이기(판·조작·볼록이), 그리기, 기록, 자가 검사, 디버그 명령. 규칙은 Raid.cs
 // 판은 볼록이가 있는 모니터 아래쪽, 볼록이 근처에 120×160 칸(배율 3 이면 360×480)만 쓴다 (볼록이 부대가 너무 크고 눈에 띄었다)
-// 조작: 마우스·← → 로 움직이고, 왼쪽 누르고 있기·Space 로 쏜다. Esc 끝. 본체 창은 숨기고 작은 볼록이를 판 위에 그린다
+// 조작: 마우스·← → 로 움직이기만 한다. 쏘는 건 자동 (YELL: 누르지 않게). Esc 끝. 본체 창은 숨기고 작은 볼록이를 판 위에 그린다
 sealed class RaidGame : IGameMode
 {
     readonly IGameHost host;
     Raid? raid;
     int best, bestStage, keys;
-    bool auto, keyFire, mouseFire;
+    bool auto;
     Point mouse;
     double guideUntil;
 
@@ -38,19 +38,15 @@ sealed class RaidGame : IGameMode
             }
             if (e is "stage" or "hurt" or "over") Dbg.Log("raid", ("event", e), ("score", r.Score), ("stage", r.Stage), ("lives", r.Lives));
         };
-        (keys, keyFire, mouseFire, mouse, guideUntil) = (0, false, false, Control.MousePosition, 4);
-        var layer = host.OpenLayer(field, (_, e) => { if (e.Button == MouseButtons.Left) mouseFire = true; }, (_, e) => { if (e.Button == MouseButtons.Left) mouseFire = false; }, () => Stop(true));
+        (keys, mouse, guideUntil) = (0, Control.MousePosition, 4);
+        r.Fire(true); // 자동 발사
+        var layer = host.OpenLayer(field, (_, _) => { }, (_, _) => { }, () => Stop(true));
         layer.KeyDown += (_, e) =>
         {
             if (e.KeyCode == Keys.Left) keys = -1;
             else if (e.KeyCode == Keys.Right) keys = 1;
-            else if (e.KeyCode == Keys.Space) keyFire = true;
         };
-        layer.KeyUp += (_, e) =>
-        {
-            if (e.KeyCode is Keys.Left or Keys.Right) { keys = 0; raid?.SetTarget(raid.X); }
-            else if (e.KeyCode == Keys.Space) keyFire = false;
-        };
+        layer.KeyUp += (_, e) => { if (e.KeyCode is Keys.Left or Keys.Right) { keys = 0; raid?.SetTarget(raid.X); } };
         b.StartPuppet();
         host.ShowPet(false);
         Dbg.Log("mode-start", ("id", Id), ("field", field.ToString()));
@@ -62,7 +58,6 @@ sealed class RaidGame : IGameMode
         if (auto) r.SetTarget(r.BotTarget());
         else if (keys != 0) r.SetTarget(r.X + keys * r.Field.Width);
         else if (Control.MousePosition != mouse) { mouse = Control.MousePosition; r.SetTarget(mouse.X); }
-        r.Fire(auto || keyFire || mouseFire && (Control.MouseButtons & MouseButtons.Left) != 0); // 떼는 걸 놓쳐도 계속 쏘지 않게
         r.Update(dt);
         (host.Pet.X, host.Pet.Y) = (r.X, r.Ground); // 본체는 숨었지만 끝나면 여기서 나타난다
         if (r.Done) Stop(false);

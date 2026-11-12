@@ -304,20 +304,24 @@ public sealed class Overlay : Form
     Rectangle DreamRect()
     {
         int k = b.Scale;
-        double cx = b.X + 15 * k, cy = b.HeadY - 13 * k; // 작게 (YELL: 좀 크다)
+        double cx = b.X + DreamSide * 15 * k, cy = b.HeadY - 13 * k; // 작게 (YELL: 좀 크다)
         return Around(cx, cy, 11 * k, 10 * k);
     }
+
+    // 잠자는 그림의 z 는 머리 오른쪽 위(볼록이가 왼쪽을 보면 그림이 뒤집혀 왼쪽 위)에 있다. 꿈 말풍선은 그 반대쪽에 (YELL: 겹친다)
+    int DreamSide => b.Dir < 0 ? 1 : -1;
 
     void DrawDream(Graphics g, IReadOnlyList<string> dreams)
     {
         int k = b.Scale;
         var r = Client(DreamRect());
-        var head = ToClient(b.X + 8 * k, b.HeadY);
+        int side = DreamSide;
+        var head = ToClient(b.X + side * 8 * k, b.HeadY);
         using var line = new SolidBrush(Color.FromArgb(92, 58, 40));
         using var white = new SolidBrush(Color.White);
         void Puff(int x, int y, int rad) { g.FillEllipse(line, x - rad - k, y - rad - k, (rad + k) * 2, (rad + k) * 2); g.FillEllipse(white, x - rad, y - rad, rad * 2, rad * 2); }
-        Puff(head.X + 3 * k, head.Y - 2 * k, k);
-        Puff(head.X + 6 * k, head.Y - 5 * k, 2 * k);
+        Puff(head.X + side * 3 * k, head.Y - 2 * k, k);
+        Puff(head.X + side * 6 * k, head.Y - 5 * k, 2 * k);
         var mode = g.SmoothingMode;
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None; // 투명색 창: 부드럽게 그리면 분홍 테두리
         g.FillEllipse(line, r.X + k, r.Y + 3 * k, r.Width - 2 * k, r.Height - 6 * k);

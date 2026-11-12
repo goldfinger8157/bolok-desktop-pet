@@ -504,16 +504,16 @@
   "ru": "←→ / Мышь: Двигаться"
  },
  "note.raid_fire": {
-  "en": "Space / Hold left click: Fire",
-  "ko": "Space / 왼쪽 누르고 있기: 쏘기",
-  "ja": "Space / 左ボタン長押し: 発射",
-  "zh-Hans": "Space / 按住左键: 射击",
-  "zh-Hant": "Space / 按住左鍵: 射擊",
-  "es": "Space / Mantén clic izq.: Disparar",
-  "de": "Space / Linke Taste halten: Feuern",
-  "fr": "Space / Maintenir clic gauche : Tirer",
-  "pt": "Space / Segurar clique esq.: Atirar",
-  "ru": "Space / Удерживать ЛКМ: Огонь"
+  "en": "Fires automatically",
+  "ko": "쏘는 건 자동이에요",
+  "ja": "発射は自動だよ",
+  "zh-Hans": "自动射击",
+  "zh-Hant": "自動射擊",
+  "es": "Dispara solo",
+  "de": "Feuert automatisch",
+  "fr": "Tir automatique",
+  "pt": "Atira sozinho",
+  "ru": "Стреляет сам"
  },
  "stage.egg": {
   "en": "Egg",
