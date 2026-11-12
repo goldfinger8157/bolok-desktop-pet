@@ -6,7 +6,7 @@ namespace Bolok;
 interface IGameMode
 {
     string Id { get; }          // 디버그 명령·기록·로그 이름 ("raid")
-    string MenuKey { get; }     // 메뉴 이름 (lang.json 키)
+    string? MenuKey { get; }    // 메뉴 이름 (lang.json 키). null 이면 메뉴에 안 단다 (디버그 도구처럼 메뉴를 따로 다는 것)
     bool Running { get; }
     void Start();               // 메뉴에서 (다른 게임 중이거나 알이면 앱이 부르지 않는다)
     void Frame(double dt);      // 하는 동안 매 프레임
@@ -28,6 +28,7 @@ interface IGameHost
     GameLayer OpenLayer(Rectangle field, MouseEventHandler down, MouseEventHandler up, Action quit); // 판(클릭·키 받기). 하던 창은 끝나면 돌려준다
     void CloseLayer();
     void ShowPet(bool show);           // 게임이 볼록이를 판 위에 작게 직접 그릴 때 본체 창을 숨긴다
+    Sprites? SpritesOf(string species); // 다른 종 그림 (데이터로 그리거나 받아 둔 것, 없으면 null)
     void Save();
 }
 

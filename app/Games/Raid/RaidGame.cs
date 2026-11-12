@@ -197,6 +197,7 @@ sealed class RaidGame : IGameMode
         public GameLayer OpenLayer(Rectangle field, MouseEventHandler down, MouseEventHandler up, Action quit) => throw new NotSupportedException();
         public void CloseLayer() { }
         public void ShowPet(bool show) { }
+        public Sprites? SpritesOf(string species) => null;
         public void Save() { }
     }
 

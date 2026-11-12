@@ -120,6 +120,7 @@ public sealed class PetArt
     }
 
     public IReadOnlyList<string> Species => order;
+    public IEnumerable<string> Poses => poses.Select(p => p.Name);
     public bool Can(string id) => species.TryGetValue(id, out var s) && s.Keys.All(Known.Contains);
     public IEnumerable<string> Rows => forms.SelectMany(f => Enumerable.Range(0, Cheeks).SelectMany(c => poses.Select(p => $"{f.Name}/{c}/{p.Name}")));
 

@@ -105,6 +105,7 @@ public sealed class PetForm : Form, IGameHost
         var area = Screen.PrimaryScreen!.WorkingArea;
         b = new Brain(LoadPet(k), k, new World(Screen.AllScreens.Select(s => s.WorkingArea)), area) { Scale = ScaleFor(k) };
         modes = GameModes.Create(this); // 게임 모듈 (app/Games): 기록을 읽기 전에 만든다
+        if (debug) modes.Add(showcase = new Showcase(this, PoseMs)); // 디버그 앱: 캐릭터 확인 (모든 종의 아기·어린이·어른)
         b.Windows = Native.ListWindows;
         b.Foreground = () => Native.OwnForeground() ? b.Active : Native.Foreground(); // 메뉴를 열어도 활성 창이 바뀐 걸로 치지 않는다
         Restore();
@@ -338,7 +339,7 @@ public sealed class PetForm : Form, IGameHost
         Add("menu.breakout", () => BeginInvoke(StartBreak));
         Add("menu.minigun", () => BeginInvoke(StartMinigun));
         Add("menu.icbm", () => BeginInvoke(StartIcbm));
-        foreach (var m in modes) Add(m.MenuKey, () => BeginInvoke(() => { if (!InGame && b.P.Stage != "egg") m.Start(); })); // 게임 모듈
+        foreach (var m in modes) if (m.MenuKey is { } key) Add(key, () => BeginInvoke(() => { if (!InGame && b.P.Stage != "egg") m.Start(); })); // 게임 모듈
         var cannon = new ToolStripMenuItem(); // 대포를 고르면 체력이 정해진다
         menuTexts.Add((cannon, () => L.T("menu.fortress")));
         foreach (var gun in Worms.Guns)
@@ -347,6 +348,7 @@ public sealed class PetForm : Form, IGameHost
             menuTexts.Add((item, () => gun.Shells > 1 ? L.T("menu.gun_shells", gun.Label, gun.Hp, gun.Shells) : L.T("menu.gun", gun.Label, gun.Hp)));
         }
         menu.Items.Add(cannon);
+        if (showcase != null) { menu.Items.Add(new ToolStripSeparator()); menu.Items.Add(showcase.Menu(menuTexts, () => InGame, a => BeginInvoke(a))); }
         menu.Items.Add(new ToolStripSeparator());
         Add("menu.settings", () => ShowSettings());
         updateItem.Click += (_, _) => { Save(); Updater.Restart(); };
@@ -365,6 +367,7 @@ public sealed class PetForm : Form, IGameHost
 
     // ── 게임 모듈에 빌려주는 것 (IGameHost) ──
     readonly List<IGameMode> modes;
+    readonly Showcase? showcase;
     Brain IGameHost.Pet => b;
     Sprites IGameHost.Sprites => sprites;
     bool IGameHost.Busy => InGame || b.P.Stage == "egg";
@@ -372,6 +375,7 @@ public sealed class PetForm : Form, IGameHost
     void IGameHost.CloseLayer() => CloseLayer();
     void IGameHost.ShowPet(bool show) { if (show) { Show(); Native.Topmost(Handle); } else Hide(); }
     void IGameHost.Save() => Save();
+    Sprites? IGameHost.SpritesOf(string id) => pets.Load(id, assetsDir);
 
     // 디버그 명령 중 게임 모듈 것 (<게임 id> ...)
     public bool ModeCommand(string[] a) => modes.Any(m => m.Command(a));

@@ -131,6 +131,66 @@
   "pt": "Ataque dos bichos",
   "ru": "Налёт жуков"
  },
+ "menu.showcase": {
+  "en": "Character check (debug)",
+  "ko": "캐릭터 확인 (디버그)",
+  "ja": "キャラ確認 (デバッグ)",
+  "zh-Hans": "角色检查 (调试)",
+  "zh-Hant": "角色檢查 (除錯)",
+  "es": "Revisar personajes (depuración)",
+  "de": "Figuren prüfen (Debug)",
+  "fr": "Vérifier les personnages (débogage)",
+  "pt": "Conferir personagens (depuração)",
+  "ru": "Проверка персонажей (отладка)"
+ },
+ "menu.showcase_pose": {
+  "en": "Pose",
+  "ko": "자세",
+  "ja": "ポーズ",
+  "zh-Hans": "姿势",
+  "zh-Hant": "姿勢",
+  "es": "Pose",
+  "de": "Pose",
+  "fr": "Pose",
+  "pt": "Pose",
+  "ru": "Поза"
+ },
+ "menu.showcase_auto": {
+  "en": "Auto (all in turn)",
+  "ko": "자동 (차례로 모두)",
+  "ja": "自動 (順番に全部)",
+  "zh-Hans": "自动 (依次全部)",
+  "zh-Hant": "自動 (依序全部)",
+  "es": "Automático (todas por turno)",
+  "de": "Automatisch (alle der Reihe nach)",
+  "fr": "Auto (toutes à tour de rôle)",
+  "pt": "Automático (todas em sequência)",
+  "ru": "Авто (все по очереди)"
+ },
+ "menu.showcase_cheek": {
+  "en": "Cheeks",
+  "ko": "볼",
+  "ja": "ほっぺ",
+  "zh-Hans": "脸颊",
+  "zh-Hant": "臉頰",
+  "es": "Mejillas",
+  "de": "Backen",
+  "fr": "Joues",
+  "pt": "Bochechas",
+  "ru": "Щёки"
+ },
+ "menu.showcase_end": {
+  "en": "End",
+  "ko": "끝내기",
+  "ja": "終わる",
+  "zh-Hans": "结束",
+  "zh-Hant": "結束",
+  "es": "Terminar",
+  "de": "Beenden",
+  "fr": "Terminer",
+  "pt": "Encerrar",
+  "ru": "Закончить"
+ },
  "menu.fortress": {
   "en": "Fortress",
   "ko": "포트리스",

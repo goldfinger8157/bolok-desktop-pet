@@ -435,6 +435,9 @@ public sealed class Overlay : Form
         return new Rectangle(x, (int)(feet - b.CellPx * .4 - h2 / 2.0), w2 + tail, h2);
     }
 
+    // 정한 자리(화면 좌표)에 안내 말풍선 (크기는 NoteRect 로 잰다)
+    public void DrawNoteBox(Graphics g, Rectangle r, string[] lines) => DrawNote(g, Client(r), lines, true);
+
     public void DrawNoteAt(Graphics g, double petX, double feet, Rectangle area, string[] lines)
     {
         var r = NoteRect(petX, feet, area, lines);

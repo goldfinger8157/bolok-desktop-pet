@@ -653,6 +653,13 @@ public sealed class Brain
         Mode = Mode.Puppet;
     }
 
+    // 표정·수치 없이 그냥 돌려놓는다 (디버그 도구: 캐릭터 확인)
+    public void LeavePuppet()
+    {
+        Mode = Mode.Wander;
+        next = Now + 1;
+    }
+
     public void EndPuppet(bool won, string what, params (string, object?)[] log)
     {
         Mode = Mode.Wander;
