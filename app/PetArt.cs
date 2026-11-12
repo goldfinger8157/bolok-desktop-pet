@@ -494,6 +494,7 @@ public sealed class PetArt
                 case "muzzle": Stamp(g, art, fx + .5, my + 1 + st.N("dy"), pal, false, true); break;
                 case "brow": foreach (int s in Sides) Stamp(g, art, fx + .5 + s * gap, ey - 3.5 + st.N("dy"), pal, s > 0, true); break;
                 case "cheek": foreach (int s in Sides) Stamp(g, art, fx + .5 + s * (gap + 1.5 + st.N("dx")), my + st.N("dy"), pal, s > 0, true); break;
+                case "under": foreach (int s in Sides) Stamp(g, art, fx + .5 + s * (gap + st.N("dx")), ey + 3 + st.N("dy"), pal, s > 0, true); break; // 눈 밑 (레서판다 눈물 무늬)
             }
         }
         if (F.T("tuft") && !HeadMark(S)) // 아기: 정수리에 털 한 가닥 (머리에 갓·갈기·뿔이 있는 종은 빼고)
