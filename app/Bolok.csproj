@@ -19,9 +19,8 @@
     <EmbeddedResource Include="..\assets\sprites.png" LogicalName="sprites.png" />
     <EmbeddedResource Include="..\assets\sprites.json" LogicalName="sprites.json" />
     <EmbeddedResource Include="..\assets\lang.json" LogicalName="lang.json" />
-    <!-- 캐릭터는 기본 햄스터만 넣는다. 나머지는 알이 생길 때 저장소에서 받는다 (manifest: 크기·sha256 목록) -->
-    <EmbeddedResource Include="..\assets\pets\hamster.png" LogicalName="pets/hamster.png" />
-    <EmbeddedResource Include="..\assets\pets\hamster.json" LogicalName="pets/hamster.json" />
+    <!-- 캐릭터 그림은 데이터(art.json)로 그린다. 아직 데이터로 못 그리는 종만 알이 생길 때 저장소에서 받는다 (manifest: 크기·sha256 목록) -->
+    <EmbeddedResource Include="..\assets\pets\art.json" LogicalName="pets/art.json" />
     <EmbeddedResource Include="..\assets\pets\manifest.json" LogicalName="pets/manifest.json" />
   </ItemGroup>
 

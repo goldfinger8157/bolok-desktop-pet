@@ -66,11 +66,12 @@ static class Program
         if (args.Length == 2 && args[0] == "--pets-check") // 이 exe 가 받을 캐릭터 그림이 저장소(자기 태그)에 다 있고 목록과 맞는지 (릴리스 워크플로가 돌린다)
         {
             var ps = new PetSheets(args[1], null, PetSheets.RefFor(Updater.Current, Updater.IsDevBuild));
-            int ok = 0;
+            int ok = 0, drawn = 0;
             foreach (var id in ps.Manifest.Keys)
-                if (ps.Fetch(id).GetAwaiter().GetResult() && ps.Read(id) != null) ok++;
+                if (ps.Art.Can(id)) { ok++; drawn++; } // 데이터로 그리는 종은 받을 일이 없다
+                else if (ps.Fetch(id).GetAwaiter().GetResult() && ps.Read(id) != null) ok++;
                 else Console.WriteLine($"못 받음: {id} ({ps.Url(id + ".png")})");
-            Console.WriteLine($"캐릭터 그림 {ok}/{ps.Manifest.Count} ({ps.GitRef})");
+            Console.WriteLine($"캐릭터 그림 {ok}/{ps.Manifest.Count}: 데이터로 그림 {drawn}, 받음 {ok - drawn} ({ps.GitRef})");
             return ok == ps.Manifest.Count ? 0 : 1;
         }
 
@@ -126,6 +127,32 @@ static class Program
                 Overlay.PaintCrater(g, c, new Point((int)c.X, (int)c.Y), rim, hole, 3.3, k);
             }
             g.ResetTransform();
+            bmp.Save(args[1]);
+            return 0;
+        }
+
+        if (args.Length >= 3 && args[0] == "--art-look") // 데이터로 그린 캐릭터 보기: --art-look 그림.png hamster '{"fur":"#FAB2CC",...}' (화면을 띄우지 않는다)
+        {
+            ApplicationConfiguration.Initialize();
+            var art = Directory.Exists("assets") ? PetArt.FromDir("assets") : PetArt.Embedded;
+            string[] forms = { "baby", "child", "adult_chubby", "adult_sweet", "adult_grumpy" }, poses = { "idle", "happy" };
+            const int k = 3, cell = PetArt.Cell * k;
+            using var bmp = new Bitmap(forms.Length * poses.Length * cell + 20, (args.Length - 2) * (cell + 10) + 10);
+            using var g = Graphics.FromImage(bmp);
+            g.Clear(Color.FromArgb(236, 239, 244));
+            for (int i = 2; i < args.Length; i++)
+            {
+                string id = args[i].StartsWith('{') ? "look" + i : args[i];
+                var a = args[i].StartsWith('{') ? art.With(id, args[i]) : art;
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var sp = Sprites.Drawn(a, id, null);
+                Console.WriteLine($"{id}: 한 벌 그리기 {sw.ElapsedMilliseconds}ms");
+                int x = 10;
+                foreach (var f in forms)
+                {
+                    foreach (var p in poses) { g.DrawImage(sp.Get($"{f}/0/{p}", 0, k), x, 10 + (i - 2) * (cell + 10)); x += cell; }
+                }
+            }
             bmp.Save(args[1]);
             return 0;
         }

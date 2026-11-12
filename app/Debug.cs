@@ -187,7 +187,7 @@ public sealed class DevLink
 
     void WatchSprites()
     {
-        var t = File.GetLastWriteTimeUtc(Path.Combine(assets, "sprites.png"));
+        var t = new[] { "sprites.png", "pets/art.json" }.Max(f => File.GetLastWriteTimeUtc(Path.Combine(assets, f))); // 그림 데이터를 고쳐도 다시 그린다
         if (t == spriteTime) return;
         spriteTime = t;
         form.SwapSprites(Sprites.FromDir(assets, form.Species));

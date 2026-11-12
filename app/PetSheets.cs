@@ -4,8 +4,8 @@ using System.Text.Json;
 
 namespace Bolok;
 
-// 캐릭터 그림 가져오기. exe 에는 공통 그림(알·도감 썸네일·게임)과 햄스터만 넣는다 — 34종을 다 넣으면 10MB 가 는다.
-// 나머지는 새 알이 생길 때 저장소의 「이 버전 태그」에서 그 종 그림만 받아 둔다 (알이 깨지기 전, 약 300KB).
+// 캐릭터 그림 가져오기. 데이터(assets/pets/art.json)로 그릴 수 있는 종(지금은 햄스터)은 받을 것 없이 바로 그린다 (Load·Ready).
+// 아직 못 그리는 종은 새 알이 생길 때 저장소의 「이 버전 태그」에서 그 종 그림만 받아 둔다 (알이 깨지기 전, 약 300KB).
 // 받은 파일은 exe 안 목록(assets/pets/manifest.json: 크기·sha256)과 맞아야만 저장하고 쓴다. 개발(디버그)은 저장소 assets 를 바로 읽는다
 public sealed class PetSheets
 {
@@ -17,6 +17,15 @@ public sealed class PetSheets
     readonly HashSet<string> fetching = new();
     public readonly string GitRef;
     public readonly IReadOnlyDictionary<string, Entry> Manifest;
+
+    // 그리는 데이터: 개발은 저장소 것(고치면 바로 다시 읽는다), 릴리스는 exe 안 것
+    public PetArt Art => assetsDir != null ? PetArt.FromDir(assetsDir) : PetArt.Embedded;
+
+    // 그 종 그림: 데이터로 그리거나 받아 둔 것. 아직 없으면 null (Fetch 로 받는다)
+    public Sprites? Load(string species, string? dir) => Art.Can(species) ? Sprites.Drawn(Art, species, dir) : Read(species) is { } p ? Sprites.With(species, p, dir) : null;
+
+    // 지금 바로 쓸 수 있나 (그릴 수 있거나 받아 두었다)
+    public bool Ready(string species) => Art.Can(species) || Read(species) != null;
 
     public PetSheets(string cacheDir, string? assetsDir, string gitRef, IReadOnlyDictionary<string, Entry>? manifest = null, Func<HttpClient>? http = null)
     {
@@ -53,15 +62,6 @@ public sealed class PetSheets
         return ReadManifest(s);
     }
 
-    public static bool Embedded(string species) => Assembly.GetExecutingAssembly().GetManifestResourceInfo($"pets/{species}.png") != null;
-
-    static byte[] Resource(string name)
-    {
-        using var s = Assembly.GetExecutingAssembly().GetManifestResourceStream(name)!;
-        using var m = new MemoryStream();
-        s.CopyTo(m);
-        return m.ToArray();
-    }
 
     // 받아 둔 파일 이름에 지문 앞자리를 붙인다: 버전이 바뀌어 그림이 달라지면 새로 받는다
     string CachePath(string species, string ext)
@@ -73,7 +73,7 @@ public sealed class PetSheets
     public static bool Ok(byte[] b, string sha256, long size) =>
         b.Length == size && Convert.ToHexString(SHA256.HashData(b)).Equals(sha256, StringComparison.OrdinalIgnoreCase);
 
-    // 지금 바로 읽을 수 있는 그림 (개발 폴더, exe 안, 받아 둔 것 순). 없거나 목록과 안 맞으면 null
+    // 지금 바로 읽을 수 있는 PNG 그림 (개발 폴더, 받아 둔 것 순). 없거나 목록과 안 맞으면 null. 데이터로 그리는 종은 Load·Ready 로
     public (byte[] Png, byte[] Json)? Read(string species)
     {
         if (assetsDir != null)
@@ -81,7 +81,6 @@ public sealed class PetSheets
             string p = Path.Combine(assetsDir, "pets", species + ".png"), j = Path.Combine(assetsDir, "pets", species + ".json");
             return File.Exists(p) && File.Exists(j) ? (File.ReadAllBytes(p), File.ReadAllBytes(j)) : null;
         }
-        if (Embedded(species)) return (Resource($"pets/{species}.png"), Resource($"pets/{species}.json"));
         if (!Manifest.TryGetValue(species, out var e)) return null;
         string pp = CachePath(species, "png"), jp = CachePath(species, "json");
         if (!File.Exists(pp) || !File.Exists(jp)) return null;
@@ -94,12 +93,12 @@ public sealed class PetSheets
     }
 
     // 바로 쓸 수 있는 종들 (깨어날 때까지 원래 종을 못 받았으면 이 중에서 나온다)
-    public List<string> Local(IEnumerable<string> species) => species.Where(sp => Read(sp) != null).ToList();
+    public List<string> Local(IEnumerable<string> species) => species.Where(Ready).ToList();
 
     // 저장소에서 받아 둔다. 이미 있으면 바로 true. 같은 종을 받는 중이면 false (끝나면 Read 로 보인다)
     public async Task<bool> Fetch(string species)
     {
-        if (Read(species) != null) return true;
+        if (Ready(species)) return true;
         if (!Manifest.TryGetValue(species, out var e)) return false;
         lock (fetching) if (!fetching.Add(species)) return false;
         try

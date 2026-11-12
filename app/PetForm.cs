@@ -230,7 +230,7 @@ public sealed class PetForm : Form, IGameHost
     public void SetSpecies(string id)
     {
         species = id;
-        if (pets.Read(id) is { } pet) { SwapSprites(Sprites.With(id, pet, assetsDir)); Dbg.Log("species", ("id", id)); return; }
+        if (pets.Load(id, assetsDir) is { } s) { SwapSprites(s); Dbg.Log("species", ("id", id)); return; }
         Dbg.Log("species-wait", ("id", id));
         Fetch(id);
     }
@@ -250,7 +250,7 @@ public sealed class PetForm : Form, IGameHost
     {
         if (sprites.Species == species || (!now && Environment.TickCount64 < nextKeep)) return;
         nextKeep = Environment.TickCount64 + 1000;
-        if (pets.Read(species) is { } pet) { SwapSprites(Sprites.With(species, pet, assetsDir)); Dbg.Log("species", ("id", species)); }
+        if (pets.Load(species, assetsDir) is { } s) { SwapSprites(s); Dbg.Log("species", ("id", species)); }
         else if (Environment.TickCount64 > nextFetch) Fetch(species);
     }
 
@@ -295,7 +295,7 @@ public sealed class PetForm : Form, IGameHost
         if (pendingSave.Species != species)
         {
             // 예전 판(그림이 다 exe 안에 있던 때)에서 키우던 아이면 그림이 아직 없다. 깨어 있는 아이는 잠깐 기다려 받는다
-            if (b.P.Stage != "egg" && pets.Read(pendingSave.Species) == null) Task.Run(() => pets.Fetch(pendingSave.Species)).Wait(TimeSpan.FromSeconds(8));
+            if (b.P.Stage != "egg" && !pets.Ready(pendingSave.Species)) Task.Run(() => pets.Fetch(pendingSave.Species)).Wait(TimeSpan.FromSeconds(8));
             SetSpecies(pendingSave.Species);
         }
         (met, released) = (pendingSave.Met?.ToHashSet() ?? new(), pendingSave.Released ?? new());
@@ -792,12 +792,12 @@ public sealed class PetForm : Form, IGameHost
             ? released.LastOrDefault(r => r.Species == only) ?? new ReleasedPet(only, "child", 0, DateTime.Now)
             : Visitor.Pick(released, visits, species, Random.Shared);
         if (pick == null) return;
-        if (pets.Read(pick.Species) is not { } sheet) // 그 친구 그림이 없으면(예전 판에서 떠난 아이) 받아 두고 다음에
+        if (pets.Load(pick.Species, assetsDir) is not { } friendSprites) // 그 친구 그림이 없으면(예전 판에서 떠난 아이) 받아 두고 다음에
         {
             if (Environment.TickCount64 > nextVisitFetch) { nextVisitFetch = Environment.TickCount64 + 60_000; Task.Run(() => pets.Fetch(pick.Species)); }
             return;
         }
-        visitorSprites = Sprites.With(pick.Species, sheet, assetsDir);
+        visitorSprites = friendSprites;
         var area = b.Area;
         double x = b.X < area.Left + area.Width / 2.0 ? area.Left - b.CellPx : area.Right + b.CellPx; // 가까운 화면 옆에서 걸어 들어온다
         var v = visitor = new Visitor(pick.Species, pick.Stage, x, area.Bottom - b.K.FloorGap, b.Scale, new Random());
@@ -891,7 +891,7 @@ public sealed class PetForm : Form, IGameHost
         if (InGame || Afk() || b.Mode != Mode.Wander || b.P.Asleep) return;
         try
         {
-            var friend = pets.Read(from) is { } sheet ? Sprites.With(from, sheet, assetsDir) : null;
+            var friend = pets.Load(from, assetsDir);
             var file = Path.Combine(memDir, "cards", $"{DateTime.Now:yyyyMMdd-HHmmss}-{from}.png");
             Memories.Card(sprites, friend, from, cardForm, DateTime.Now.DayOfYear * 31 + from.Sum(ch => ch), file);
             cards.Add(new CardRecord(from, DateTime.Now, file));

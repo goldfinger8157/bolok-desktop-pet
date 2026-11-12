@@ -16,156 +16,40 @@ import zlib
 
 CELL = 40  # 한 칸 크기 (px). 앱은 이걸 정수배로 키워서 그린다
 
-C = dict(
-    line=(92, 58, 40),      # 윤곽선 — 검정보다 부드러운 진갈색
-    fur=(246, 186, 112),    # 등 털
-    shade=(226, 152, 84),   # 그림자
-    cream=(255, 243, 224),  # 배·주둥이
-    ear=(244, 156, 150),    # 귀 안쪽
-    blush=(255, 170, 165),  # 볼터치
-    eye=(46, 30, 24),
-    white=(255, 255, 255),
-    nose=(226, 98, 112),
-    paw=(255, 214, 196),
-    red=(232, 72, 92),
-    seed=(92, 74, 66),
-    stripe=(235, 225, 205),
-    blue=(120, 190, 240),
-    green=(120, 186, 100),
-)
+# 캐릭터 그림 데이터(색·형태·자세·종)는 assets/pets/art.json 한 곳에 있다. 앱(app/PetArt.cs)도 같은 파일로 그린다
+ART = json.loads((pathlib.Path(__file__).resolve().parent.parent / 'assets/pets/art.json').read_text(encoding='utf-8'))
 
-# 형태: 체형과 색. 어른 3종은 키운 방식으로 갈린다 (docs/model.md)
-FORMS = {
-    'baby': dict(rx=8.5, ry=8, ear=2.2, eye=2.6, eyegap=5, fur=(255, 205, 170), shade=(240, 170, 140)),
-    'child': dict(rx=10.5, ry=10, ear=3, eye=2.6, eyegap=6),
-    'adult_chubby': dict(rx=14, ry=12.5, ear=3.4, eye=2.6, eyegap=7),
-    'adult_sweet': dict(rx=12.5, ry=12, ear=3.6, eye=3, eyegap=7, flower=True, fur=(250, 196, 140), blush=2),
-    'adult_grumpy': dict(rx=12.5, ry=11.5, ear=3.2, eye=2.3, eyegap=6, fur=(196, 150, 112), shade=(160, 116, 84), brow=True),
-}
 
-# 캐릭터(종): 햄스터 몸에 귀·꼬리·얼굴·무늬·색을 얹는다. 실존 동물만, 유명 캐릭터와 겹치는 조합은 피한다
-#   (흰 토끼는 빼고 — 미피 판례, 곰은 리락쿠마 대신 반달가슴곰, 양은 검은 얼굴 없이 — 숀더쉽, 사슴은 흰 점 없이 — 밤비,
-#    고슴도치는 파랑 없이 — 소닉, 고양이는 흰 몸+리본 없이 — 헬로키티, 펭귄은 푸른 회색 — 뽀로로·턱스, 옷·소품은 안 입힌다)
-SPECIES = {
-    'hamster': dict(name='햄스터'),
-    'cat': dict(name='고양이', fur=(240, 168, 96), shade=(214, 134, 70), ears='pointy', tail='thin', marks=('tabby',), whisker=True),
-    'shiba': dict(name='시바견', fur=(226, 150, 82), shade=(196, 120, 60), ears='pointy', tail='curl', face='cheeks', nose='dark'),
-    'fox': dict(name='여우', fur=(234, 120, 58), shade=(204, 92, 40), ears='fox', ear_k=1.25, tail='fluffy', face='cheeks', nose='dark'),
-    'moonbear': dict(name='반달가슴곰', fur=(92, 72, 60), shade=(70, 54, 46), cream=(236, 222, 200), ear=(150, 120, 104), ears='small',
-                     belly=False, marks=('crescent',), face='snout', snout=(200, 168, 130), nose='dark', blush_k=.6),
-    'penguin': dict(name='펭귄', fur=(84, 100, 130), shade=(62, 76, 104), cream=(250, 250, 252), paw=(244, 160, 60), ears='none',
-                    wings='flipper', face='bigbelly', beak='small'),
-    'owl': dict(name='부엉이', fur=(150, 110, 82), shade=(120, 86, 62), cream=(236, 220, 192), paw=(240, 180, 70), ears='tuft',
-                wings='wing', marks=('disc',), beak='hook'),
-    'squirrel': dict(name='다람쥐', fur=(198, 118, 62), shade=(168, 92, 46), ears='pointy', ear_k=.75, tail='bushy', nose='dark'),
-    'otter': dict(name='수달', fur=(132, 96, 70), shade=(106, 76, 56), cream=(238, 220, 192), ears='small', ear_k=.8, face='snout',
-                  snout=(236, 218, 190), nose='dark', whisker=True),
-    'duck': dict(name='오리', fur=(255, 214, 80), shade=(236, 186, 50), cream=(255, 240, 170), paw=(250, 150, 50), ears='none',
-                 wings='small', beak='bill', marks=('tuft',)),
-    'frog': dict(name='개구리', fur=(120, 196, 96), shade=(88, 160, 70), cream=(226, 244, 200), paw=(140, 206, 110), ears='none',
-                 face='frog', nose='none', blush=(255, 160, 150)),
-    'hedgehog': dict(name='고슴도치', fur=(232, 210, 178), shade=(204, 180, 146), ears='small', ear_k=.7, back='spikes',
-                     spike=(122, 92, 70), nose='dark'),
-    'raccoon': dict(name='너구리', fur=(160, 160, 164), shade=(128, 128, 134), cream=(240, 240, 236), ear=(90, 90, 96), ears='pointy',
-                    ear_k=.8, tail='ring', marks=('mask',), nose='dark'),
-    'dragon': dict(name='아기 용', fur=(104, 190, 150), shade=(76, 158, 120), cream=(244, 236, 170), paw=(124, 204, 166), ears='none',
-                   horns='dragon', wings='dragon', tail='dragon', marks=('plates',)),
-    'sheep': dict(name='양', fur=(250, 246, 236), shade=(226, 220, 206), cream=(236, 212, 180), ear=(236, 200, 170), ears='side',
-                  back='wool', face='wool'),
-    'deer': dict(name='사슴', fur=(206, 146, 90), shade=(176, 118, 70), ears='side', horns='antler', face='snout', snout=(244, 226, 200),
-                 nose='dark'),
-    'goat': dict(name='염소', fur=(224, 214, 196), shade=(196, 184, 164), cream=(250, 246, 238), ear=(230, 196, 180), ears='side',
-                 horns='goat', marks=('beard',), nose='dark'),
-    'beaver': dict(name='비버', fur=(150, 100, 62), shade=(122, 78, 46), cream=(232, 206, 168), ears='small', ear_k=.7, tail='flat',
-                   face='snout', snout=(222, 196, 160), nose='dark', teeth=True),
-    'quokka': dict(name='쿼카', fur=(168, 146, 126), shade=(140, 120, 102), cream=(240, 228, 212), ears='small', ear_k=.85, nose='dark',
-                   smile=True),
-    'capybara': dict(name='카피바라', fur=(170, 120, 78), shade=(140, 96, 60), cream=(196, 150, 104), ears='small', ear_k=.6,
-                     face='capy', snout=(150, 106, 70), nose='nostrils', wide=1.12, belly=False, eye_k=.75, eye_up=2),
-    'koala': dict(name='코알라', fur=(170, 172, 182), shade=(140, 142, 154), cream=(236, 236, 240), ear=(246, 246, 250), ears='big',
-                  nose='big'),
-    # 실제 동물 더
-    'panda': dict(name='판다', fur=(246, 246, 242), shade=(214, 214, 210), cream=(255, 255, 252), ear=(60, 56, 60), ear_out=(52, 48, 54),
-                  paw=(66, 62, 68), ears='round', ear_k=.9, marks=('eyepatch',), nose='dark', belly=False),
-    'redpanda': dict(name='레서판다', fur=(196, 88, 46), shade=(160, 66, 34), cream=(252, 244, 232), ear=(252, 244, 232), paw=(64, 38, 30),
-                     ears='pointy', ear_k=.85, face='cheeks', marks=('brows',), tail='ring', nose='dark', belly=False),  # 배는 털색 그대로, 다리는 짙게 (여우와 다르게)
-    'alpaca': dict(name='알파카', fur=(222, 186, 146), shade=(190, 152, 112), cream=(250, 240, 222), ear=(200, 150, 120), ears='long',
-                   ear_k=.8, marks=('topknot',), face='snout', snout=(250, 240, 222), nose='dark'),  # 크림색 긴 귀는 토끼(미피)처럼 보인다 → 갈색 + 큰 털뭉치
-    'pig': dict(name='돼지', fur=(246, 232, 214), shade=(222, 204, 182), cream=(252, 242, 230), ear=(236, 182, 168), ears='pointy',
-                ear_k=.8, tail='curl', nose='pig', marks=('patches',)),  # 밝은 핑크는 페파피그와 겹친다
-    'octopus': dict(name='문어', fur=(236, 130, 150), shade=(206, 100, 124), cream=(252, 196, 206), ears='none', body='octo',
-                    marks=('spots',), nose='none'),
-    # 판타지·옛이야기 (유명 디자인과 겹치지 않게: 슬라임은 뾰족 머리 없는 민트 덩어리, 유령은 연보라에 작은 팔,
-    #  유니콘은 크림색 몸에 한 가지 색 갈기, 버섯은 갈색 갓에 크림 점)
-    'slime': dict(name='슬라임', fur=(150, 226, 196), shade=(110, 196, 166), cream=(196, 244, 224), ears='none', body='blob',
-                  marks=('shine',), nose='none', belly=False, mouth_in=(70, 150, 120)),  # 파란 물방울·빨간 혀는 드래곤퀘스트
-    'ghost': dict(name='유령', fur=(196, 214, 240), shade=(166, 186, 222), cream=(226, 236, 250), ears='none', body='ghost',
-                  nose='none', belly=False, blush=(236, 170, 204), no_cover=True),  # 물결 밑단·흰색은 팩맨·부우와 겹친다 → 연기 꼬리
-    'golem': dict(name='꼬마 골렘', fur=(164, 166, 158), shade=(130, 132, 124), cream=(196, 198, 190), paw=(140, 142, 134), ears='small',
-                  ear_k=.6, marks=('cracks', 'moss'), nose='none', wide=1.1),
-    'unicorn': dict(name='유니콘', fur=(214, 222, 238), shade=(184, 194, 218), cream=(240, 244, 252), ear=(196, 186, 230), ears='pointy',
-                    ear_k=.75, horns='unicorn', marks=('mane',), mane=(112, 100, 184), nose='dark'),  # 흰 몸·무지개 갈기는 마이 리틀 포니
-    'mushroom': dict(name='버섯 요정', fur=(250, 238, 214), shade=(226, 210, 180), cream=(255, 248, 232), ears='none', marks=('cap',),
-                     cap=(160, 104, 64), nose='none'),
-    'imp': dict(name='꼬마 악마', fur=(196, 120, 210), shade=(164, 92, 180), cream=(232, 190, 236), ears='pointy', ear_k=.7,
-                horns='imp', wings='imp', tail='spade', nose='none'),
-    'gumiho': dict(name='구미호', fur=(206, 208, 218), shade=(170, 172, 186), cream=(248, 248, 252), ear=(236, 190, 210), ears='fox',
-                   ear_k=1.15, tail='multi', face='cheeks', nose='dark'),  # 금빛 여우·여우불·한복은 나인테일·아리 → 은회색, 꼬리는 겹친 다발
-    'dokkaebi': dict(name='꼬마 도깨비', fur=(120, 176, 200), shade=(92, 148, 176), cream=(206, 230, 238), ears='small', ear_k=.7,
-                     horns='one', marks=('hair',), nose='dark'),
-}
+def _rgb(v):
+    return tuple(int(v[i:i + 2], 16) for i in (1, 3, 5))
+
+
+def _data(v):
+    """art.json 값 → 생성기 값: '#RRGGBB' 는 (r,g,b), 객체·목록은 안쪽까지"""
+    if isinstance(v, str) and v.startswith('#'):
+        return _rgb(v)
+    if isinstance(v, dict):
+        return {k: _data(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_data(x) for x in v]
+    return v
+
+
+C = _data(ART['colors'])  # 기본 색: 윤곽선·털·그림자·배·귀 안쪽·볼터치·눈 …
+
+FORMS = _data(ART['forms'])
+TINTS = {k: (C[c] if c in C else _rgb(c), t) for k, (c, t) in ART['tints'].items()}  # form_colors 가 없는 종은 형태별로 이 색을 섞는다
+
+SPECIES = _data(ART['species'])  # 종 하나 = 한 줄 (규칙은 art.json 의 species_rule)
 
 
 def mix(a, b, t):
     return tuple(round(x + (y - x) * t) for x, y in zip(a, b))
 
 
-# 자세: 프레임마다 바뀌는 값만 적는다
-POSES = {
-    'idle': [{}, {'sq': 1}, {}, {'eye': 'blink'}],
-    'walk': [{'turn': 3, 'step': 1}, {'turn': 3, 'dy': -1}, {'turn': 3, 'step': 2}, {'turn': 3, 'dy': -1}],
-    'sleep': [{'lie': 1, 'eye': 'shut', 'z': 0}, {'lie': 1, 'eye': 'shut', 'sq': 1, 'z': 1}],
-    'eat': [{'mouth': 'chew', 'hold': 1, 'turn': 1}, {'mouth': 'w', 'hold': 1, 'turn': 1, 'puff': 1},
-            {'mouth': 'chew', 'hold': 1, 'turn': 1, 'eye': 'blink'}, {'mouth': 'w', 'hold': 1, 'turn': 1, 'puff': 1}],
-    'happy': [{'eye': 'happy', 'mouth': 'open', 'heart': 1}, {'eye': 'happy', 'mouth': 'open', 'dy': -3}],
-    'sad': [{'eye': 'sad', 'mouth': 'frown', 'sq': 1}, {'eye': 'sad', 'mouth': 'frown', 'sq': 1, 'tear': 1}],
-    'hungry': [{'eye': 'sad', 'mouth': 'o', 'belly': 1}, {'eye': 'sad', 'mouth': 'open', 'belly': 1, 'sq': 1}],
-    'chomp': [{'eye': 'shut', 'mouth': 'wide', 'dy': -2, 'turn': 3}, {'eye': 'angry', 'mouth': 'chew', 'puff': 1, 'turn': 3},
-              {'eye': 'angry', 'mouth': 'w', 'turn': 3}],
-    'spit': [{'eye': 'shut', 'mouth': 'w', 'puff': 1, 'sq': 1}, {'eye': 'wide', 'mouth': 'wide', 'dy': -2, 'turn': 3}],
-    'held': [{'eye': 'wide', 'mouth': 'o', 'dangle': 1}, {'eye': 'wide', 'mouth': 'o', 'dangle': 2}],
-    'fly': [{'eye': 'wide', 'mouth': 'o', 'dangle': 1, 'rot': r} for r in range(4)],  # 던져져서 빙글빙글
-    'land': [{'eye': 'shut', 'mouth': 'frown', 'sq': 5}],                             # 튕길 때 찌그러진다
-    'dizzy': [{'eye': 'x', 'mouth': 'frown', 'stars': t} for t in range(4)],
-    'peek': [{'turn': 3}, {'turn': 3}, {'turn': 3, 'eye': 'blink'}, {'turn': 3}],     # 창 뒤에서 빼꼼
-    'shock': [{'eye': 'wide', 'mouth': 'wide', 'dy': -3, 'mark': '!'}, {'eye': 'wide', 'mouth': 'wide', 'mark': '!'}],
-    'shy': [{'eye': 'shut', 'mouth': 'w', 'cover': 1}, {'eye': 'shut', 'mouth': 'w', 'cover': 1, 'sq': 1, 'sweat': 1}],
-    'angry': [{'eye': 'angry', 'mouth': 'frown', 'puff': 1, 'vein': 1, 'step': 1},
-              {'eye': 'angry', 'mouth': 'frown', 'puff': 1, 'vein': 1, 'step': 2, 'dy': -1}],
-    'freeze': [{'mouth': 'flat', 'sweat': t} for t in range(3)],                      # 안 보이는 척
-    'look': [{'turn': -3, 'mark': '?'}, {'mark': '?'}, {'turn': 3, 'mark': '?'}, {'mark': '?'}],  # 어디 갔지
-    # 클릭 반응
-    'nuzzle': [{'eye': 'shut', 'turn': -2, 'cover': 0, 'blushy': 1}, {'eye': 'shut', 'turn': 2, 'blushy': 1}],  # 머리 비비기
-    'squish': [{'eye': 'wide', 'mouth': 'o', 'puff': 3, 'sq': 2}, {'eye': 'blink', 'mouth': 'o', 'puff': 4, 'sq': 3}],  # 볼 콕
-    'giggle': [{'eye': 'happy', 'mouth': 'open', 'dy': -1, 'turn': -1}, {'eye': 'happy', 'mouth': 'open', 'turn': 1}],  # 깔깔
-    'flop': [{'eye': 'happy', 'mouth': 'open', 'dangle': 1, 'rot': 2}, {'eye': 'shut', 'mouth': 'w', 'dangle': 2, 'rot': 2}],  # 벌렁
-    'love': [{'eye': 'heart', 'mouth': 'open'}, {'eye': 'heart', 'mouth': 'w', 'dy': -1}],
-    'wink': [{'eye': 'wink', 'mouth': 'open'}, {'eye': 'wink', 'mouth': 'w'}],
-    'hurt': [{'eye': 'x', 'mouth': 'o', 'sq': 2, 'tear': 1}, {'eye': 'shut', 'mouth': 'o', 'sq': 1, 'dy': -1}],  # 총에 맞음
-    'pout': [{'eye': 'angry', 'mouth': 'flat', 'puff': 2, 'turn': -3}, {'eye': 'angry', 'mouth': 'flat', 'puff': 2, 'turn': -3, 'dy': -1}],  # 삐짐
-    # 혼자 놀기
-    'groom': [{'eye': 'shut', 'hands': 0}, {'eye': 'shut', 'hands': 2}, {'eye': 'shut', 'hands': 1}, {'eye': 'shut', 'hands': 3}],  # 세수
-    'stretch': [{'sq': -2, 'eye': 'shut', 'mouth': 'open'}, {'sq': -3, 'eye': 'shut', 'mouth': 'wide'},
-                {'sq': -3, 'eye': 'shut', 'mouth': 'wide'}, {'sq': 2, 'eye': 'blink'}],  # 기지개와 하품
-    'hop': [{}, {'dy': -3}, {'dy': -6, 'eye': 'happy', 'mouth': 'open'}, {'dy': -3}],
-    'roll': [{'eye': 'happy', 'mouth': 'open', 'dangle': 1, 'rot': r} for r in range(4)],  # 데굴데굴
-    'dig': [{'turn': 2, 'step': 1, 'mouth': 'chew', 'dirt': 0}, {'turn': 2, 'step': 2, 'dy': 1, 'mouth': 'w', 'dirt': 1}],  # 땅파기
-    'carry': [{'up': 1, 'mouth': 'w'}, {'up': 1, 'mouth': 'w'}, {'up': 1, 'mouth': 'w'}, {'up': 1, 'mouth': 'w', 'eye': 'blink'}],  # 쟁반 받치기 (벽돌깨기)
-    'fix': [{'turn': 2, 'hammer': 0}, {'turn': 2, 'hammer': 1, 'sq': 1}],  # 망치질 (ICBM 구멍 복구)
-    'think': [{'turn': -1, 'mark': 'dots'}, {'turn': -1, 'mark': 'dots'}, {'turn': -1, 'eye': 'blink', 'mark': 'dots'},
-              {'turn': -1, 'mark': 'dots'}],  # 멍때리기
-}
-CHEEKS = 4  # 볼 단계: 0(홀쭉) ~ 3(화면 가득)
+POSES = ART['poses']   # 자세: 프레임마다 바뀌는 값만
+CHEEKS = ART['cheeks']  # 볼 단계: 0(홀쭉) ~ 3(화면 가득)
+assert CELL == ART['cell'], 'art.json 의 cell 과 생성기 CELL 이 달라요'
 
 
 class Canvas:
@@ -465,15 +349,15 @@ def hamster(form, cheek, frame):
     return pet('hamster', form, cheek, frame)
 
 
+# 앱도 같은 데이터로 같은 그림을 그린다 (app/PetArt.cs). 여기를 고치면 거기도 같이 고친다 — 자가 검사가 픽셀까지 비교한다
 def pet(species, form, cheek, frame):
     F, f, S = FORMS[form], frame, SPECIES[species]
-    if species == 'hamster':
-        c = dict(C, fur=F.get('fur', C['fur']), shade=F.get('shade', C['shade']))
-    else:  # 다른 종: 아기는 밝게, 심술이는 어둡게, 애교쟁이는 살짝 따뜻하게
-        c = dict(C, **{k: S[k] for k in ('fur', 'shade', 'cream', 'ear', 'paw', 'blush') if k in S})
-        t = {'baby': (C['white'], .25), 'adult_grumpy': (C['line'], .18), 'adult_sweet': ((255, 200, 160), .12)}.get(form)
-        if t:
-            c['fur'], c['shade'] = mix(c['fur'], t[0], t[1]), mix(c['shade'], t[0], t[1])
+    c = dict(C, **{k: S[k] for k in ('fur', 'shade', 'cream', 'ear', 'paw', 'blush') if k in S})
+    if 'form_colors' in S:  # 햄스터: 형태마다 털색을 따로 정해 두었다
+        c.update(S['form_colors'].get(form, {}))
+    elif form in TINTS:  # 다른 종: 아기는 밝게, 심술이는 어둡게, 애교쟁이는 살짝 따뜻하게
+        t = TINTS[form]
+        c['fur'], c['shade'] = mix(c['fur'], t[0], t[1]), mix(c['shade'], t[0], t[1])
     g = Canvas()
     rx, ry = F['rx'] * S.get('wide', 1), F['ry'] / S.get('wide', 1) ** .5
     ground = 37

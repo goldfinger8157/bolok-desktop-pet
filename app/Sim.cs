@@ -450,9 +450,9 @@ static class Sim
         var manifest = PetSheets.EmbeddedManifest();
         var names = Sprites.Embedded().SpeciesNames;
         Expect(names.Keys.All(manifest.ContainsKey) && manifest.Count == names.Count, $"목록에 모든 종이 있다 ({manifest.Count}/{names.Count})");
-        Expect(PetSheets.Embedded("hamster") && !PetSheets.Embedded("fox"), "exe 에는 햄스터 그림만 들어 있다");
+        Expect(PetArt.Embedded.Can("hamster") && !PetArt.Embedded.Can("fox"), "햄스터는 exe 안 데이터로 그리고, 여우는 받는다");
         var home = new PetSheets(Path.Combine(Path.GetTempPath(), "bolok-check-none"), null, "v9.9.9");
-        Expect(home.Read("hamster") is { } h && PetSheets.Ok(h.Png, manifest["hamster"].Png, manifest["hamster"].PngSize), "exe 안 햄스터가 목록과 맞다");
+        Expect(home.Ready("hamster") && home.Read("hamster") == null && home.Load("hamster", null)?.Has("baby/0/idle") == true, "햄스터는 받을 것 없이 바로 그린다");
 
         // 저장소에서 돌릴 때(개발·CI)는 목록이 assets 파일과 맞는지 — 그림만 다시 만들고 목록을 안 고친 채 올리는 걸 막는다
         for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent)
@@ -486,7 +486,7 @@ static class Sim
             Expect(ps.Fetch("fox").GetAwaiter().GetResult() && ps.Read("fox") is { } got && got.Png.SequenceEqual(png), "맞으면 받아 두고 읽는다");
             int asked = raw.Asked.Count;
             Expect(ps.Fetch("fox").GetAwaiter().GetResult() && raw.Asked.Count == asked, "받아 둔 건 다시 받지 않는다");
-            Expect(ps.Local(new[] { "hamster", "fox", "cat" }).SequenceEqual(new[] { "hamster", "fox" }), "가진 종: exe 안 햄스터 + 받아 둔 것");
+            Expect(ps.Local(new[] { "hamster", "fox", "cat" }).SequenceEqual(new[] { "hamster", "fox" }), "가진 종: 데이터로 그리는 햄스터 + 받아 둔 것");
 
             var file = Directory.GetFiles(cache, "fox.*.png").Single();
             File.WriteAllBytes(file, png.Reverse().ToArray());
@@ -1717,6 +1717,7 @@ static class Sim
         PetSheetChecks();
         VisitorChecks();
         foreach (var check in GameModes.Checks) o.WriteLine(check()); // 게임 모듈은 제 규칙을 스스로 검사한다
+        o.WriteLine(PetArt.Check()); // 데이터로 그린 캐릭터 = 파이썬 생성기 그림
         LangChecks();
         MemoryChecks();
         ClickChecks(k);
