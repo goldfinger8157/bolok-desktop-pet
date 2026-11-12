@@ -79,7 +79,7 @@ for sp, en, ko in [
     ('koala', 'Koala', '코알라'), ('panda', 'Panda', '판다'), ('redpanda', 'Red panda', '레서판다'), ('alpaca', 'Alpaca', '알파카'),
     ('pig', 'Pig', '돼지'), ('octopus', 'Octopus', '문어'), ('slime', 'Slime', '슬라임'), ('ghost', 'Ghost', '유령'),
     ('golem', 'Little golem', '꼬마 골렘'), ('unicorn', 'Unicorn', '유니콘'), ('mushroom', 'Mushroom sprite', '버섯 요정'),
-    ('imp', 'Little imp', '꼬마 악마'), ('gumiho', 'Gumiho', '구미호'), ('dokkaebi', 'Little dokkaebi', '꼬마 도깨비')]:
+    ('imp', 'Little imp', '꼬마 악마'), ('mongma', 'Dream spirit', '몽마'), ('gumiho', 'Gumiho', '구미호'), ('dokkaebi', 'Little dokkaebi', '꼬마 도깨비')]:
     t('sp.' + sp, en, ko)
 # 시간
 t('time.min', '{0} min', '{0}분')

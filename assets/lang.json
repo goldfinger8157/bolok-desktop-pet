@@ -1139,6 +1139,18 @@
   "pt": "Diabinho",
   "ru": "Бесёнок"
  },
+ "sp.mongma": {
+  "en": "Dream spirit",
+  "ko": "몽마",
+  "ja": "夢魔",
+  "zh-Hans": "梦魔",
+  "zh-Hant": "夢魔",
+  "es": "Espíritu del sueño",
+  "de": "Traumgeist",
+  "fr": "Esprit des rêves",
+  "pt": "Espírito dos sonhos",
+  "ru": "Дух снов"
+ },
  "sp.gumiho": {
   "en": "Gumiho",
   "ko": "구미호",

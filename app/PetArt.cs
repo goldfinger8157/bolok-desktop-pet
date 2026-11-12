@@ -301,6 +301,7 @@ public sealed class PetArt
         if (dangle != 0) { (ry, rx) = (ry + 1, rx - 1); cy = 19; } // 들렸을 때는 몸이 아래로 늘어진다
         string body = S.S("body", "");
         if (body == "ghost" && !lying) cy -= 2; // 유령은 살짝 떠 있다
+        if (body == "orb" && !lying) cy -= 1.5; // 몽마: 발 없이 동그랗게 살짝 떠 있다
         double turn = f.N("turn");
         int fx = R(20 + turn * (rx > 9 ? 1 : .7));       // 고개 돌린 쪽으로 얼굴이 옮겨간다
         int gap = R(F.N("eyegap") - Math.Abs(turn) * .4); // 옆을 보면 눈 사이가 좁아 보인다
@@ -357,12 +358,12 @@ public sealed class PetArt
                 g.Ell(cx + i * rx * .4, cy + ry - lift, 1.9, 2.6, c["shade"]);
             }
         }
-        else if (body is "blob" or "ghost" && !lying)
+        else if (body is "blob" or "ghost" or "orb" && !lying)
         {
             if (dangle != 0) // 들리면 작은 팔
                 foreach (int s in Sides) g.Ell(cx + s * (rx + .2), cy + 1, 2, 1.6, c["shade"]);
         }
-        else if (body == "ghost") { }
+        else if (body is "ghost" or "orb") { }
         else if (!lying)
         {
             int step = (int)f.N("step");
@@ -419,6 +420,24 @@ public sealed class PetArt
         Marks(g, S, c, cx, cy, rx, ry, fx, ey, my, gap, true, sk);
         foreach (int s in Sides)
             g.Ell(fx + .5 + s * (F.N("eyegap") + 1.8), cy + ry * .1, (2 + F.N("blush") * .3) * S.N("blush_k", 1), 1.2, c["blush"], true);
+        if (S.S("tail", "") == "wrap") // 몽마: 가는 꼬리가 몸 아래 앞을 한 바퀴 감고 왼쪽으로 올라와 끝이 뾰족한 세모 (몸 앞에 그린다)
+        {
+            uint tc = S.Has("point") ? Col(S, "point") : Mix(c["shade"], c["line"], .3);
+            var pts = new List<(double X, double Y)>();
+            for (int i = 0; i <= 14; i++) // 오른쪽 옆 → 배 앞 → 왼쪽 옆 (아래로 휜 띠)
+            {
+                double t = Math.PI * i / 14;
+                pts.Add((cx + rx * .95 * Math.Cos(t), cy + ry * .6 + ry * .2 * Math.Sin(t)));
+            }
+            double lx = cx - rx * 1.02, tipY = cy - ry * (.15 + .35 * fk);
+            pts.Add((lx - .6, cy + ry * .3));
+            pts.Add((lx - .8, cy));
+            pts.Add((lx - .4, tipY + 1));
+            for (int i = 1; i < pts.Count; i++)
+                foreach (double dy in new[] { 0.0, 1.0 }) g.Line(pts[i - 1].X, pts[i - 1].Y + dy, pts[i].X, pts[i].Y + dy, tc);
+            double ts = 2.6 * (.5 + .5 * fk); // 끝 세모 (아기는 작게)
+            g.Poly(new[] { (lx - .4 - ts, tipY + 1.2), (lx - .4 + ts, tipY + 1.2), (lx - .4 - ts * .4, tipY - ts * 1.5) }, tc);
+        }
         if (ears == "flop") // 리트리버: 머리 위 옆에서 시작해 볼 옆으로 축 처진 귀. 얼굴 위에 덮고 둘레 한 칸을 짙게 둘러 갈라 보이게
         {
             uint earColor = S.Has("ear_fill") ? Col(S, "ear_fill") : Mix(c["fur"], c["shade"], .45), rim = Mix(c["shade"], c["line"], .12);
@@ -580,7 +599,7 @@ public sealed class PetArt
 
     // 아기 머리털을 안 그리는 종: 머리에 갓·털뭉치·이끼·갈기·뿔이 있거나, 뾰족 머리가 다른 캐릭터를 닮는 몸(슬라임·유령)
     static bool HeadMark(Bag S) => S.List("marks").Any(m => m is "cap" or "topknot" or "moss" or "hair" or "tuft" or "mane") || S.S("horns", "") is "unicorn" or "one"
-        || S.S("body", "") is "blob" or "ghost";
+        || S.S("body", "") is "blob" or "ghost" or "orb";
 
     // 몸 뒤에 그리는 것: 꼬리, 가시·털뭉치, 뿔, 날개
     // fk: 형태마다 크기 (아기 .5 → 어른 1). soft 는 너무 작아지면 안 보이는 것(털뭉치·지느러미)용
