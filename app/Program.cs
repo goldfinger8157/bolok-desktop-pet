@@ -11,13 +11,27 @@ static class Program
             return Sim.Check(Console.Out);
         }
 
-        if (args.Length == 2 && args[0] == "--settings") // 설정 창 페이지들을 그림으로 (화면 밖 먼 곳에 잠깐 띄워 그린다). 마지막은 풀어주기 확인
+        if (args.Length is 2 or 3 && args[0] == "--settings") // 설정 창 페이지들을 그림으로 (화면 밖 먼 곳에 잠깐 띄워 그린다). 마지막은 풀어주기 확인
         {
             ApplicationConfiguration.Initialize();
+            L.Use(args.Length == 3 ? args[2] : "ko"); // 세 번째 값: 언어 (en, ja, …)
             var sp = Sprites.Embedded();
+            var mem = Path.Combine(Path.GetTempPath(), "bolok-render");
+            Memories.Photo(sp, "egg/idle", "egg", Path.Combine(mem, "p1.png"));
+            Memories.Photo(sp, "baby/0/happy", "baby", Path.Combine(mem, "p2.png"));
+            Memories.Photo(sp, "adult_chubby/0/love", "adult_chubby", Path.Combine(mem, "p3.png"));
+            Memories.Card(sp, null, "penguin", "adult_sweet", 77, Path.Combine(mem, "c1.png"));
+            Memories.Card(sp, sp, "hamster", "adult_chubby", 12, Path.Combine(mem, "c2.png"));
+            var day = new DateTime(2026, 11, 12);
             var book = new PetBook("hamster", false, new[] { "hamster", "fox", "penguin", "slime" },
-                new[] { new ReleasedPet("hamster", "adult_chubby", 2900, new DateTime(2026, 11, 11)), new ReleasedPet("penguin", "adult_sweet", 2500, new DateTime(2026, 11, 12)) });
-            var status = new PetStatus("hamster", "child", 200, 72, 88, 18, false, "sleepy", 1, 2, 5, 2080, .06, "어른", new[]
+                new[] { new ReleasedPet("hamster", "adult_chubby", 2900, new DateTime(2026, 11, 11)), new ReleasedPet("penguin", "adult_sweet", 2500, new DateTime(2026, 11, 12)) })
+            {
+                Gifts = new[] { new GiftRecord("acorn", "hamster", day), new GiftRecord("flower", "penguin", day), new GiftRecord("acorn", "penguin", day), new GiftRecord("clover", "hamster", day) },
+                Album = new[] { new PhotoRecord("hamster", "egg", day, Path.Combine(mem, "p1.png")), new PhotoRecord("hamster", "baby", day, Path.Combine(mem, "p2.png")), new PhotoRecord("hamster", "adult_chubby", day, Path.Combine(mem, "p3.png")) },
+                Cards = new[] { new CardRecord("penguin", day, Path.Combine(mem, "c1.png")), new CardRecord("hamster", day, Path.Combine(mem, "c2.png")) },
+                VisitCounts = new Dictionary<string, int> { ["hamster"] = 5, ["penguin"] = 2 },
+            };
+            var status = new PetStatus("hamster", "child", 200, 72, 88, 18, false, "sleepy", 1, 2, 5, 2080, .06, "adult", new[]
             {
                 new GameStat("달리기", "Lv.3 · 최고 1,240점", true), new GameStat("벽돌깨기", "최고 86조각", true),
                 new GameStat("포트리스", "아직 못 이겼어요", false), new GameStat("총쏘기", "최고 15번 맞혔어요", true),
@@ -28,15 +42,16 @@ static class Program
             var shots = new List<Bitmap>();
             foreach (var name in Settings.Pages.Append("풀어주기").Append("상태 아래"))
             {
-                if (name == "풀어주기") { f.SelectTab("도감"); f.AskRelease(); }
-                else if (name == "상태 아래") { f.SelectTab("상태"); f.ScrollToEnd(); }
+                if (name == "풀어주기") { f.SelectTab("book"); f.AskRelease(); }
+                else if (name == "상태 아래") { f.SelectTab("status"); f.ScrollToEnd(); }
                 else f.SelectTab(name);
                 Application.DoEvents();
                 var page = new Bitmap(f.Width, f.Height);
                 f.DrawToBitmap(page, new Rectangle(Point.Empty, f.Size));
                 shots.Add(page);
             }
-            using var bmp = new Bitmap((f.Width + 20) * 3 - 20, (f.Height + 20) * 2 - 20);
+            int rows = (shots.Count + 2) / 3;
+            using var bmp = new Bitmap((f.Width + 20) * 3 - 20, (f.Height + 20) * rows - 20);
             using (var g = Graphics.FromImage(bmp))
             {
                 g.Clear(Color.White);
@@ -213,6 +228,7 @@ static class Program
 
         var sprites = assets != null ? Sprites.FromDir(assets) : Sprites.Embedded();
         var tuning = run != null ? DevLink.LoadTuning(run) : new Tuning();
+        L.Use(null); // 윈도우 언어로 시작 (저장된 언어가 있으면 PetForm 이 바꾼다)
         // 받은 캐릭터 그림: 릴리스는 %LOCALAPPDATA%\Bolok\pets, 개발은 assets 를 바로 읽는다
         var pets = new PetSheets(Path.Combine(run ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Bolok"), run != null ? "pets-cache" : "pets"),
             assets, PetSheets.RefFor(Updater.Current, Updater.IsDevBuild));

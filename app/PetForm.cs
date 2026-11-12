@@ -31,6 +31,16 @@ public sealed class SaveData
     public int VisitMin { get; set; } = -1;           // 그날 몇 시 몇 분(분)에 올지. -1 이면 오늘은 안 온다
     public string LastVisitDay { get; set; } = "";    // 마지막으로 놀러 온 날 (하루 한 번)
     public Dictionary<string, DateTime> Visits { get; set; } = new(); // 종마다 마지막으로 놀러 온 때
+    public string? Language { get; set; }             // 설정에서 고른 언어. 없으면 윈도우 언어
+    public List<GiftRecord> Gifts { get; set; } = new();     // 추억: 친구가 두고 간 선물
+    public List<PhotoRecord> Album { get; set; } = new();    // 추억: 자랄 때마다 찍힌 사진
+    public List<CardRecord> Cards { get; set; } = new();     // 추억: 놀러 왔던 친구가 보낸 엽서
+    public Dictionary<string, int> VisitCounts { get; set; } = new(); // 우정 하트: 종마다 놀러 온 횟수
+    public string? CardFrom { get; set; }             // 엽서를 보낼 친구와 그 모습, 그날 (그날 이후 처음 볼 때)
+    public string CardForm { get; set; } = "child";
+    public string CardDay { get; set; } = "";
+    public string MorningDay { get; set; } = "";      // 아침·밤 인사를 한 날
+    public string NightDay { get; set; } = "";
     public List<RunRecord> RunScores { get; set; } = new();   // 최근 50판
     public DateTime SavedAt { get; set; } = DateTime.UtcNow;
 }
@@ -64,8 +74,10 @@ public sealed class PetForm : Form
     int gameBest;
     readonly Hud hud;
     readonly ContextMenuStrip menu = new();
-    readonly ToolStripMenuItem sleepItem = new("재우기");
-    readonly ToolStripMenuItem updateItem = new("새 버전으로 다시 시작") { Visible = false };
+    readonly ToolStripMenuItem sleepItem = new();
+    readonly ToolStripMenuItem updateItem = new() { Visible = false };
+    readonly List<(ToolStripItem Item, Func<string> Text)> menuTexts = new(); // 언어가 바뀌면 다시 쓴다
+    string? language, updateTag;
     bool autoUpdate;        // 기본 꺼짐. 설정 창 「업데이트」 탭에서 켠다
     Settings? settings;
     readonly NotifyIcon tray = new();
@@ -90,6 +102,7 @@ public sealed class PetForm : Form
         this.assetsDir = assetsDir;
         debug = runDir != null;
         savePath = Path.Combine(dataDir, "pet.json");
+        memDir = Path.Combine(dataDir, "memories");
         var area = Screen.PrimaryScreen!.WorkingArea;
         b = new Brain(LoadPet(k), k, new World(Screen.AllScreens.Select(s => s.WorkingArea)), area) { Scale = ScaleFor(k) };
         b.Windows = Native.ListWindows;
@@ -102,7 +115,7 @@ public sealed class PetForm : Form
         StartPosition = FormStartPosition.Manual;
         BackColor = Key;
         TransparencyKey = Key;
-        Text = "볼록이";
+        Text = L.Name;
         Cursor = Cursors.Hand;
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
         ClientSize = new Size(b.CellPx + 16, b.CellPx);
@@ -112,19 +125,20 @@ public sealed class PetForm : Form
         pad.MouseMove += (_, e) => OnMouseMove(e);
         pad.MouseUp += (_, e) => OnMouseUp(e);
         hud = new Hud(b, debug ? DebugLine : null) { RunLine = () => runLast > 0 ? $"달리기 Lv.{runLevel} {runLast} (최고 {runBest})" : "" };
-        hud.SpeciesName = () => b.P.Stage == "egg" ? "" : sprites.SpeciesNames.GetValueOrDefault(species, "");
+        hud.SpeciesName = () => b.P.Stage == "egg" ? "" : L.Species(species);
         if (!debug) // 새 버전을 받아 바꿔 두면 메뉴에 알린다. 그냥 둬도 다음에 켤 때 새 버전이다
-            Updater.Start(() => autoUpdate, tag => BeginInvoke(() => { updateItem.Text = $"새 버전 {tag} 으로 다시 시작"; updateItem.Visible = true; settings?.ShowReady(); }));
-        foreach (var o in overlays) { o.Runner = () => runner; o.Break = () => breakout; o.WormsGame = () => worms; o.MinigunGame = () => minigun; o.IcbmGame = () => icbm; o.SquadGame = () => squad; o.SquadFriends = () => squadFriends; o.Guest = () => visitor; o.GuestSprites = () => visitorSprites; }
+            Updater.Start(() => autoUpdate, tag => BeginInvoke(() => { updateTag = tag; updateItem.Text = L.T("menu.update", tag); updateItem.Visible = true; settings?.ShowReady(); }));
+        foreach (var o in overlays) { o.Runner = () => runner; o.Break = () => breakout; o.WormsGame = () => worms; o.MinigunGame = () => minigun; o.IcbmGame = () => icbm; o.SquadGame = () => squad; o.SquadFriends = () => squadFriends; o.Guest = () => visitor; o.GuestSprites = () => visitorSprites; o.Present = () => present; o.Dreams = Dreams; }
         hud.PlaceAt(area);
         if (runDir != null) dev = new DevLink(runDir, assetsDir!, b, this);
 
         BuildMenu();
         tray.Icon = Icon.FromHandle(this.sprites.Get("child/0/idle", 0, 1).GetHicon());
-        tray.Text = "볼록이";
+        tray.Text = L.Name;
         tray.ContextMenuStrip = menu;
         tray.Visible = true;
-        tray.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) ShowSettings("상태"); }; // 상태는 설정 창에서
+        tray.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) ShowSettings("status"); }; // 상태는 설정 창에서
+        L.Changed += Localize;
 
         SystemEvents.SessionSwitch += OnSessionSwitch;
         SystemEvents.DisplaySettingsChanged += (_, _) => BeginInvoke(ReloadScreens);
@@ -270,6 +284,7 @@ public sealed class PetForm : Form
             {
                 string first = RandomSpecies();
                 SetSpecies(first); // 햄스터가 아니면 알인 동안 그림을 받는다 (못 받으면 깨어나길 기다린다)
+                TakePhoto("egg");
                 Dbg.Log("first-egg", ("species", first));
             }
             return;
@@ -288,6 +303,10 @@ public sealed class PetForm : Form
         (breakBest, wormsWins) = (pendingSave.BreakBest, pendingSave.WormsWins);
         (squadLevel, squadBest) = (Math.Max(1, pendingSave.SquadLevel), pendingSave.SquadBest);
         (visitDay, visitMin, lastVisitDay, visits) = (pendingSave.VisitDay ?? "", pendingSave.VisitMin, pendingSave.LastVisitDay ?? "", pendingSave.Visits ?? new());
+        language = pendingSave.Language;
+        L.Use(language);
+        (gifts, album, cards, visitCounts) = (pendingSave.Gifts ?? new(), pendingSave.Album ?? new(), pendingSave.Cards ?? new(), pendingSave.VisitCounts ?? new());
+        (cardFrom, cardForm, cardDay, morningDay, nightDay) = (pendingSave.CardFrom, pendingSave.CardForm ?? "child", pendingSave.CardDay ?? "", pendingSave.MorningDay ?? "", pendingSave.NightDay ?? "");
         (runBest, runLast, runLevel, runScores) = (pendingSave.RunBest, pendingSave.RunLast, Math.Max(1, pendingSave.RunLevel), pendingSave.RunScores ?? new());
         if (pendingSave.X != 0) { b.X = pendingSave.X; b.Y = pendingSave.Y; b.Settle(); }
         foreach (var h in pendingSave.Holes) b.AddHole(h[0], h[1], false);
@@ -296,7 +315,8 @@ public sealed class PetForm : Form
 
     void Save()
     {
-        var data = new SaveData { Pet = b.P, X = b.X, Y = b.Y, Holes = b.Holes.Select(h => new[] { h.Cx, h.Cy }).ToList(), GameBest = gameBest, GameSound = Sfx.On, AutoUpdate = autoUpdate, Species = species, Met = met.ToList(), Released = released, RunBest = runBest, RunLast = runLast, RunLevel = runLevel, RunScores = runScores, BreakBest = breakBest, WormsWins = wormsWins, SquadLevel = squadLevel, SquadBest = squadBest, VisitDay = visitDay, VisitMin = visitMin, LastVisitDay = lastVisitDay, Visits = visits };
+        var data = new SaveData { Pet = b.P, X = b.X, Y = b.Y, Holes = b.Holes.Select(h => new[] { h.Cx, h.Cy }).ToList(), GameBest = gameBest, GameSound = Sfx.On, AutoUpdate = autoUpdate, Species = species, Met = met.ToList(), Released = released, RunBest = runBest, RunLast = runLast, RunLevel = runLevel, RunScores = runScores, BreakBest = breakBest, WormsWins = wormsWins, SquadLevel = squadLevel, SquadBest = squadBest, VisitDay = visitDay, VisitMin = visitMin, LastVisitDay = lastVisitDay, Visits = visits, Language = language,
+            Gifts = gifts, Album = album, Cards = cards, VisitCounts = visitCounts, CardFrom = cardFrom, CardForm = cardForm, CardDay = cardDay, MorningDay = morningDay, NightDay = nightDay };
         var tmp = savePath + ".tmp";
         File.WriteAllText(tmp, JsonSerializer.Serialize(data));
         File.Move(tmp, savePath, true);
@@ -304,38 +324,58 @@ public sealed class PetForm : Form
 
     void BuildMenu()
     {
-        void Add(string text, Action go) => menu.Items.Add(text, null, (_, _) => go());
+        void Add(string key, Action go) => menuTexts.Add((menu.Items.Add(L.T(key), null, (_, _) => go()), () => L.T(key)));
         // 돌보기 / 게임 / 앱 / 종료 를 분리선으로 나눈다
-        Add("밥 주기", () => b.Care("feed"));
-        Add("놀아주기", () => b.Care("play"));
+        Add("menu.feed", () => b.Care("feed"));
+        Add("menu.play", () => b.Care("play"));
         sleepItem.Click += (_, _) => b.Care(b.P.Asleep ? "wake" : "sleep");
         menu.Items.Add(sleepItem);
+        menuTexts.Add((sleepItem, () => L.T(b.P.Asleep ? "menu.wake" : "menu.sleep")));
         menu.Items.Add(new ToolStripSeparator());
-        Add("총쏘기 게임", () => BeginInvoke(StartGame)); // 메뉴가 닫히고 포커스가 돌아온 뒤에 시작한다
-        Add("달리기 게임", () => BeginInvoke(StartRun));
-        Add("벽돌깨기", () => BeginInvoke(StartBreak));
-        Add("미니건", () => BeginInvoke(StartMinigun));
-        Add("볼록이 부대", () => BeginInvoke(StartSquad));
-        Add("ICBM 발사", () => BeginInvoke(StartIcbm));
-        var cannon = new ToolStripMenuItem("포트리스"); // 대포를 고르면 체력이 정해진다
+        Add("menu.shoot", () => BeginInvoke(StartGame)); // 메뉴가 닫히고 포커스가 돌아온 뒤에 시작한다
+        Add("menu.run", () => BeginInvoke(StartRun));
+        Add("menu.breakout", () => BeginInvoke(StartBreak));
+        Add("menu.minigun", () => BeginInvoke(StartMinigun));
+        Add("menu.squad", () => BeginInvoke(StartSquad));
+        Add("menu.icbm", () => BeginInvoke(StartIcbm));
+        var cannon = new ToolStripMenuItem(); // 대포를 고르면 체력이 정해진다
+        menuTexts.Add((cannon, () => L.T("menu.fortress")));
         foreach (var gun in Worms.Guns)
-            cannon.DropDownItems.Add($"{gun.Label} (HP {gun.Hp}{(gun.Shells > 1 ? $", {gun.Shells}발" : "")})", null, (_, _) => BeginInvoke(() => StartWorms(gun.Name)));
+        {
+            var item = cannon.DropDownItems.Add("", null, (_, _) => BeginInvoke(() => StartWorms(gun.Name)));
+            menuTexts.Add((item, () => gun.Shells > 1 ? L.T("menu.gun_shells", gun.Label, gun.Hp, gun.Shells) : L.T("menu.gun", gun.Label, gun.Hp)));
+        }
         menu.Items.Add(cannon);
         menu.Items.Add(new ToolStripSeparator());
-        Add("설정...", () => ShowSettings());
+        Add("menu.settings", () => ShowSettings());
         updateItem.Click += (_, _) => { Save(); Updater.Restart(); };
         menu.Items.Add(updateItem);
+        menuTexts.Add((updateItem, () => L.T("menu.update", updateTag ?? "")));
         menu.Items.Add(new ToolStripSeparator());
-        Add("종료", Application.Exit);
-        menu.Opening += (_, _) =>
-        {
-            sleepItem.Text = b.P.Asleep ? "깨우기" : "재우기";
-        };
+        Add("menu.quit", Application.Exit);
+        Localize();
+        menu.Opening += (_, _) => sleepItem.Text = L.T(b.P.Asleep ? "menu.wake" : "menu.sleep");
         menu.Closed += (_, _) =>
         {
             if (returnFocus != IntPtr.Zero) Native.SetForegroundWindow(returnFocus);
             returnFocus = IntPtr.Zero;
         };
+    }
+
+    // 언어가 바뀌면 메뉴·트레이 글을 다시 쓴다 (설정 창은 스스로 다시 짠다)
+    void Localize()
+    {
+        foreach (var (item, text) in menuTexts) item.Text = text();
+        tray.Text = L.Name;
+        Text = L.Name;
+    }
+
+    // 설정 → 일반에서 언어를 골랐다
+    public void ChooseLanguage(string code)
+    {
+        language = code;
+        L.Use(code);
+        Save();
     }
 
     void OnSessionSwitch(object? s, SessionSwitchEventArgs e)
@@ -367,6 +407,7 @@ public sealed class PetForm : Form
         KeepSheet();
         GateHatch();
         VisitTick();
+        PresentTick();
         if (visitor != null) visitor.Update(dt, b.X, b.Y, b.Mode is Mode.Wander or Mode.Anim || b.P.Asleep, b.P.Asleep, b.Area);
         if (icbm != null) IcbmFrame(dt);
         SyncScale();
@@ -493,6 +534,7 @@ public sealed class PetForm : Form
             e.Graphics.DrawImage(bmp, new Rectangle(8 + shake, 0, bmp.Width, bmp.Height), 0, 0, bmp.Width, bmp.Height, GraphicsUnit.Pixel, white);
         }
         else e.Graphics.DrawImageUnscaled(bmp, 8 + shake, 0);
+        DrawCap(e.Graphics, name, frame, flip, shake);
     }
 
     protected override void OnMouseDown(MouseEventArgs e)
@@ -599,7 +641,7 @@ public sealed class PetForm : Form
     void ShowSettings(string? tab = null)
     {
         if (settings is { IsDisposed: false }) { if (tab != null) settings.SelectTab(tab); settings.Activate(); return; }
-        settings = new Settings(Sfx.On, autoUpdate, () => sprites, Status, Book()) { ReleaseAsked = Release };
+        settings = new Settings(Sfx.On, autoUpdate, () => sprites, Status, Book()) { ReleaseAsked = Release, LanguageChosen = ChooseLanguage };
         settings.Changed += () => { (Sfx.On, autoUpdate) = (settings.Sound, settings.AutoUpdate); Save(); };
         settings.RestartAsked += () => { Save(); Updater.Restart(); };
         if (tab != null) settings.SelectTab(tab);
@@ -613,7 +655,7 @@ public sealed class PetForm : Form
     double leaveTo;
     string lastStage = "";
 
-    PetBook Book() => new(species, b.P.Stage == "egg", met, released, visits);
+    PetBook Book() => new(species, b.P.Stage == "egg", met, released, visits) { Gifts = gifts, Album = album, Cards = cards, VisitCounts = visitCounts };
     void BookChanged() { if (settings is { IsDisposed: false }) settings.UpdateBook(Book()); }
 
     // 설정 창 상태 탭에 보여줄 것
@@ -622,21 +664,21 @@ public sealed class PetForm : Form
         var (p, k) = (b.P, b.K);
         (double? left, double frac, string? to) = p.Stage switch
         {
-            "egg" when p.AgeMin >= k.EggMin => ((double?)null, 1.0, "깨어날 친구 그림을 받는 중이에요"),
-            "egg" => (k.EggMin - p.AgeMin, p.AgeMin / k.EggMin, "깨어나기"),
-            "baby" => (k.BabyMin - p.AgeMin, (p.AgeMin - k.EggMin) / (k.BabyMin - k.EggMin), "어린이"),
-            "child" => (k.ChildMin - p.AgeMin, (p.AgeMin - k.BabyMin) / (k.ChildMin - k.BabyMin), "어른"),
+            "egg" when p.AgeMin >= k.EggMin => ((double?)null, 1.0, "waiting"), // GrowTo: grow.<키>
+            "egg" => (k.EggMin - p.AgeMin, p.AgeMin / k.EggMin, "hatch"),
+            "baby" => (k.BabyMin - p.AgeMin, (p.AgeMin - k.EggMin) / (k.BabyMin - k.EggMin), "child"),
+            "child" => (k.ChildMin - p.AgeMin, (p.AgeMin - k.BabyMin) / (k.ChildMin - k.BabyMin), "adult"),
             _ => ((double?)null, 1.0, (string?)null),
         };
-        string never = "아직 안 했어요";
+        string never = L.T("game.never");
         return new PetStatus(species, p.Stage, p.AgeMin, p.Full, p.Mood, p.Energy, p.Asleep, p.Need(k), p.Miss, Math.Max(p.Bites, b.Holes.Count),
             p.BitesTotal, left is { } l ? Math.Max(0, l) : null, Math.Clamp(frac, 0, 1), to, new GameStat[]
             {
-                new("달리기", runLast > 0 ? $"Lv.{runLevel} · 최고 {runBest:N0}점" : never, runLast > 0),
-                new("벽돌깨기", breakBest > 0 ? $"최고 {breakBest:N0}조각" : never, breakBest > 0),
-                new("포트리스", wormsWins > 0 ? $"{wormsWins}번 이겼어요" : "아직 못 이겼어요", wormsWins > 0),
-                new("총쏘기", gameBest > 0 ? $"최고 {gameBest}번 맞혔어요" : never, gameBest > 0),
-                new("볼록이 부대", squadBest > 0 ? $"Lv.{squadBest} 깼어요 · 다음 Lv.{squadLevel}" : never, squadBest > 0),
+                new(L.T("game.run"), runLast > 0 ? L.T("game.run_val", runLevel, runBest.ToString("N0", L.Culture)) : never, runLast > 0),
+                new(L.T("game.breakout"), breakBest > 0 ? L.T("game.breakout_val", breakBest.ToString("N0", L.Culture)) : never, breakBest > 0),
+                new(L.T("game.fortress"), wormsWins > 0 ? L.T("game.fortress_val", wormsWins) : L.T("game.fortress_none"), wormsWins > 0),
+                new(L.T("game.shoot"), gameBest > 0 ? L.T("game.shoot_val", gameBest) : never, gameBest > 0),
+                new(L.T("game.squad"), squadBest > 0 ? L.T("game.squad_val", squadBest, squadLevel) : never, squadBest > 0),
             });
     }
 
@@ -644,6 +686,7 @@ public sealed class PetForm : Form
     public bool Release()
     {
         if (leaving || InGame || b.P.Stage == "egg") return false;
+        TakePhoto(b.P.Stage, "love"); // 작별 사진
         released.Add(new ReleasedPet(species, b.P.Stage, Math.Round(b.P.AgeMin), DateTime.Now));
         var area = b.Area;
         leaveTo = b.X < area.Left + area.Width / 2.0 ? area.Left - b.CellPx : area.Right + b.CellPx; // 가까운 쪽 화면 밖 자연으로
@@ -669,6 +712,7 @@ public sealed class PetForm : Form
         SetSpecies(next);
         lastStage = "egg";
         b.Emote("ask", 2.5);
+        TakePhoto("egg");
         BookChanged();
         Dbg.Log("new-egg", ("species", next));
         Save();
@@ -686,7 +730,7 @@ public sealed class PetForm : Form
         if (hold && b.P.AgeMin >= b.K.EggMin && !hatchHeld)
         {
             hatchHeld = true;
-            b.Say(4, "곧 깨어날 것 같아요…");
+            b.Say(4, L.T("say.hatching"));
             Dbg.Log("hatch-hold", ("species", species));
         }
         if (!hold) hatchHeld = false;
@@ -721,6 +765,8 @@ public sealed class PetForm : Form
         if (Environment.TickCount64 < nextVisitCheck || visitor != null) return;
         nextVisitCheck = Environment.TickCount64 + 1000;
         PlanVisit();
+        GreetTick();
+        CardTick();
         if (lastVisitDay == Today || visitMin < 0 || NowMin < visitMin) return;
         if (released.Count == 0 || InGame || b.P.Stage == "egg" || Afk() || b.Mode is not (Mode.Wander or Mode.Anim)) return;
         StartVisit(null);
@@ -745,6 +791,7 @@ public sealed class PetForm : Form
         v.OnEvent = e =>
         {
             if (e is "hello" or "bye") b.Emote("heart", 2); // 반갑고, 아쉽다
+            if (e == "bye") present = (Memories.Kinds[Random.Shared.Next(Memories.Kinds.Length)], v.Species, v.X, v.Y, Environment.TickCount64 / 1000.0); // 선물을 두고 간다
             else if (e == "play" && Random.Shared.NextDouble() < .5) b.Emote("heart", 1.2);
             if (e != "play") Dbg.Log("visit", ("event", e), ("friend", v.Species));
             if (e == "gone") { visitor = null; visitorSprites = null; foreach (var o in overlays) o.Invalidate(); }
@@ -753,7 +800,10 @@ public sealed class PetForm : Form
         {
             lastVisitDay = Today;
             visits[pick.Species] = DateTime.Now;
+            visitCounts[pick.Species] = visitCounts.GetValueOrDefault(pick.Species) + 1; // 우정 하트
+            if (Random.Shared.NextDouble() < Memories.CardChance) (cardFrom, cardForm, cardDay) = (pick.Species, pick.Stage, DateTime.Now.AddDays(1).ToString("yyyy-MM-dd")); // 내일 엽서
         }
+        v.Baby = visitCounts.GetValueOrDefault(pick.Species) >= 5; // 우정 하트 다섯: 아기를 데리고 온다
         Dbg.Log("visit-start", ("friend", pick.Species), ("form", pick.Stage), ("counts", counts));
         Save();
         BookChanged();
@@ -763,7 +813,126 @@ public sealed class PetForm : Form
     public void VisitCommand(string[] a)
     {
         if (a.Length > 1 && a[1] == "end") visitor?.GoHome();
+        else if (a.Length > 1 && a[1] == "card") { cardFrom ??= released.LastOrDefault()?.Species ?? species; cardDay = ""; nextVisitCheck = 0; }
+        else if (a.Length > 1 && a[1] == "photo") TakePhoto(b.P.Stage);
+        else if (a.Length > 1 && a[1] == "baby") { if (StartVisitWithBaby()) Dbg.Log("visit-baby"); }
+        else if (a.Length > 1 && a[1] == "morning") { b.Emote("sun", 2.5); b.Greet("stretch", 1.6); }
+        else if (a.Length > 1 && a[1] == "night") { b.Emote("moon", 2.5); b.Greet("stretch", 1.6); }
+        else if (a.Length > 1 && a[1] == "nightcap") { ForceNight = !ForceNight; capSpot.Clear(); Invalidate(); }
         else StartVisit(a.Length > 1 ? a[1] : null, counts: false);
+    }
+
+    bool StartVisitWithBaby() { StartVisit(null, counts: false); if (visitor == null) return false; visitor.Baby = true; return true; }
+
+    // ── 추억: 선물 줍기, 사진, 엽서 (모두 그림만) ──
+    readonly string memDir;
+    List<GiftRecord> gifts = new();
+    List<PhotoRecord> album = new();
+    List<CardRecord> cards = new();
+    Dictionary<string, int> visitCounts = new();
+    string? cardFrom;
+    string cardForm = "child", cardDay = "", morningDay = "", nightDay = "";
+    (string Kind, string From, double X, double Y, double At)? present;
+    long nextPresentWalk;
+
+    // 친구가 두고 간 선물: 친구가 다 가면 볼록이가 걸어가 줍는다 (바쁘면 3분 뒤 저절로 추억 상자에)
+    void PresentTick()
+    {
+        if (present is not { } pr || visitor != null) return;
+        bool free = b.Mode == Mode.Wander && !b.P.Asleep && !InGame;
+        double age = Environment.TickCount64 / 1000.0 - pr.At;
+        if (free && Math.Abs(b.X - pr.X) < b.CellPx * .45 && Math.Abs(b.Y - pr.Y) < b.CellPx * .6 || age > 180)
+        {
+            gifts.Add(new GiftRecord(pr.Kind, pr.From, DateTime.Now));
+            present = null;
+            b.Emote("heart", 1.6);
+            foreach (var o in overlays) o.Invalidate();
+            Dbg.Log("gift", ("kind", pr.Kind), ("from", pr.From), ("picked", age <= 180));
+            Save();
+            BookChanged();
+            return;
+        }
+        if (free && Environment.TickCount64 > nextPresentWalk) { nextPresentWalk = Environment.TickCount64 + 3000; b.GoTo(pr.X, pr.Y); }
+    }
+
+    // 사진: 알이 올 때, 깨어날 때, 자랄 때, 떠날 때 (그 종 그림이 있을 때만)
+    void TakePhoto(string stage, string pose = "happy")
+    {
+        try
+        {
+            string sprite = stage == "egg" ? "egg/idle" : $"{stage}/0/{pose}";
+            if (!sprites.Has(sprite) || stage != "egg" && sprites.Species != species) return;
+            var file = Path.Combine(memDir, "album", $"{DateTime.Now:yyyyMMdd-HHmmss}-{species}-{stage}.png");
+            Memories.Photo(sprites, sprite, stage, file);
+            album.Add(new PhotoRecord(species, stage, DateTime.Now, file));
+            Dbg.Log("photo", ("species", species), ("stage", stage));
+            BookChanged();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Runtime.InteropServices.ExternalException) { Dbg.Log("photo-error", ("msg", e.Message)); }
+    }
+
+    // 엽서: 놀러 왔던 친구가 다음 날 보낸다. 볼록이가 한가하고 YELL 이 있을 때 편지 그림과 함께
+    void CardTick()
+    {
+        if (cardFrom is not { } from || string.CompareOrdinal(Today, cardDay) < 0 || visitor != null) return;
+        if (InGame || Afk() || b.Mode != Mode.Wander || b.P.Asleep) return;
+        try
+        {
+            var friend = pets.Read(from) is { } sheet ? Sprites.With(from, sheet, assetsDir) : null;
+            var file = Path.Combine(memDir, "cards", $"{DateTime.Now:yyyyMMdd-HHmmss}-{from}.png");
+            Memories.Card(sprites, friend, from, cardForm, DateTime.Now.DayOfYear * 31 + from.Sum(ch => ch), file);
+            cards.Add(new CardRecord(from, DateTime.Now, file));
+            b.Emote("mail", 2.5);
+            b.Greet("happy", 1.2);
+            Dbg.Log("card", ("from", from));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Runtime.InteropServices.ExternalException) { Dbg.Log("card-error", ("msg", e.Message)); }
+        cardFrom = null;
+        Save();
+        BookChanged();
+    }
+
+    // 아침 첫 만남엔 기지개와 해, 밤 9시 넘으면 하품과 달 (하루에 한 번씩)
+    static bool Night => DateTime.Now.Hour >= 21 || DateTime.Now.Hour < 6;
+    static string NightKey => DateTime.Now.AddHours(-6).ToString("yyyy-MM-dd");
+
+    void GreetTick()
+    {
+        if (InGame || b.P.Stage == "egg" || Afk() || b.Mode != Mode.Wander || b.P.Asleep) return;
+        int h = DateTime.Now.Hour;
+        if (h is >= 5 and < 12 && morningDay != Today) { morningDay = Today; b.Emote("sun", 2.5); b.Greet("stretch", 1.6); Dbg.Log("greet", ("when", "morning")); Save(); }
+        else if (Night && nightDay != NightKey) { nightDay = NightKey; b.Emote("moon", 2.5); b.Greet("stretch", 1.6); Dbg.Log("greet", ("when", "night")); Save(); }
+    }
+
+    // 꿈 말풍선: 잘 때 떠난 친구·선물·밥이 번갈아 (게임·숨기 중엔 안)
+    IReadOnlyList<string> Dreams()
+    {
+        if (!b.P.Asleep || b.Pose != "sleep" || InGame || b.Behind) return Array.Empty<string>();
+        var list = released.Select(r => "thumb/" + r.Species).Distinct().Concat(gifts.Select(g => "item/" + g.Kind).Distinct()).ToList();
+        list.Add("icon/seed");
+        if (released.Count == 0) list.Add("icon/heart");
+        return list;
+    }
+
+    // 밤에 자는 동안 수면 모자 (머리 꼭대기: 몸 가운데 열에서 가장 위 칸)
+    readonly Dictionary<(string, bool), (int X, int Top)> capSpot = new();
+    public bool ForceNight; // 디버그·시험용
+    void DrawCap(Graphics g, string name, int frame, bool flip, int shake)
+    {
+        if (!(Night || ForceNight) || !b.P.Asleep || b.Pose != "sleep" || !sprites.Has("game/nightcap")) return;
+        if (!capSpot.TryGetValue((name, flip), out var spot))
+        {
+            var one = sprites.Get(name, frame, 1, flip);
+            int top = one.Height;
+            for (int x = one.Width * 3 / 10; x < one.Width * 6 / 10; x++)
+                for (int y = 0; y < one.Height; y++)
+                    if (one.GetPixel(x, y).A > 0) { top = Math.Min(top, y); break; }
+            int row = Math.Min(one.Height - 1, top + 4), x0 = one.Width, x1 = 0;
+            for (int x = 0; x < one.Width; x++) if (one.GetPixel(x, row).A > 0) (x0, x1) = (Math.Min(x0, x), Math.Max(x1, x));
+            capSpot[(name, flip)] = spot = ((x0 + x1) / 2, top);
+        }
+        int k = b.Scale;
+        g.DrawImageUnscaled(sprites.Get("game/nightcap", 0, k), 8 + shake + (spot.X - 20 - 3) * k, (spot.Top - 23 + 2) * k);
     }
 
     // 새 알의 종: 34종 중 아무나 (처음 알도, 풀어준 뒤 오는 알도)
@@ -786,12 +955,13 @@ public sealed class PetForm : Form
                 SetSpecies(pick);
             }
             met.Add(species);
-            string name = sprites.SpeciesNames.GetValueOrDefault(species, "볼록이");
-            b.Say(4, $"{name}{Names.Josa(name, "가", "이가")} 태어났어요!");
+            TakePhoto(b.P.Stage);
+            b.Say(4, L.T("say.hatched", L.With(L.Species(species), "가", "이가")));
             b.Emote("star", 2);
             BookChanged();
             Save();
         }
+        else if (lastStage is "baby" or "child" && b.P.Stage != lastStage) TakePhoto(b.P.Stage); // 어린이가 되거나 어른이 됐다
         lastStage = b.P.Stage;
     }
 
@@ -850,7 +1020,7 @@ public sealed class PetForm : Form
                 case "peek": b.Emote("heart", 1.6); Dbg.Log("icbm-peek", ("friend", ic.Peeks.LastOrDefault()?.Species)); break; // 옛 친구를 알아본다
                 case "boom": Sfx.Play("boom"); b.Emote("bang", 1); break;
                 case "blown": b.Throw(ic.BlownVx, ic.BlownVy, hard: true); break; // 어지러워하다가 거기서부터 고치러 간다
-                case "nowhere": b.Say(3, "떨어뜨릴 곳이 없어요"); break;
+                case "nowhere": b.Say(3, L.T("say.nowhere")); break;
                 case "repaired": b.P.Energy = Math.Max(0, b.P.Energy - 4); b.Emote("spark", .8); break; // 일은 기운이 든다
             }
             if (e is "boom" or "nowhere" or "repaired") Dbg.Log("icbm", ("event", e), ("craters", ic.Craters.Count), ("x", (int)ic.TX), ("y", (int)ic.TY));
@@ -900,7 +1070,7 @@ public sealed class PetForm : Form
         var (field, rects) = Worms.Islands(Native.Foreground(), wins, b.Area, Screen.AllScreens.Select(s => s.WorkingArea).ToList(), b.CellPx, 8, topRoom: 0);
         if (rects.Count == 0)
         {
-            b.Say(3.5, "부술 창이 없어요", "최대화 안 한 창을 하나 띄워 주세요");
+            b.Say(3.5, L.T("say.no_gun"), L.T("say.open_window"));
             Dbg.Log("gun-none");
             return;
         }
@@ -1060,7 +1230,7 @@ public sealed class PetForm : Form
         var (field, wins) = PickIslands();
         if (wins.Count == 0)
         {
-            b.Say(3.5, "섬이 될 창이 없어요", "최대화 안 한 창을 하나 띄워 주세요");
+            b.Say(3.5, L.T("say.no_islands"), L.T("say.open_window"));
             Dbg.Log("worms-none");
             return;
         }
@@ -1140,7 +1310,7 @@ public sealed class PetForm : Form
         var screens = Screen.AllScreens.Select(s => s.WorkingArea).ToList();
         if (Breakout.Pick(Native.Foreground(), Native.ListWindows(), b.Area, screens, b.CellPx) is not { } pick)
         {
-            b.Say(3.5, "벽돌로 만들 창이 없어요", "최대화 안 한 창을 하나 띄워 주세요"); // 창모드 창이 없다
+            b.Say(3.5, L.T("say.no_break"), L.T("say.open_window")); // 창모드 창이 없다
             Dbg.Log("break-none");
             return;
         }
@@ -1414,7 +1584,14 @@ public sealed class PetForm : Form
         g.ResetClip();
         g.ResetTransform();
         var (name, frame, flip, _) = drawn;
-        if (name != null) g.DrawImageUnscaled(sprites.Get(name, frame, b.Scale, flip), Left - v.X + 8, Top - v.Y);
+        if (name != null)
+        {
+            g.DrawImageUnscaled(sprites.Get(name, frame, b.Scale, flip), Left - v.X + 8, Top - v.Y);
+            var at = g.Transform;
+            g.TranslateTransform(Left - v.X, Top - v.Y);
+            DrawCap(g, name, frame, flip, 0); // 수면 모자도 (본체 창과 같은 자리)
+            g.Transform = at;
+        }
         bmp.Save(path, ImageFormat.Png);
     }
 }

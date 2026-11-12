@@ -757,6 +757,9 @@ EMOTES = {
     'vein': ((232, 72, 92), '##.##|#...#|.....|#...#|##.##'),
     'heart': ((232, 72, 92), '.##.##.|#######|#######|.#####.|..###..|...#...'),
     'seed': ((92, 74, 66), '..#..|.###.|#####|#.#.#|#.#.#|.###.|..#..'),
+    'sun': ((245, 170, 40), '#..#..#|.#...#.|..###..|######.|..###..|.#...#.|#..#..#'),   # 아침 인사
+    'moon': ((240, 196, 70), '..###..|.##....|##.....|##.....|##.....|.##....|..###..'),  # 밤 인사
+    'mail': ((96, 150, 230), '#######|##...##|#.#.#.#|#..#..#|#######'),                   # 엽서가 왔다
 }
 
 
@@ -798,6 +801,20 @@ GAME = {
     'button_down': ('............|............|..rrrrrrrr..|..rrrrrrrr..|dddddddddddd|dggggggggggd|dddddddddddd', 'b'),
     'missile': ('rr..........r..|rrrwwwwwwwwwrr.|.rrwwwwwwwwwrrr|rrrwwwwwwwwwrr.|rr..........r..', 'k'),
     'mg': ('.kkkkkkkkkkkkkkkk.|kggggggggggggggggk|kggggggkkkkkkkkk..|kggkk.kgk.........|kkk...kgk.........|......kkk.........', 'w'),
+    # 밤에 잘 때 쓰는 수면 모자 (끝에 흰 방울)
+    'nightcap': ('........ww|.......uww|......uu..|.....uuu..|....uuuu..|...uuuuu..|..uuuuuu..|wwwwwwwwww', 'b'),
+}
+
+# 놀러 온 친구가 두고 가는 선물 (추억 상자). 글자 없이 그림만
+ITEMS = {
+    'acorn': ('...b...|.bbbbb.|bbbbbbb|.nnnnn.|.nnnnn.|..nnn..|...n...', 'b'),
+    'flower': ('.p...p.|ppp.ppp|.ppyppp|..pyp..|.ppppp.|...v...|..vv...|...v...', 'b'),
+    'shell': ('...p...|..pwp..|.pwpwp.|pwpwpwp|pwpwpwp|.ppppp.', 'b'),
+    'leaf': ('.....vv|....vvv|...vvv.|..vvv..|.vvv...|.v.....|v......', 'b'),
+    'feather': ('.....u.|....uu.|...uuu.|..uuu..|.uuu...|.uu....|u......', 'b'),
+    'pebble': ('.dd.dd.|ddddddd|ddddddd|.ddddd.|..ddd..|...d...', 'b'),
+    'berry': ('...v...|..vv...|.rrrrr.|rrrrrrr|rrwrrrr|rrrrrrr|.rrrrr.', 'b'),
+    'clover': ('.vv.vv.|vvvvvvv|.vvvvv.|vvvvvvv|.vv.vv.|...v...|...v...', 'b'),
 }
 def bug(i, boss=False):
     """볼록이 부대: 내려오는 「화면 버그」. 동글한 보라 딱정벌레, 다리 꼼지락 두 장 (i).
@@ -1231,6 +1248,7 @@ def build():
     rows += [('game/nuke', [nuke(i) for i in range(8)])]
     rows += [('game/bug', [bug(0), bug(1)]), ('game/bugboss', [bug(0, True), bug(1, True)]), ('game/gift', [gift()]), ('game/heli', [heli(0), heli(1)])]
     rows += [('num/+', [art('...|.#.|###|.#.|...', 'b', C['white'])]), ('num/x', [art('...|#.#|.#.|#.#|...', 'b', C['white'])])]
+    rows += [(f'item/{k}', [art(*v)]) for k, v in ITEMS.items()]
     rows += [('game/flash', [art('..y..|.yyy.|yywyy|.yyy.|..y..', 'r')])]
     rows += [('game/muzzle', [muzzle(a) for a in MUZZLE])]
     # 설정 창 도감(0번), ICBM 구멍에서 빼꼼하는 떠난 친구(0번 + 눈 감은 1번으로 깜빡)

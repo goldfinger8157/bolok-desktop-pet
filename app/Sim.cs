@@ -329,6 +329,50 @@ static class Sim
         return $"달리기 잘하는 사람 ({string.Join(" / ", rows)}), 가만히 {lazy.Sec:F0}초";
     }
 
+    // 다국어: 모든 문장에 영어·한국어가 있고, 번역된 문장은 {0} 같은 자리표시자가 영어와 같다. 언어 바꾸기·조사
+    static void LangChecks()
+    {
+        foreach (var key in L.Keys)
+        {
+            Expect(L.Has(key, "en") && L.Has(key, "ko"), $"영어·한국어가 다 있다: {key}");
+            var want = System.Text.RegularExpressions.Regex.Matches(L.Raw(key, "en"), @"\{\d\}").Select(m => m.Value).OrderBy(x => x).ToList();
+            foreach (var (code, _) in L.Languages.Where(l => L.Has(key, l.Code)))
+            {
+                var got = System.Text.RegularExpressions.Regex.Matches(L.Raw(key, code), @"\{\d\}").Select(m => m.Value).OrderBy(x => x).ToList();
+                Expect(got.SequenceEqual(want), $"자리표시자가 영어와 같다: {key} ({code})");
+            }
+        }
+        foreach (var sp in Sprites.Embedded().SpeciesNames.Keys) Expect(L.Has("sp." + sp, "en"), $"종 이름: {sp}");
+        var was = L.Code;
+        L.Use("ko");
+        Expect(L.T("menu.feed") == "밥 주기" && L.With("여우", "를", "을") == "여우를" && L.With("곰", "를", "을") == "곰을", "한국어와 조사");
+        L.Use("en");
+        Expect(L.T("menu.feed") == "Feed" && L.With("Fox", "를", "을") == "Fox" && L.T("no.such.key") == "no.such.key", "영어, 조사 없음, 없는 키는 키 그대로");
+        Expect(L.Span(3) == "3 min" && L.Span(125) == "2 h 5 min" && L.Span(60 * 27) == "1 d 3 h", "시간 쓰기");
+        L.Use("fr");
+        Expect(L.T("menu.feed").Length > 0, "번역이 없으면 영어로");
+        L.Use(was);
+    }
+
+    // 추억: 사진·엽서가 PNG 로 남고, 다시 읽힌다
+    static void MemoryChecks()
+    {
+        var sp = Sprites.Embedded();
+        var dir = Path.Combine(Path.GetTempPath(), "bolok-check-mem-" + Guid.NewGuid().ToString("N")[..8]);
+        try
+        {
+            Memories.Photo(sp, "child/0/happy", "child", Path.Combine(dir, "a.png"));
+            Memories.Card(sp, sp, "hamster", "adult_chubby", 3, Path.Combine(dir, "c.png"));
+            using var a = Memories.Load(Path.Combine(dir, "a.png"));
+            using var c = Memories.Load(Path.Combine(dir, "c.png"));
+            Expect(a is { Width: Memories.PhotoSize } && c is { Width: Memories.CardW, Height: Memories.CardH }, "사진·엽서 파일");
+            Expect(Memories.Load(Path.Combine(dir, "none.png")) == null, "없는 파일은 null");
+            foreach (var k in Memories.Kinds) Expect(sp.Has("item/" + k), $"선물 그림: {k}");
+            Expect(sp.Has("emo/sun") && sp.Has("emo/moon") && sp.Has("emo/mail") && sp.Has("game/nightcap"), "아침·밤·엽서·수면 모자 그림");
+        }
+        finally { try { Directory.Delete(dir, true); } catch (IOException) { } }
+    }
+
     // 떠난 친구가 놀러 온다: 걸어 들어와 인사, 따라다니기, 같이 자기, 바쁠 땐 기다리기, 5분 뒤 돌아가기, 누가 올지 고르기
     static void VisitorChecks()
     {
@@ -342,6 +386,17 @@ static class Sim
         Expect(v.Stage == Visitor.Phase.Stay && ev.Contains("hello") && Math.Abs(Math.Abs(v.X - 900) - Visitor.Side * cell) < 2, $"걸어 들어와 볼록이 옆에서 인사: {v.Stage} x {v.X:F0}");
         Run(20, 1400);
         Expect(Math.Abs(v.X - 1400) < Visitor.Side * cell + cell * .6, $"볼록이를 따라다닌다 (가끔 반대쪽으로 자리를 바꾼다): x {v.X:F0}");
+        // 볼록이가 조금씩 움직여도 걷기·서기, 방향이 매 프레임 바뀌지 않는다 (파르르 떨림)
+        int flips = 0;
+        string lastPose = v.Pose;
+        int lastDir = v.Dir;
+        for (int i = 0; i < 600; i++)
+        {
+            v.Update(1 / 60.0, 1400 + Math.Sin(i / 20.0) * 30, ground - Math.Sin(i / 15.0) * 10, true, false, area);
+            if (v.Pose != lastPose || v.Dir != lastDir) flips++;
+            (lastPose, lastDir) = (v.Pose, v.Dir);
+        }
+        Expect(flips < 20, $"조금씩 움직이는 볼록이 옆에서 떨지 않는다: 10초에 {flips}번 바뀜");
         double still = v.X;
         Run(5, 300, free: false);
         Expect(Math.Abs(v.X - still) < 1, "볼록이가 바쁘면(게임·잡힘) 제자리에서 기다린다");
@@ -1730,6 +1785,8 @@ static class Sim
         PetSheetChecks();
         o.WriteLine(SquadChecks());
         VisitorChecks();
+        LangChecks();
+        MemoryChecks();
         ClickChecks(k);
         EmoteChecks(k);
 

@@ -7,7 +7,10 @@ namespace Bolok;
 public sealed class Worms
 {
     // 대포: 한 번에 몇 발, 퍼짐(도), 폭발 반지름, 최대 피해, 그 대포를 고른 햄스터의 체력
-    public sealed record Gun(string Name, string Label, int Hp, int Shells, double Spread, double Radius, int Damage);
+    public sealed record Gun(string Name, string KoLabel, int Hp, int Shells, double Spread, double Radius, int Damage)
+    {
+        public string Label => L.T("gun." + Name); // 언어별 이름 (KoLabel 은 기록용)
+    }
     public static readonly Gun[] Guns =
     {
         new("multi", "멀티캐논", 200, 9, 3, 28, 22),   // 체력은 처음 정한 것의 두 배 (YELL: 판이 너무 빨리 끝났다)

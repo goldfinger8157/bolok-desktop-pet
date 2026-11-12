@@ -12,17 +12,18 @@ public sealed class Visitor
 
     public readonly string Species, Form;   // Form: 떠날 때 모습 (adult_chubby 등)
     public readonly int K;
-    public double X, Y, Clock, EmoteUntil;
+    public double X, Y, Clock, EmoteUntil, BabyX = double.NaN; // BabyX: 아기는 엄마 뒤를 부드럽게 따라온다
     public int Dir = 1;
     public string Pose = "walk", Emote = "";
     public Phase Stage = Phase.Arrive;
+    public bool Baby; // 우정 하트가 다섯이 되면 아기를 데리고 온다 (그리는 쪽이 뒤에 따라 그린다)
     public Action<string>? OnEvent;
     public bool Gone => Stage == Phase.Gone;
 
     readonly Random rng;
     readonly double cell, s;
     double side = -1, hold, nextPlay, arrivedAt, leaveTo;
-    bool sleeping;
+    bool sleeping, moving; // moving: 한 번 걷기 시작하면 자리에 닿을 때까지 걷는다 (걷기·서기를 매 프레임 오가면 파르르 떨린다)
 
     public Visitor(string species, string form, double x, double y, int k, Random rng)
     {
@@ -47,6 +48,11 @@ public sealed class Visitor
             sleeping = false;
             OnEvent?.Invoke("bye");
         }
+
+        // 아기: 엄마 뒤 0.7칸 자리로 부드럽게 (엄마가 돌아서도 순간이동하지 않는다)
+        double babyTo = X - Dir * cell * .7;
+        if (double.IsNaN(BabyX)) BabyX = babyTo;
+        BabyX += Math.Clamp(babyTo - BabyX, -RunSpeed * s * dt, RunSpeed * s * dt);
 
         switch (Stage)
         {
@@ -79,14 +85,14 @@ public sealed class Visitor
                 }
                 if (sleeping) { sleeping = false; (Pose, hold) = ("stretch", Clock + 1.2); break; } // 볼록이가 깨면 같이 기지개
                 double target = mainX + side * Side * cell;
-                if (Math.Abs(target - X) > cell * .5)
+                Y += Math.Clamp(mainY - Y, -400 * s * dt, 400 * s * dt); // 높이는 늘 부드럽게
+                if (!moving && Math.Abs(target - X) > cell * .8) moving = true; // 0.8칸 넘게 벌어지면 따라간다
+                if (moving)
                 {
-                    Walk(target, Math.Abs(target - X) > cell * 4 ? RunSpeed : WalkSpeed, dt);
-                    Y += Math.Clamp(mainY - Y, -400 * s * dt, 400 * s * dt);
-                    break;
+                    if (!Walk(target, Math.Abs(target - X) > cell * 4 ? RunSpeed : WalkSpeed, dt)) break;
+                    moving = false; // 자리에 닿았다: 이제 선다
                 }
-                Y = mainY;
-                Dir = mainX > X ? 1 : -1; // 볼록이를 본다
+                if (Math.Abs(mainX - X) > cell * .3) Dir = mainX > X ? 1 : -1; // 볼록이가 분명히 한쪽에 있을 때만 돌아본다
                 if (Clock >= nextPlay) // 가끔 같이 논다
                 {
                     nextPlay = Clock + PlayEvery * (.7 + rng.NextDouble() * .6);

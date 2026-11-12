@@ -22,22 +22,89 @@ static class Ui
     public static float K = 1;
     public static int D(float v) => (int)Math.Round(v * K);
 
-    static readonly Dictionary<(float, bool, float), Font> fonts = new();
-    public static Font F(float px, bool bold = false)
+    static readonly Dictionary<(float, bool, float, string), Font> fonts = new();
+    public static Font F(float px, bool bold = false) // 글꼴은 언어에 따라 (한글 맑은 고딕, 일본어 Yu Gothic UI, 중국어 YaHei·JhengHei, 그 밖 Segoe UI)
     {
-        if (!fonts.TryGetValue((px, bold, K), out var f))
-            fonts[(px, bold, K)] = f = new Font("Malgun Gothic", px * K, bold ? FontStyle.Bold : FontStyle.Regular, GraphicsUnit.Pixel);
+        var key = (px, bold, K, L.Font);
+        if (!fonts.TryGetValue(key, out var f))
+            fonts[key] = f = new Font(L.Font, px * K, bold ? FontStyle.Bold : FontStyle.Regular, GraphicsUnit.Pixel);
         return f;
     }
 
-    public const TextFormatFlags Wrap = TextFormatFlags.WordBreak | TextFormatFlags.NoPadding | TextFormatFlags.TextBoxControl;
+    public const TextFormatFlags Wrap = TextFormatFlags.WordBreak | TextFormatFlags.NoPadding; // TextBoxControl 을 넣으면 러시아어가 단어 중간에서 끊긴다
     public const TextFormatFlags OneLine = TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis;
 
-    public static Size Measure(string text, Font font, int width = int.MaxValue) =>
-        string.IsNullOrEmpty(text) ? Size.Empty : TextRenderer.MeasureText(text, font, new Size(Math.Max(1, width), int.MaxValue), width == int.MaxValue ? OneLine : Wrap);
+    public static Size Measure(string text, Font font, int width = int.MaxValue)
+    {
+        if (string.IsNullOrEmpty(text)) return Size.Empty;
+        if (width == int.MaxValue) return TextRenderer.MeasureText(text, font, Big, Plain);
+        var lines = Lines(text, font, width);
+        return new Size(lines.Max(l => One(l, font)), lines.Count * LineH(font));
+    }
 
-    public static void Text(Graphics g, string text, Font font, Rectangle r, Color c, TextFormatFlags flags = Wrap) =>
-        TextRenderer.DrawText(g, text, font, r, c, flags);
+    public static void Text(Graphics g, string text, Font font, Rectangle r, Color c, TextFormatFlags flags = Wrap)
+    {
+        if ((flags & TextFormatFlags.WordBreak) == 0) { TextRenderer.DrawText(g, text, font, r, c, flags); return; }
+        var one = (flags & ~(TextFormatFlags.WordBreak | TextFormatFlags.VerticalCenter | TextFormatFlags.Bottom)) | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding;
+        int h = LineH(font), y = r.Y;
+        foreach (var line in Lines(text, font, r.Width))
+        {
+            if (y >= r.Bottom) break;
+            TextRenderer.DrawText(g, line, font, new Rectangle(r.X, y, r.Width, h), c, one);
+            y += h;
+        }
+    }
+
+    // 줄바꿈은 직접 한다: 윈도우 GDI 는 한국어 시스템에서 러시아어 같은 글을 단어 중간에서 끊는다.
+    // 띄어쓰기에서 끊고, 중국어·일본어처럼 띄어쓰기가 없는 글은 글자 단위로. 같은 글·너비는 다시 재지 않는다
+    static readonly Dictionary<(string, Font, int), List<string>> wrapped = new();
+    static readonly Dictionary<(string, Font), int> widths = new();
+
+    static int One(string s, Font font)
+    {
+        if (widths.Count > 4000) widths.Clear();
+        if (!widths.TryGetValue((s, font), out int w)) widths[(s, font)] = w = TextRenderer.MeasureText(s, font, Big, Plain).Width;
+        return w;
+    }
+
+    static int LineH(Font font) => TextRenderer.MeasureText("Ag가", font, Big, Plain).Height;
+
+    // 잴 때는 말줄임(…) 없이, 끝없이 넓은 칸에서 (말줄임을 넣으면 너비가 줄어 나온다)
+    static readonly Size Big = new(int.MaxValue, int.MaxValue);
+    const TextFormatFlags Plain = TextFormatFlags.NoPadding | TextFormatFlags.SingleLine;
+
+    static bool Cjk(char ch) => ch is >= '\u3040' and <= '\u30ff' or >= '\u3400' and <= '\u9fff' or >= '\uf900' and <= '\ufaff' or >= '\uff00' and <= '\uffef' or >= '\u3000' and <= '\u303f';
+
+    public static List<string> Lines(string text, Font font, int width)
+    {
+        if (wrapped.Count > 1000) wrapped.Clear();
+        if (wrapped.TryGetValue((text, font, width), out var hit)) return hit;
+        var lines = new List<string>();
+        foreach (var para in text.Split('\n'))
+        {
+            var tokens = new List<string>();
+            var word = new System.Text.StringBuilder();
+            foreach (char ch in para)
+            {
+                if (Cjk(ch)) { if (word.Length > 0) { tokens.Add(word.ToString()); word.Clear(); } tokens.Add(ch.ToString()); continue; }
+                word.Append(ch);
+                if (ch == ' ') { tokens.Add(word.ToString()); word.Clear(); }
+            }
+            if (word.Length > 0) tokens.Add(word.ToString());
+            // 「、」「。」 같은 문장 부호는 앞 글자에 붙인다 (줄 첫머리에 오지 않게)
+            for (int i = tokens.Count - 1; i > 0; i--)
+                if (tokens[i].Length == 1 && "、。，．！？）」』,.!?)".Contains(tokens[i][0])) { tokens[i - 1] += tokens[i]; tokens.RemoveAt(i); }
+            string line = "";
+            foreach (var t in tokens)
+            {
+                string next = line + t;
+                if (line.Length > 0 && One(next.TrimEnd(), font) > width) { lines.Add(line.TrimEnd()); line = t.TrimStart(); }
+                else line = next;
+            }
+            lines.Add(line.TrimEnd());
+        }
+        return wrapped[(text, font, width)] = lines;
+    }
 
     public static GraphicsPath Round(RectangleF r, float rad)
     {
@@ -287,8 +354,23 @@ sealed class Card : View, IFlow
         public float IconAlpha = 1;
         public bool Hidden;
         public int BodyPad = 12;
+        public Action? Click; // 줄 전체를 누를 수 있다 (언어 고르기)
         internal Rectangle Box;
     }
+
+    Item? hover;
+    Item? At(Point p) => items.FirstOrDefault(i => !i.Hidden && i.Click != null && i.Box.Contains(p));
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        var it = At(e.Location);
+        Cursor = it != null ? Cursors.Hand : Cursors.Default;
+        if (it != hover) { hover = it; Invalidate(); }
+        base.OnMouseMove(e);
+    }
+
+    protected override void OnMouseLeave(EventArgs e) { if (hover != null) { hover = null; Invalidate(); } base.OnMouseLeave(e); }
+    protected override void OnMouseClick(MouseEventArgs e) { At(e.Location)?.Click?.Invoke(); base.OnMouseClick(e); }
 
     readonly List<Item> items = new();
     public IReadOnlyList<Item> Items => items;
@@ -368,6 +450,14 @@ sealed class Card : View, IFlow
         g.SmoothingMode = SmoothingMode.AntiAlias;
         var box = new RectangleF(0, 0, Width - 1, Height - 1);
         Ui.Fill(g, box, D(10), Ui.Card);
+        if (hover != null && !hover.Hidden) // 누를 수 있는 줄 위에 마우스: 살짝 밝게 (둥근 모서리 안에서만)
+        {
+            using var round = Ui.Round(box, D(10));
+            var clip = g.Clip;
+            g.SetClip(round);
+            using (var hl = new SolidBrush(Ui.Hover)) g.FillRectangle(hl, hover.Box);
+            g.Clip = clip;
+        }
         Ui.Stroke(g, new RectangleF(0, 0, Width, Height), D(10), Ui.CardLine);
         g.SmoothingMode = SmoothingMode.None;
         using var line = new Pen(Ui.CardLine);
@@ -570,7 +660,7 @@ sealed class NavList : View
     string active;
     int hover = -1;
     public Image? Face;
-    public string Name1 = "볼록이", Name2 = "", Foot = "";
+    public string Name1 = "", Name2 = "", Foot = "";
     public event Action<string>? Picked;
 
     public NavList(List<Entry> entries, string active)
@@ -683,6 +773,18 @@ static class Glyphs
         g.FillEllipse(Brushes.White, cx - 5 * s, cy - 5 * s, 10 * s, 10 * s);
         using var hole = new SolidBrush(badge);
         g.FillEllipse(hole, cx - 2.1f * s, cy - 2.1f * s, 4.2f * s, 4.2f * s);
+    }
+
+    public static void Star(Graphics g, RectangleF b, Color _)
+    {
+        float s = S(b), cx = b.X + 7 * s, cy = b.Y + 7.4f * s;
+        var pts = new PointF[10];
+        for (int i = 0; i < 10; i++)
+        {
+            double a = -Math.PI / 2 + i * Math.PI / 5, r = (i % 2 == 0 ? 6.6 : 2.8) * s;
+            pts[i] = new PointF(cx + (float)(Math.Cos(a) * r), cy + (float)(Math.Sin(a) * r));
+        }
+        g.FillPolygon(Brushes.White, pts);
     }
 
     public static void Download(Graphics g, RectangleF b, Color _)

@@ -857,6 +857,9 @@ public sealed class Brain
 
     public void GoTo(double x, double y) { tx = x; ty = y; next = -1; Mode = Mode.Wander; }
 
+    // 아침·밤 인사처럼 잠깐 한 동작 (돌아다니는 중일 때만)
+    public void Greet(string pose, double sec) { if (Mode == Mode.Wander && !P.Asleep) Play(pose, sec); }
+
     bool Walk(double gx, double gy, double v, double dt)
     {
         double dx = gx - X, dy = gy - Y, d = Math.Sqrt(dx * dx + dy * dy);
@@ -1231,16 +1234,7 @@ public sealed class Brain
 
 public static class Names
 {
-    public static string Form(string stage) => stage switch
-    {
-        "egg" => "알",
-        "baby" => "아기",
-        "child" => "어린이",
-        "adult_chubby" => "통통이",
-        "adult_sweet" => "애교쟁이",
-        "adult_grumpy" => "심술이",
-        _ => stage,
-    };
+    public static string Form(string stage) => L.Stage(stage); // 알·아기·어린이·통통이·애교쟁이·심술이 (언어별)
 
     // 받침이 있으면 b, 없으면 a (를/을, 가/이가)
     public static string Josa(string word, string a, string b) =>

@@ -16,6 +16,8 @@ public sealed class Overlay : Form
     public Func<IReadOnlyList<string>> SquadFriends = () => Array.Empty<string>();
     public Func<Visitor?> Guest = () => null;           // 놀러 온 떠난 친구
     public Func<Sprites?> GuestSprites = () => null;
+    public Func<(string Kind, string From, double X, double Y, double At)?> Present = () => null; // 친구가 두고 간 선물
+    public Func<IReadOnlyList<string>> Dreams = () => Array.Empty<string>();                     // 꿈 말풍선 그림들
     Icbm? icbmSeen;
     int icbmVersion = -1;
     List<Rectangle> craterRects = new();
@@ -136,6 +138,8 @@ public sealed class Overlay : Form
             if (BreakNote(bo) is { } note) r.Add(Client(NoteRect(b.X, b.Y, bo.Field, note)));
         }
         if (Guest() is { } gv) r.Add(Client(GuestRect(gv)));
+        if (Present() is { } pr) r.Add(Client(Around(pr.X, pr.Y - 8 * b.Scale, 14 * b.Scale, 14 * b.Scale)));
+        if (Dreams().Count > 0) r.Add(Client(DreamRect()));
         if (SquadGame() is { } sq)
         {
             int k = sq.K;
@@ -297,13 +301,55 @@ public sealed class Overlay : Form
         if (IcbmGame() is { } ic) DrawIcbm(g, ic);
         if (SquadGame() is { } sq) DrawSquad(g, sq);
         if (Guest() is { } gv && GuestSprites() is { } gs) DrawGuest(g, gv, gs);
+        if (Present() is { } pr) // 선물: 바닥에서 통통, 가끔 반짝
+        {
+            int k = b.Scale, hop = Math.Sin(Environment.TickCount64 / 180.0) > .6 ? k : 0;
+            Put(g, sp.Get("item/" + pr.Kind, 0, k), (int)pr.X, (int)pr.Y - 6 * k - hop);
+            if (Environment.TickCount64 / 400 % 3 == 0) Put(g, sp.Get("game/spark", 0, Math.Max(1, k - 1)), (int)pr.X + 6 * k, (int)pr.Y - 12 * k);
+        }
+        if (Dreams() is { Count: > 0 } dreams) DrawDream(g, dreams);
     }
+
+    // 꿈 말풍선: 머리 위 한쪽에 작은 동그라미 둘 + 구름 말풍선, 안에 그림이 3초마다 바뀐다
+    Rectangle DreamRect()
+    {
+        int k = b.Scale;
+        double cx = b.X + 20 * k, cy = b.HeadY - 18 * k;
+        return Around(cx, cy, 17 * k, 16 * k);
+    }
+
+    void DrawDream(Graphics g, IReadOnlyList<string> dreams)
+    {
+        int k = b.Scale;
+        var r = Client(DreamRect());
+        var head = ToClient(b.X + 8 * k, b.HeadY);
+        using var line = new SolidBrush(Color.FromArgb(92, 58, 40));
+        using var white = new SolidBrush(Color.White);
+        void Puff(int x, int y, int rad) { g.FillEllipse(line, x - rad - k, y - rad - k, (rad + k) * 2, (rad + k) * 2); g.FillEllipse(white, x - rad, y - rad, rad * 2, rad * 2); }
+        Puff(head.X + 4 * k, head.Y - 4 * k, 2 * k);
+        Puff(head.X + 8 * k, head.Y - 9 * k, 3 * k);
+        var mode = g.SmoothingMode;
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None; // 투명색 창: 부드럽게 그리면 분홍 테두리
+        g.FillEllipse(line, r.X + k, r.Y + 3 * k, r.Width - 2 * k, r.Height - 6 * k);
+        g.FillEllipse(white, r.X + 2 * k, r.Y + 4 * k, r.Width - 4 * k, r.Height - 8 * k);
+        g.SmoothingMode = mode;
+        string pic = dreams[(int)(Environment.TickCount64 / 3000 % dreams.Count)];
+        var sp = sprites();
+        if (sp.Has(pic)) // 그려진 부분을 재서 말풍선 안에 맞는 정수배로 (작은 선물은 크게, 큰 그림은 작게)
+        {
+            var one = sp.Get(pic, 0, 1);
+            if (!dreamCrops.TryGetValue(pic, out var c)) dreamCrops[pic] = c = Ui.Opaque(one, 0);
+            int innerW = r.Width - 12 * k, innerH = r.Height - 14 * k, z = Math.Max(1, Math.Min(innerW / c.Width, innerH / c.Height));
+            Ui.Pixel(g, one, new Rectangle(r.X + (r.Width - c.Width * z) / 2, r.Y + (r.Height - c.Height * z) / 2, c.Width * z, c.Height * z), c);
+        }
+    }
+    readonly Dictionary<string, Rectangle> dreamCrops = new();
 
     // ── 놀러 온 친구: 볼록이처럼 발이 (X, Y), 머리 위에 하트·zzz ──
     Rectangle GuestRect(Visitor v)
     {
-        int cell = 40 * v.K;
-        return new Rectangle((int)v.X - cell / 2 - 8, (int)v.Y - cell - 30 * v.K, cell + 16, cell + 30 * v.K + 8);
+        int cell = 40 * v.K, extra = v.Baby ? (int)(cell * .8) : 0; // 아기가 뒤에 있으면 그만큼 넓게
+        return new Rectangle((int)v.X - cell / 2 - 8 - extra, (int)v.Y - cell - 30 * v.K, cell + 16 + extra * 2, cell + 30 * v.K + 8);
     }
 
     void DrawGuest(Graphics g, Visitor v, Sprites gs)
@@ -314,6 +360,15 @@ public sealed class Overlay : Form
         if (!gs.Has(name)) return;
         int ms = v.Pose switch { "walk" => 130, "sleep" => 800, "idle" => 600, _ => 220 };
         var p = ToClient(v.X - cell / 2.0, v.Y - cell);
+        if (v.Baby) // 아기가 뒤에서 졸졸 (같은 자세, 조금 늦게)
+        {
+            string bn = gs.Has($"baby/0/{v.Pose}") ? $"baby/0/{v.Pose}" : "baby/0/idle";
+            if (gs.Has(bn))
+            {
+                var bp = ToClient(v.BabyX - cell / 2.0, v.Y - cell);
+                g.DrawImageUnscaled(gs.Get(bn, (int)(v.Clock * 1000 / ms) + 1, v.K, v.Dir < 0), bp.X, bp.Y);
+            }
+        }
         g.DrawImageUnscaled(gs.Get(name, (int)(v.Clock * 1000 / ms), v.K, v.Dir < 0), p.X, p.Y);
         if (v.Clock < v.EmoteUntil && sprites().Has("emo/" + v.Emote))
         {
@@ -349,7 +404,7 @@ public sealed class Overlay : Form
     // 처음 4초는 조작 안내, 레벨이 오르면 잠깐 「Lv.N!」. 글자 말풍선은 이것뿐이다 (YELL 이 달라고 함)
     const double GuideSec = 4;
     static string[]? NoteLines(Runner run) =>
-        run.Clock < GuideSec ? new[] { $"Lv.{run.Level}  목표 {Bolok.Runner.GoalOf(run.Level)}", "Ctrl: 점프", "Shift: 앉기", "Ctrl+Shift 꾹: 종료" }
+        run.Clock < GuideSec ? new[] { L.T("note.run_level", run.Level, Bolok.Runner.GoalOf(run.Level)), L.T("note.run_jump"), L.T("note.run_duck"), L.T("note.run_quit") }
         : run.Clock - run.LevelAt < 1.6 ? new[] { $"Lv.{run.Level}!" } : null;
 
     Font? noteFont;
@@ -359,11 +414,11 @@ public sealed class Overlay : Form
 
     Font NoteFont()
     {
-        if (noteFont == null || noteFontScale != b.Scale)
+        if (noteFont == null || noteFontScale != b.Scale || noteFont.FontFamily.Name != L.Font) // 언어가 바뀌면 글꼴도
         {
             noteFont?.Dispose();
             noteSizes.Clear();
-            noteFont = new Font("Malgun Gothic", 4 * b.Scale + 3, FontStyle.Bold, GraphicsUnit.Pixel);
+            noteFont = new Font(L.Font, 4 * b.Scale + 3, FontStyle.Bold, GraphicsUnit.Pixel);
             noteFontScale = b.Scale;
         }
         return noteFont;
@@ -393,7 +448,7 @@ public sealed class Overlay : Form
     }
 
     // ── 벽돌깨기: 창 위에 조각 금, 깨진 자리는 까만 구멍, 떨어지는 파편, 쟁반, 쇠공, 남은 공 ──
-    static string[]? BreakNote(Breakout bo) => bo.Clock < 4 ? new[] { "마우스: 쟁반", "클릭: 던지기", "Esc: 끝" } : null;
+    static string[]? BreakNote(Breakout bo) => bo.Clock < 4 ? new[] { L.T("note.break_mouse"), L.T("note.break_click"), L.T("note.esc") } : null;
 
     Rectangle BallRect(Breakout bo, Breakout.Ball ball) => new((int)ball.X - bo.BallR * 2 - 2, (int)ball.Y - bo.BallR * 2 - 2, bo.BallR * 4 + 4, bo.BallR * 4 + 4); // 왕볼 크기까지
     Rectangle ItemRect(Breakout.Item it) => new((int)it.X - 7 * b.Scale, (int)it.Y - 5 * b.Scale, 14 * b.Scale, 10 * b.Scale);
@@ -608,7 +663,7 @@ public sealed class Overlay : Form
     }
 
     // 구멍 너머 자연: 파란 하늘과 구름, 나무숲, 흐르는 냇물, 풀밭. px 칸 도트로, 자리마다 조금씩 다르게
-    static void PaintNature(Graphics g, Rectangle box, int floor, int seed, double clock, int px)
+    internal static void PaintNature(Graphics g, Rectangle box, int floor, int seed, double clock, int px)
     {
         var rng = new Random(seed);
         int W = box.Width, horizon = box.Top + (int)((floor - box.Top) * .52) / px * px;
@@ -794,7 +849,7 @@ public sealed class Overlay : Form
     }
 
     // ── 미니건 ──
-    static string[]? GunNote(Minigun mg) => mg.Clock < 4 ? new[] { "마우스: 조준", "왼쪽 누르고 있기: 미니건", "오른쪽 클릭: 수류탄", "Esc: 끝" } : null;
+    static string[]? GunNote(Minigun mg) => mg.Clock < 4 ? new[] { L.T("note.gun_aim"), L.T("note.gun_hold"), L.T("note.gun_right"), L.T("note.esc") } : null;
     readonly Color holeColor = Color.FromArgb(14, 16, 22), rimColor = Color.FromArgb(70, 60, 52);
     readonly SolidBrush chip = new(Color.FromArgb(200, 204, 212)), chipEdge = new(Color.FromArgb(90, 94, 104)), brass = new(Color.FromArgb(214, 170, 60)),
         spark = new(Color.FromArgb(255, 236, 140)), sparkCore = new(Color.White);
@@ -871,7 +926,7 @@ public sealed class Overlay : Form
 
     // ── 포트리스 ──
     static string[]? WormsNote(Worms w) => w.Clock < 5
-        ? new[] { $"내 대포: {w.Me.Gun.Label} (HP {w.Me.Gun.Hp})", "마우스: 조준", "누르고 있다 놓기: 쏘기", "←→: 걷기  Space: 점프", "위 화살표: 바람", "Esc: 끝" } : null;
+        ? new[] { L.T("note.worms_gun", w.Me.Gun.Label, w.Me.Gun.Hp), L.T("note.gun_aim"), L.T("note.worms_fire"), L.T("note.worms_walk"), L.T("note.worms_wind"), L.T("note.esc") } : null;
     readonly SolidBrush grass = new(Color.FromArgb(120, 200, 90)), grassDark = new(Color.FromArgb(70, 140, 60)), hpGood = new(Color.FromArgb(110, 200, 110)),
         dirt = new(Color.FromArgb(139, 94, 60)), windFill = new(Color.FromArgb(96, 150, 230));
     Pen? holePen;
