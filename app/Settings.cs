@@ -4,10 +4,11 @@ using System.Drawing.Drawing2D;
 namespace Bolok;
 
 // 도감에 보여줄 것: 지금 키우는 아이, 만나 본 종, 자연으로 떠난 친구들
-public sealed record ReleasedPet(string Species, string Stage, double AgeMin, DateTime At);
+public sealed record ReleasedPet(string Species, string Stage, double AgeMin, DateTime At, int Variant = 0); // Variant: 색 변형 (0 기본 색)
 public sealed record PetBook(string Species, bool IsEgg, IReadOnlyCollection<string> Met, IReadOnlyList<ReleasedPet> Released,
     IReadOnlyDictionary<string, DateTime>? Visits = null) // Visits: 떠난 친구가 마지막으로 놀러 온 때
 {
+    public int Variant { get; init; } // 지금 키우는 아이의 색 (작은 그림도 그 색으로)
     public IReadOnlyList<GiftRecord> Gifts { get; init; } = Array.Empty<GiftRecord>();
     public IReadOnlyList<PhotoRecord> Album { get; init; } = Array.Empty<PhotoRecord>();
     public IReadOnlyList<CardRecord> Cards { get; init; } = Array.Empty<CardRecord>();
@@ -77,11 +78,7 @@ public sealed class Settings : Form
         TopMost = true;
 
         var sp = spritesOf();
-        foreach (var id in sp.SpeciesList)
-        {
-            var two = new Bitmap(sp.Get("thumb/" + id, 0, 2));
-            thumbs[id] = (new Bitmap(sp.Get("thumb/" + id, 0, 1)), two, Ui.Faded(two));
-        }
+        foreach (var id in sp.SpeciesList) Thumb(id);
 
         Ui.K = DeviceDpi / 96f;
         Build();
@@ -196,6 +193,21 @@ public sealed class Settings : Form
         return s;
     }
 
+    // 작은 그림 (열쇠: 종 또는 "cat#1" 처럼 색까지). 처음 쓸 때 만들어 둔다 — 도감·얼굴·떠난 친구는 키운 아이의 색으로 (YELL 2026-11-12)
+    (Bitmap One, Bitmap Two, Bitmap Faded) Thumb(string key)
+    {
+        if (thumbs.TryGetValue(key, out var t)) return t;
+        var sp = spritesOf();
+        if (!sp.Has("thumb/" + key)) key = PetArt.Base(key);
+        if (thumbs.TryGetValue(key, out t)) return t;
+        var two = new Bitmap(sp.Get("thumb/" + key, 0, 2));
+        return thumbs[key] = (new Bitmap(sp.Get("thumb/" + key, 0, 1)), two, Ui.Faded(two));
+    }
+
+    // 도감 칸: 지금 키우는 종은 그 아이의 색, 떠나보낸 종은 마지막으로 키운 아이의 색, 아니면 기본 색
+    string BookKey(string id) => book.Species == id && !book.IsEgg ? PetArt.Key(id, book.Variant)
+        : book.Released.LastOrDefault(r => r.Species == id) is { } r ? PetArt.Key(id, r.Variant) : id;
+
     void UpdateStatus()
     {
         var st = statusOf();
@@ -204,14 +216,14 @@ public sealed class Settings : Form
         string name = egg ? L.Stage("egg") : L.Species(st.Species);
 
         // 왼쪽 위 얼굴은 어느 페이지에서나
-        var face = egg ? sp.Get("egg/idle", 0, 1) : thumbs.TryGetValue(st.Species, out var t) ? t.One : null;
+        var face = egg ? sp.Get("egg/idle", 0, 1) : Thumb(sp.BaseSpecies == st.Species ? sp.Species : st.Species).One;
         string line2 = egg ? L.T("st.unknown") : $"{name} · {Names.Form(st.Stage)}";
         if (nav.Face != face || nav.Name2 != line2) { (nav.Face, nav.Name2) = (face, line2); nav.Invalidate(); }
         if (page == "book" && !book.IsEgg && nowItem.Right is Btn && nowItem.Label != line2) { nowItem.Label = line2; nowCard.Invalidate(); } // 자라면 이름 옆 모습도
         if (page != "status") return;
 
         string pose = $"{st.Stage}/0/{(st.Asleep ? "sleep" : "idle")}";
-        string key = egg ? "egg/idle" : sp.Species == st.Species && sp.Has(pose) ? pose : "thumb/" + st.Species; // 그림을 아직 못 받았으면 썸네일로
+        string key = egg ? "egg/idle" : sp.BaseSpecies == st.Species && sp.Has(pose) ? pose : "thumb/" + st.Species;
         hero.Face = sp.Get(key, frame, 1);
         if (!crops.TryGetValue(st.Species + "|" + key, out var crop)) crops[st.Species + "|" + key] = crop = Ui.Opaque(sp.Get(key, 0, 1), 2);
         hero.Crop = crop;
@@ -257,7 +269,7 @@ public sealed class Settings : Form
         s.Desc(L.T("bk.desc"));
         nowCard = s.Group(L.T("bk.now"));
         nowItem = nowCard.Add("");
-        grid = new BookGrid(spritesOf().SpeciesList.Select(id => (id, L.Species(id), (Image)thumbs[id].Two, (Image)thumbs[id].Faded)).ToList()) { NowText = L.T("bk.now_pill") };
+        grid = new BookGrid(spritesOf().SpeciesList.Select(id => (id, L.Species(id), (Image)Thumb(BookKey(id)).Two, (Image)Thumb(BookKey(id)).Faded)).ToList()) { NowText = L.T("bk.now_pill") };
         s.Group(L.T("page.book"), null, out var head, out _).AddBody(grid, 14);
         bookTitle = head!;
         goneCard = s.Group(L.T("bk.gone"), "", out _, out var foot);
@@ -272,7 +284,7 @@ public sealed class Settings : Form
         var names = spritesOf().SpeciesList;
         string name = L.Species(b.Species);
 
-        nowItem.Icon = b.IsEgg ? spritesOf().Get("egg/idle", 0, 1) : thumbs.TryGetValue(b.Species, out var t) ? t.One : null;
+        nowItem.Icon = b.IsEgg ? spritesOf().Get("egg/idle", 0, 1) : Thumb(PetArt.Key(b.Species, b.Variant)).One;
         var release = new Btn(L.T("bk.release"), BtnKind.Danger) { Enabled = !b.IsEgg };
         release.Click += (_, _) => BeginInvoke(AskRelease); // 누른 버튼을 바로 지우지 않게 한 박자 뒤에
         nowCard.SetRight(nowItem, release);
@@ -282,6 +294,7 @@ public sealed class Settings : Form
         int seen = names.Count(id => b.Met.Contains(id) || (id == b.Species && !b.IsEgg));
         bookTitle.Text = L.T("bk.book", seen, names.Count);
         grid.Met = b.Met.ToHashSet();
+        grid.SetImages(id => (Thumb(BookKey(id)).Two, Thumb(BookKey(id)).Faded)); // 키운 아이의 색으로
         grid.Current = b.IsEgg ? null : b.Species;
         grid.Invalidate();
 
@@ -294,7 +307,7 @@ public sealed class Settings : Form
             var it = goneCard.Add($"{L.Species(r.Species)} · {Names.Form(r.Stage)}",
                 L.T("bk.left_on", L.Date(r.At)) + " · " + L.T("bk.together", Span(r.AgeMin)) + visit, value: new string('♥', hearts) + new string('♡', 5 - hearts));
             it.ValueColor = Ui.Pink; // 우정 하트: 놀러 올 때마다 하나, 다섯이면 아기를 데려온다
-            it.Icon = thumbs.TryGetValue(r.Species, out var rt) ? rt.One : null;
+            it.Icon = Thumb(PetArt.Key(r.Species, r.Variant)).One;
         }
         goneFoot.Text = b.Released.Count > 12 ? L.T("bk.more_gone", b.Released.Count - 12) : "";
         if (stacks.TryGetValue("book", out var st)) st.Relayout();
@@ -586,6 +599,16 @@ sealed class BookGrid : View, IFlow
     {
         this.all = all;
         BackColor = Ui.Card;
+    }
+
+    // 칸 그림 바꾸기 (키운 아이의 색이 바뀌면)
+    public void SetImages(Func<string, (Image Img, Image Faded)> of)
+    {
+        for (int i = 0; i < all.Count; i++)
+        {
+            var (img, faded) = of(all[i].Id);
+            all[i] = (all[i].Id, all[i].Name, img, faded);
+        }
     }
 
     static Size Tile => new(D(92), D(110));

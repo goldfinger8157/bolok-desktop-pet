@@ -37,6 +37,7 @@ public sealed class Sprites
     public readonly int Cell;
     public readonly string Species;
     public IReadOnlyList<string> SpeciesList => art.Species; // 고를 수 있는 캐릭터 (art.json 순서)
+    public string BaseSpecies => PetArt.Base(Species); // 색 변형("cat#1")을 뺀 종
 
     Sprites(Sheet common, PetArt art, string species) => (this.common, this.art, Cell, Species) = (common, art, common.Cell, species);
 
@@ -44,7 +45,11 @@ public sealed class Sprites
     public static Sprites Embedded(string species = DefaultSpecies) => Drawn(PetArt.Embedded, species, null);
 
     // 데이터로 그리는 캐릭터 + 공통 그림(개발 폴더 dir 이나 exe 에서)
-    public static Sprites Drawn(PetArt art, string species, string? dir) => new(Common(dir), art, art.Can(species) ? species : DefaultSpecies);
+    public static Sprites Drawn(PetArt art, string species, string? dir)
+    {
+        if (!art.Can(species) && !art.Can(DefaultSpecies)) art = PetArt.Embedded; // 개발 중 그림 데이터가 앱보다 새로워 못 읽으면 exe 안 데이터로 (안 그리고 멈추지 않게)
+        return new(Common(dir), art, art.Can(species) ? species : DefaultSpecies);
+    }
 
     // 개발: 저장소 assets 의 데이터·공통 그림으로
     public static Sprites FromDir(string dir, string species = DefaultSpecies) => Drawn(PetArt.FromDir(dir), species, dir);

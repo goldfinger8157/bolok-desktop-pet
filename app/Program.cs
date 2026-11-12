@@ -15,7 +15,7 @@ static class Program
         {
             ApplicationConfiguration.Initialize();
             L.Use(args.Length == 3 ? args[2] : "ko"); // 세 번째 값: 언어 (en, ja, …)
-            var sp = Sprites.Embedded();
+            var sp = Sprites.Embedded("hamster#2"); // 지금 키우는 아이: 회색 햄스터 (작은 그림도 그 색인지 보려고)
             var mem = Path.Combine(Path.GetTempPath(), "bolok-render");
             Memories.Photo(sp, "egg/idle", "egg", Path.Combine(mem, "p1.png"));
             Memories.Photo(sp, "baby/0/happy", "baby", Path.Combine(mem, "p2.png"));
@@ -24,8 +24,9 @@ static class Program
             Memories.Card(sp, sp, "hamster", "adult_chubby", 12, Path.Combine(mem, "c2.png"));
             var day = new DateTime(2026, 11, 12);
             var book = new PetBook("hamster", false, new[] { "hamster", "fox", "penguin", "slime" },
-                new[] { new ReleasedPet("hamster", "adult_chubby", 2900, new DateTime(2026, 11, 11)), new ReleasedPet("penguin", "adult_sweet", 2500, new DateTime(2026, 11, 12)) })
+                new[] { new ReleasedPet("hamster", "adult_chubby", 2900, new DateTime(2026, 11, 11), 1), new ReleasedPet("penguin", "adult_sweet", 2500, new DateTime(2026, 11, 12), 2) })
             {
+                Variant = 2,
                 Gifts = new[] { new GiftRecord("acorn", "hamster", day), new GiftRecord("flower", "penguin", day), new GiftRecord("acorn", "penguin", day), new GiftRecord("clover", "hamster", day) },
                 Album = new[] { new PhotoRecord("hamster", "egg", day, Path.Combine(mem, "p1.png")), new PhotoRecord("hamster", "baby", day, Path.Combine(mem, "p2.png")), new PhotoRecord("hamster", "adult_chubby", day, Path.Combine(mem, "p3.png")) },
                 Cards = new[] { new CardRecord("penguin", day, Path.Combine(mem, "c1.png")), new CardRecord("hamster", day, Path.Combine(mem, "c2.png")) },

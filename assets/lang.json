@@ -179,6 +179,18 @@
   "pt": "Bochechas",
   "ru": "Щёки"
  },
+ "menu.showcase_color": {
+  "en": "Color",
+  "ko": "색",
+  "ja": "色",
+  "zh-Hans": "颜色",
+  "zh-Hant": "顏色",
+  "es": "Color",
+  "de": "Farbe",
+  "fr": "Couleur",
+  "pt": "Cor",
+  "ru": "Цвет"
+ },
  "menu.showcase_end": {
   "en": "End",
   "ko": "끝내기",

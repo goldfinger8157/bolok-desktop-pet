@@ -18,7 +18,7 @@ sealed class Showcase : IGameMode
     Sprites? sp, seen;
     string species = "";
     string? fixedPose;
-    int auto, cheek;
+    int auto, cheek, color; // color: 색 변형 (0 기본 색)
     double clock, poseAt, ground, lane;
 
     public Showcase(IGameHost host, IReadOnlyDictionary<string, int> poseMs) =>
@@ -34,7 +34,8 @@ sealed class Showcase : IGameMode
     // 이 종으로 (이미 하는 중이면 종만 바꾼다)
     public void Show(string id)
     {
-        if (host.SpritesOf(id) is not { } s) { Dbg.Log("showcase-missing", ("id", id)); return; }
+        var s = host.SpritesOf(PetArt.Key(id, color)) ?? host.SpritesOf(id); // 그 종에 그 색이 없으면 기본 색
+        if (s == null) { Dbg.Log("showcase-missing", ("id", id)); return; }
         (sp, seen, species) = (s, host.Sprites, id);
         if (!Running)
         {
@@ -70,7 +71,7 @@ sealed class Showcase : IGameMode
         if (!ReferenceEquals(host.Sprites, seen)) // 개발 중 그림 데이터를 고쳤다 (본체 그림이 바뀌었다): 다시 그린다
         {
             seen = host.Sprites;
-            sp = host.SpritesOf(species) ?? sp;
+            sp = host.SpritesOf(PetArt.Key(species, color)) ?? host.SpritesOf(species) ?? sp;
         }
         if (fixedPose == null && clock - poseAt >= (Pose == "walk" ? WalkSec : PoseSec)) { auto++; poseAt = clock; }
         if (Pose != "walk") return;
@@ -92,7 +93,7 @@ sealed class Showcase : IGameMode
         Dbg.Log("showcase-end");
     }
 
-    string[] Note => new[] { $"{L.Species(species)} · {Pose}{(fixedPose == null ? $" {auto % poses.Length + 1}/{poses.Length}" : "")} · {L.T("menu.showcase_cheek")} {cheek}" };
+    string[] Note => new[] { $"{L.Species(species)} · {Pose}{(fixedPose == null ? $" {auto % poses.Length + 1}/{poses.Length}" : "")} · {L.T("menu.showcase_cheek")} {cheek} · {L.T("menu.showcase_color")} {color}" };
 
     int CellPx => PetArt.Cell * host.Pet.Scale;
 
@@ -136,6 +137,7 @@ sealed class Showcase : IGameMode
             case "stop": Stop(true); break;
             case "pose" when a.Length > 2: SetPose(a[2] == "auto" ? null : a[2]); break;
             case "cheek" when a.Length > 2: SetCheek(int.Parse(a[2])); break;
+            case "color" when a.Length > 2: SetColor(int.Parse(a[2])); break;
             case "": Start(); break;
             default: Show(a[1]); break;
         }
@@ -150,6 +152,14 @@ sealed class Showcase : IGameMode
     }
 
     void SetCheek(int c) { cheek = Math.Clamp(c, 0, PetArt.Embedded.Cheeks - 1); Dbg.Log("showcase-cheek", ("cheek", cheek)); }
+
+    // 색 변형 고르기 (0 기본 색). 하는 중이면 바로 다시 그린다
+    void SetColor(int c)
+    {
+        color = Math.Max(0, c);
+        if (Running && host.SpritesOf(PetArt.Key(species, color)) is { } s) sp = s;
+        Dbg.Log("showcase-color", ("color", color));
+    }
 
     // 메뉴: 캐릭터 확인 ▸ 34종 / ─ / 자세 ▸ 자동·각 자세 / 볼 ▸ 0~3 / 끝내기
     public ToolStripMenuItem Menu(List<(ToolStripItem Item, Func<string> Text)> texts, Func<bool> busy, Action<Action> later)
@@ -178,6 +188,18 @@ sealed class Showcase : IGameMode
             cheekItem.DropDownItems.Add(n.ToString(), null, (_, _) => SetCheek(n));
         }
         root.DropDownItems.Add(cheekItem);
+        var colorItem = new ToolStripMenuItem();
+        texts.Add((colorItem, () => L.T("menu.showcase_color")));
+        for (int c = 0; c < 3; c++)
+        {
+            int n = c;
+            colorItem.DropDownItems.Add(n.ToString(), null, (_, _) => SetColor(n));
+        }
+        colorItem.DropDownOpening += (_, _) =>
+        {
+            foreach (var item in colorItem.DropDownItems.OfType<ToolStripMenuItem>()) item.Checked = item.Text == color.ToString();
+        };
+        root.DropDownItems.Add(colorItem);
         var end = new ToolStripMenuItem("", null, (_, _) => Stop(true));
         texts.Add((end, () => L.T("menu.showcase_end")));
         root.DropDownItems.Add(end);
@@ -202,8 +224,13 @@ sealed class Showcase : IGameMode
     // 한 장으로 보기 (디버그 도구: Bolok.exe --art-all 그림.png [자세]): 모든 종의 아기·어린이·어른 3종을 2배로, 칸마다 종 이름
     public static void Overview(PetArt art, string path, string pose = "idle")
     {
+        // pose 가 "colors" 면 색 세 벌을 (어린이·통통이) 나란히
+        bool colors = pose == "colors";
+        var cells = colors ? new[] { ("child", 0), ("child", 1), ("child", 2), ("adult_chubby", 0), ("adult_chubby", 1), ("adult_chubby", 2) }
+                           : Forms.Select(f => (f, 0)).ToArray();
+        if (colors) pose = "idle";
         const int k = 2, cols = 4, pad = 10, gap = 2;
-        int cell = PetArt.Cell * k, bw = Forms.Length * cell + (Forms.Length - 1) * gap + pad * 2, bh = 26 + cell + 8, top = 40;
+        int cell = PetArt.Cell * k, bw = cells.Length * cell + (cells.Length - 1) * gap + pad * 2, bh = 26 + cell + 8, top = 40;
         int rows = (art.Species.Count + cols - 1) / cols;
         using var bmp = new Bitmap(cols * (bw + 10) + 10, top + rows * (bh + 10) + 6);
         using var g = Graphics.FromImage(bmp);
@@ -213,16 +240,18 @@ sealed class Showcase : IGameMode
         using var name = new Font(L.Font, 10, FontStyle.Bold);
         using var ink = new SolidBrush(Color.FromArgb(50, 56, 70));
         using var line = new Pen(Color.FromArgb(200, 206, 216));
-        g.DrawString($"{art.Species.Count} · {string.Join(" → ", Forms.Select(L.Stage))} · {pose}", title, ink, 10, 8);
+        g.DrawString(colors ? $"{art.Species.Count} · {L.Stage("child")} 0·1·2 | {L.Stage("adult_chubby")} 0·1·2" : $"{art.Species.Count} · {string.Join(" → ", Forms.Select(L.Stage))} · {pose}", title, ink, 10, 8);
         for (int i = 0; i < art.Species.Count; i++)
         {
             string id = art.Species[i];
             int bx = 10 + i % cols * (bw + 10), by = top + i / cols * (bh + 10);
             g.FillRectangle(Brushes.White, bx, by, bw, bh);
             g.DrawString(L.Species(id), name, ink, bx + 8, by + 5);
-            var sp = Sprites.Drawn(art, id, null);
-            for (int f = 0; f < Forms.Length; f++)
-                g.DrawImageUnscaled(sp.Get($"{Forms[f]}/0/{pose}", 0, k), bx + pad + f * (cell + gap), by + 24);
+            for (int f = 0; f < cells.Length; f++)
+            {
+                var sp = Sprites.Drawn(art, PetArt.Key(id, cells[f].Item2), null);
+                g.DrawImageUnscaled(sp.Get($"{cells[f].Item1}/0/{pose}", 0, k), bx + pad + f * (cell + gap), by + 24);
+            }
             g.DrawLine(line, bx + pad, by + 24 + 38 * k, bx + bw - pad, by + 24 + 38 * k);
         }
         bmp.Save(path);

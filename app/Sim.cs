@@ -428,6 +428,9 @@ static class Sim
         foreach (var id in new[] { "fox", "octopus", "ghost" })
             Expect(Sprites.Drawn(art, id, null) is { } sp && sp.Species == id && sp.Has("adult_grumpy/3/fix") && sp.Has("thumb/" + id), $"그린 그림에 모든 줄이 있다: {id}");
         Expect(Sprites.Embedded("no-such-pet").Species == Sprites.DefaultSpecies, "모르는 종이면 햄스터");
+        Expect(Sprites.Drawn(art, "fox#2", null) is { } fx2 && fx2.Species == "fox#2" && fx2.BaseSpecies == "fox", "색 변형 그림의 종은 그대로 여우");
+        var old = System.Text.Json.JsonSerializer.Deserialize<ReleasedPet>("{\"Species\":\"cat\",\"Stage\":\"child\",\"AgeMin\":1,\"At\":\"2026-11-11T00:00:00\"}");
+        Expect(old is { Species: "cat", Variant: 0 }, "예전 떠난 친구 기록(색 없음)은 기본 색");
     }
 
     static void UpdaterChecks()

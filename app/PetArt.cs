@@ -19,7 +19,8 @@ public sealed class PetArt
         "name", "note", "fur", "shade", "cream", "ear", "paw", "blush", "form_colors", "ears", "ear_k", "ear_out", "tail", "back", "spike", "horns", "wings",
         "marks", "cap", "mane", "whisker", "face", "snout", "belly", "nose", "beak", "smile", "teeth", "mouth_in", "no_cover", "body", "wide", "eye_k", "eye_up", "blush_k",
         "eye", "point", "ear_fill", "tongue", "sleepy", "munch", "stubby", "wing", "horn",
-        "mouth", "glare", "light_lines",
+        "mouth", "glare", "light_lines", "variants", "patch",
+        "eye_art", "iris", "stamps",
     };
     static readonly string[] ColorKeys = { "fur", "shade", "cream", "ear", "paw", "blush", "eye" }; // eye: 렉돌 파란 눈
     static readonly string[] FrameKeys =
@@ -45,6 +46,22 @@ public sealed class PetArt
         public string S(string k, string d) => v.TryGetValue(k, out var e) && e.ValueKind == JsonValueKind.String ? e.GetString()! : d;
         public Bag? Obj(string k) => v.TryGetValue(k, out var e) && e.ValueKind == JsonValueKind.Object ? new Bag(e) : null;
         public IEnumerable<string> List(string k) => v.TryGetValue(k, out var e) && e.ValueKind == JsonValueKind.Array ? e.EnumerateArray().Select(x => x.GetString()!) : Array.Empty<string>();
+        public IEnumerable<Bag> Objs(string k) => v.TryGetValue(k, out var e) && e.ValueKind == JsonValueKind.Array ? e.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.Object).Select(x => new Bag(x)) : Array.Empty<Bag>();
+
+        // 색 변형 (variants: 색만 바꾼 덮어쓰기 목록)
+        public int VariantCount => v.TryGetValue("variants", out var e) && e.ValueKind == JsonValueKind.Array ? e.GetArrayLength() : 0;
+
+        // n 번째 색 변형을 덮어쓴 새 데이터. 털색을 바꾸면 형태별 털색(햄스터 form_colors)은 버리고 형태별 섞기(tints)를 쓴다
+        public Bag WithVariant(int n)
+        {
+            var b = new Bag(this);
+            b.v.Remove("variants");
+            foreach (var p in v["variants"][n].EnumerateObject()) b.v[p.Name] = p.Value.Clone();
+            if (v["variants"][n].TryGetProperty("fur", out _)) b.v.Remove("form_colors");
+            return b;
+        }
+
+        Bag(Bag from) { foreach (var (k, e) in from.v) v[k] = e; }
     }
 
     readonly Dictionary<string, uint> colors = new();
@@ -133,7 +150,21 @@ public sealed class PetArt
     // 발에서 머리 위(말풍선 자리)까지 칸 높이의 몇 배인지
     public double HeadRatio(string form) => form == "egg" ? .68 : (2 * Size(form).Ry + 1) / Cell + .075;
     public IEnumerable<string> Poses => poses.Select(p => p.Name);
-    public bool Can(string id) => species.TryGetValue(id, out var s) && s.Keys.All(Known.Contains);
+    public bool Can(string id) => Find(id) is { } s && s.Keys.All(Known.Contains);
+
+    // 종 데이터. "cat#1" 은 고양이의 1번 색 변형 (0 은 기본 색)
+    Bag? Find(string id)
+    {
+        if (species.TryGetValue(id, out var b)) return b;
+        int i = id.IndexOf('#');
+        if (i < 0 || !species.TryGetValue(id[..i], out var bs) || !int.TryParse(id[(i + 1)..], out int n) || n < 0 || n > bs.VariantCount) return null;
+        return species[id] = n == 0 ? bs : bs.WithVariant(n - 1);
+    }
+
+    // 색 몇 벌 (기본 색 포함)
+    public int Variants(string id) => 1 + (Find(Base(id))?.VariantCount ?? 0);
+    public static string Base(string id) => id.Split('#')[0];
+    public static string Key(string id, int variant) => variant > 0 ? $"{id}#{variant}" : id;
     public IEnumerable<string> Rows => forms.SelectMany(f => Enumerable.Range(0, Cheeks).SelectMany(c => poses.Select(p => $"{f.Name}/{c}/{p.Name}")));
 
     // 줄 이름 "형태/볼/자세" 가 있나
@@ -150,7 +181,8 @@ public sealed class PetArt
         var p = name.Split('/');
         var F = forms.First(f => f.Name == p[0]).F;
         var frames = poses.First(x => x.Name == p[2]).Frames;
-        return (Strip(frames.Select(f => Pet(species[id], p[0], F, int.Parse(p[1]), f))), frames.Length);
+        var S = Find(id)!;
+        return (Strip(frames.Select(f => Pet(S, p[0], F, int.Parse(p[1]), f))), frames.Length);
     }
 
     // 도감 썸네일: 어린이가 서 있는 그림 + 눈 감은 그림 (설정 창 도감, ICBM 구멍에서 빼꼼, 꿈)
@@ -158,7 +190,8 @@ public sealed class PetArt
     {
         var F = forms.First(f => f.Name == "child").F;
         var idle = poses.First(x => x.Name == "idle").Frames;
-        return Strip(new[] { idle[0], idle[3] }.Select(f => Pet(species[id], "child", F, 0, f)));
+        var S = Find(id)!;
+        return Strip(new[] { idle[0], idle[3] }.Select(f => Pet(S, "child", F, 0, f)));
     }
 
     static Bitmap Strip(IEnumerable<Canvas> frames)
@@ -450,6 +483,19 @@ public sealed class PetArt
                 int y = R(cy - ry * .9 + ear * .2), x0 = R(x);
                 foreach (int dx in new[] { -1, 0, 1 }) g.Put(x0 + dx, y, c["line"], true);
             }
+        foreach (var st in S.Objs("stamps"))
+        {
+            if (sk < .85 && !st.T("baby")) continue;
+            var art = st.List("art").ToList();
+            var pal = StampPalette(S, c);
+            switch (st.S("at", "forehead"))
+            {
+                case "forehead": Stamp(g, art, fx + .5, ey - 4.5 + st.N("dy"), pal, false, true); break;
+                case "muzzle": Stamp(g, art, fx + .5, my + 1 + st.N("dy"), pal, false, true); break;
+                case "brow": foreach (int s in Sides) Stamp(g, art, fx + .5 + s * gap, ey - 3.5 + st.N("dy"), pal, s > 0, true); break;
+                case "cheek": foreach (int s in Sides) Stamp(g, art, fx + .5 + s * (gap + 1.5 + st.N("dx")), my + st.N("dy"), pal, s > 0, true); break;
+            }
+        }
         if (F.T("tuft") && !HeadMark(S)) // 아기: 정수리에 털 한 가닥 (머리에 갓·갈기·뿔이 있는 종은 빼고)
         {
             int top = (int)Math.Ceiling(cy - ry - .5) - 1; // 윤곽선 줄
@@ -458,7 +504,8 @@ public sealed class PetArt
         if (face == "frog") ey = R(cy - ry * .78); // 개구리 눈은 머리 위 혹에
         string eyeKind = f.S("eye", "open");
         if (S.T("glare") && eyeKind == "open") eyeKind = "angry"; // 까망 악마: 평소에도 째려본다
-        Eyes(g, eyeKind, fx, ey, gap, F.N("eye") * S.N("eye_k", 1), c, F.T("lash"), F.T("lid") || S.T("sleepy")); // 카피바라는 늘 느긋하게 반쯤 감은 눈
+        var eyeArt = S.Has("eye_art") && sk >= .85 ? S.List("eye_art").ToList() : null; // 손그림 눈 (아기는 동그란 기본 눈)
+        Eyes(g, eyeKind, fx, ey, gap, F.N("eye") * S.N("eye_k", 1), c, F.T("lash"), F.T("lid") || S.T("sleepy"), eyeArt, eyeArt != null ? StampPalette(S, c) : null); // 카피바라는 늘 느긋하게 반쯤 감은 눈
         if (F.T("brow")) // 심술이: 늘 찌푸린 눈썹 (몸 밖으로는 안 나가게: 개구리처럼 눈이 머리 위에 있으면 더듬이처럼 보인다)
             foreach (int s in Sides)
             {
@@ -590,6 +637,27 @@ public sealed class PetArt
     };
 
     // 아기 머리털을 안 그리는 종: 머리에 갓·털뭉치·이끼·갈기·뿔이 있거나, 뾰족 머리가 다른 캐릭터를 닮는 몸(슬라임·유령)
+    // ── 손그림 조각 (종마다 픽셀로 직접 그린 눈·무늬. 글자 하나가 한 칸) ──
+    //   l 윤곽선 · c 배색 · f 털 · s 그림자 · d 짙은 무늬 · w 흰색 · e 눈동자 · i 홍채(iris, 없으면 눈동자) · p 볼터치 · . 빈칸
+    static Dictionary<char, uint> StampPalette(Bag S, Dictionary<string, uint> c) => new()
+    {
+        ['l'] = c["line"], ['c'] = c["cream"], ['f'] = c["fur"], ['s'] = c["shade"], ['d'] = Mix(c["shade"], c["line"], .45),
+        ['w'] = c["white"], ['e'] = c["eye"], ['i'] = S.Has("iris") ? Col(S, "iris") : c["eye"], ['p'] = c["blush"],
+    };
+
+    // 그림 가운데를 (x, y) 에. mirror 면 좌우를 뒤집어 (오른쪽 것)
+    static void Stamp(Canvas g, IReadOnlyList<string> art, double x, double y, Dictionary<char, uint> pal, bool mirror = false, bool clip = false)
+    {
+        int h = art.Count, w = art.Max(r => r.Length), x0 = R(x - w / 2.0 + .5) , y0 = R(y - h / 2.0 + .5);
+        for (int r = 0; r < h; r++)
+            for (int k = 0; k < art[r].Length; k++)
+            {
+                char ch = art[r][k];
+                if (ch == '.' || !pal.TryGetValue(ch, out var col)) continue;
+                g.Put(x0 + (mirror ? w - 1 - k : k), y0 + r, col, clip);
+            }
+    }
+
     static bool HeadMark(Bag S) => S.List("marks").Any(m => m is "cap" or "topknot" or "moss" or "hair" or "tuft" or "mane") || S.S("horns", "") is "unicorn" or "one"
         || S.S("body", "") is "blob" or "ghost" or "orb";
 
@@ -805,7 +873,7 @@ public sealed class PetArt
                             g.Pix(Mix(c["cream"], line, .25), Enumerable.Range(-R(3 * sk), R(3 * sk) + R(4 * sk) + 1).Select(x => ((double)(fx + x), (double)y)).ToArray());
                         }
                         break;
-                    case "eyepatch": foreach (int s in Sides) g.Ell(fx + .5 + s * gap, ey + 1, 3.2 * sk, 3.8 * sk, Rgb(66, 62, 68), true); break; // 판다: 비스듬한 눈 무늬
+                    case "eyepatch": foreach (int s in Sides) g.Ell(fx + .5 + s * gap, ey + 1, 3.2 * sk, 3.8 * sk, S.Has("patch") ? Col(S, "patch") : Rgb(66, 62, 68), true); break; // 판다: 비스듬한 눈 무늬
                     case "brows": foreach (int s in Sides) g.Ell(fx + .5 + s * gap, ey - 3.5 * sk, 1.8 * sk, 1.1, cream, true); break; // 레서판다: 흰 눈썹 점
                     case "patches": // 얼룩 돼지
                         g.Ell(cx - rx * .55, cy - ry * .45, 3.4 * sk, 2.6 * sk, Rgb(150, 104, 76), true);
@@ -953,7 +1021,8 @@ public sealed class PetArt
         }
     }
 
-    static void Eyes(Canvas g, string kind, int fx, int ey, int gap, double r, Dictionary<string, uint> c, bool lash = false, bool lid = false)
+    static void Eyes(Canvas g, string kind, int fx, int ey, int gap, double r, Dictionary<string, uint> c, bool lash = false, bool lid = false,
+        IReadOnlyList<string>? art = null, Dictionary<char, uint>? pal = null)
     {
         foreach (var (x, s) in new[] { (fx - gap, -1), (fx + gap, 1) }) // s: 얼굴 바깥쪽 방향
         {
@@ -962,10 +1031,14 @@ public sealed class PetArt
                 case "open" or "wide" or "angry":
                 {
                     double w = r + (kind == "wide" ? .6 : 0);
-                    g.Ell(x + .5, ey + .5, w, w + .1, c["eye"]);
-                    g.Put(x - 1, ey - 1, c["white"]);
-                    g.Put(x, ey - 1, c["white"]);
-                    if (r >= 2.6) g.Put(x + 1, ey + 1, c["white"]); // 큰 눈엔 반짝임을 하나 더
+                    if (art != null && kind != "wide") Stamp(g, art, x + .5, ey + .5, pal!); // 종마다 손으로 그린 눈 (놀란 눈은 공통)
+                    else
+                    {
+                        g.Ell(x + .5, ey + .5, w, w + .1, c["eye"]);
+                        g.Put(x - 1, ey - 1, c["white"]);
+                        g.Put(x, ey - 1, c["white"]);
+                        if (r >= 2.6) g.Put(x + 1, ey + 1, c["white"]); // 큰 눈엔 반짝임을 하나 더
+                    }
                     if (lash) // 애교쟁이: 바깥 위로 속눈썹 두 가닥
                     {
                         int ox = s < 0 ? x - 3 : x + 4;
@@ -1106,6 +1179,21 @@ public sealed class PetArt
                     rows++;
                 }
         double perSpecies = sw.Elapsed.TotalMilliseconds / art.Species.Count;
+        // 색 변형: 종마다 세 벌(기본 + 둘), 다 그려지고 기본 색과 다르다. 모르는 번호는 못 그린다
+        foreach (var id in art.Species)
+        {
+            Expect(art.Variants(id) == 3, $"{id} 색 세 벌");
+            var (b0, _) = art.Row(id, "child/0/idle");
+            var px0 = Pixels(b0);
+            for (int n = 1; n < 3; n++)
+            {
+                var (bn, _) = art.Row(PetArt.Key(id, n), "child/0/idle");
+                Expect(!Pixels(bn).SequenceEqual(px0), $"{id} {n}번 색이 기본 색과 다르다");
+                bn.Dispose();
+            }
+            b0.Dispose();
+        }
+        Expect(!art.Can("cat#3") && !art.Can("cat#x") && art.Can("cat#0") && PetArt.Base("cat#2") == "cat", "색 번호는 0~2");
         var pink = art.With("pink", "{\"fur\": \"#FAB2CC\", \"shade\": \"#E48AB0\"}");
         foreach (var pose in new[] { "idle", "walk", "sleep", "happy" })
         {

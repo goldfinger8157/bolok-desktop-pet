@@ -139,7 +139,7 @@ public sealed class DevLink
             case "visit": form.VisitCommand(a); break;
             case "clover": form.CloverCommand(a); break; // clover (지금 돋기) / clover wear / clover drop / clover off
             case "icbm": form.IcbmCommand(a); break;
-            case "species": form.SetSpecies(a[1]); break; // 예: species fox
+            case "species": form.SetSpecies(a[1], a.Length > 2 ? int.Parse(a[2]) : 0); break; // 예: species fox 2 (2번 색)
             case "release": form.Release(); break;
             case "break": form.BreakCommand(a.Length > 1 ? a[1] : "start", a.Length > 2 ? a[2] : null); break;
             case "run": if (a.Length > 1 && a[1] == "stop") form.StopRun(); else form.StartRun(); break;
@@ -190,7 +190,7 @@ public sealed class DevLink
         var t = new[] { "sprites.png", "pets/art.json" }.Max(f => File.GetLastWriteTimeUtc(Path.Combine(assets, f))); // 그림 데이터를 고쳐도 다시 그린다
         if (t == spriteTime) return;
         spriteTime = t;
-        form.SwapSprites(Sprites.FromDir(assets, form.Species));
+        form.SwapSprites(Sprites.FromDir(assets, form.SpriteKey));
         Dbg.Log("sprites-reloaded");
     }
 }

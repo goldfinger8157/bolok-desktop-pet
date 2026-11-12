@@ -32,6 +32,8 @@ public sealed class SaveData
     public string? Language { get; set; }             // 설정에서 고른 언어. 없으면 윈도우 언어
     public Dictionary<string, string> GameData { get; set; } = new(); // 게임 모듈 기록 (id → JSON 글)
     public Clover.Saved? Clover { get; set; }         // 네잎클로버 (바닥·머리·오늘 돋았나)
+    public int Variant { get; set; }                  // 색 변형: 0 기본 색, 1·2 (알에서 깰 때 무작위)
+    public int CardVariant { get; set; }              // 엽서 보낼 친구의 색
     public List<GiftRecord> Gifts { get; set; } = new();     // 추억: 친구가 두고 간 선물
     public List<PhotoRecord> Album { get; set; } = new();    // 추억: 자랄 때마다 찍힌 사진
     public List<CardRecord> Cards { get; set; } = new();     // 추억: 놀러 왔던 친구가 보낸 엽서
@@ -97,7 +99,7 @@ public sealed class PetForm : Form, IGameHost
     public PetForm(Sprites sprites, Tuning k, string dataDir, string? runDir, string? assetsDir)
     {
         this.sprites = sprites;
-        species = sprites.Species;
+        species = sprites.BaseSpecies;
         this.assetsDir = assetsDir;
         debug = runDir != null;
         savePath = Path.Combine(dataDir, "pet.json");
@@ -223,20 +225,26 @@ public sealed class PetForm : Form, IGameHost
 
     // 키우는 종. 그림(sprites)은 아직 못 받았으면 다른 종일 수 있다 — 알일 때는 공통 그림만 쓰니 티가 안 난다
     string species;
+    int variant; // 색 변형 (0 기본 색)
     public string Species => species;
+    public string SpriteKey => PetArt.Key(species, variant); // 그림 열쇠: "cat#1" 처럼 색까지
 
     // 캐릭터 그림은 데이터로 그린다 (assets/pets/art.json). 개발은 저장소 것을 읽어 고치면 바로 다시 그린다
     PetArt Art => assetsDir != null ? PetArt.FromDir(assetsDir) : PetArt.Embedded;
     Sprites? SpritesFor(string id) => Art.Can(id) ? Sprites.Drawn(Art, id, assetsDir) : null;
 
-    // 캐릭터 바꾸기: 그림만 바뀌고 키우던 수치는 그대로. 모르는 종(없어진 종)이면 햄스터
-    public void SetSpecies(string id)
+    // 캐릭터 바꾸기: 그림만 바뀌고 키우던 수치는 그대로. 모르는 종(없어진 종)이면 햄스터. v: 색 변형
+    public void SetSpecies(string id, int v = 0)
     {
         if (!Art.Can(id)) { Dbg.Log("species-unknown", ("id", id)); id = Sprites.DefaultSpecies; }
         species = id;
-        SwapSprites(SpritesFor(id)!);
-        Dbg.Log("species", ("id", id));
+        variant = Math.Clamp(v, 0, Art.Variants(id) - 1);
+        SwapSprites(SpritesFor(PetArt.Key(id, variant))!);
+        Dbg.Log("species", ("id", id), ("variant", variant));
     }
+
+    // 새 알: 종도 색도 무작위 (YELL 2026-11-12: 종마다 색 세 벌 중 하나)
+    void NewEgg(string id) => SetSpecies(id, Random.Shared.Next(Art.Variants(id)));
 
 
     string DebugLine() => $"{b.Mode}/{b.Pose} ({(int)b.X},{(int)b.Y}) x{b.Speed:0.#} {fps:0}fps cpu {dev?.Cpu:0.0}%{(Afk() ? " 자리비움" : "")}";
@@ -268,7 +276,7 @@ public sealed class PetForm : Form, IGameHost
             if (b.P.Stage == "egg")
             {
                 string first = RandomSpecies();
-                SetSpecies(first); // 햄스터가 아니면 알인 동안 그림을 받는다 (못 받으면 깨어나길 기다린다)
+                NewEgg(first); // 햄스터가 아니면 알인 동안 그림을 받는다 (못 받으면 깨어나길 기다린다)
                 TakePhoto("egg");
                 Dbg.Log("first-egg", ("species", first));
             }
@@ -277,10 +285,7 @@ public sealed class PetForm : Form, IGameHost
         gameBest = pendingSave.GameBest;
         Sfx.On = pendingSave.GameSound;
         autoUpdate = pendingSave.AutoUpdate;
-        if (pendingSave.Species != species)
-        {
-            SetSpecies(pendingSave.Species);
-        }
+        if (pendingSave.Species != species || pendingSave.Variant != variant) SetSpecies(pendingSave.Species, pendingSave.Variant);
         (met, released) = (pendingSave.Met?.ToHashSet() ?? new(), pendingSave.Released ?? new());
         if (b.P.Stage != "egg") met.Add(species); // 도감 전부터 키우던 아이도 도감에
         (breakBest, wormsWins) = (pendingSave.BreakBest, pendingSave.WormsWins);
@@ -290,7 +295,7 @@ public sealed class PetForm : Form, IGameHost
         foreach (var m in modes) m.LoadState(pendingSave.GameData?.GetValueOrDefault(m.Id));
         clover.Load(pendingSave.Clover);
         (gifts, album, cards, visitCounts) = (pendingSave.Gifts ?? new(), pendingSave.Album ?? new(), pendingSave.Cards ?? new(), pendingSave.VisitCounts ?? new());
-        (cardFrom, cardForm, cardDay, morningDay, nightDay) = (pendingSave.CardFrom, pendingSave.CardForm ?? "child", pendingSave.CardDay ?? "", pendingSave.MorningDay ?? "", pendingSave.NightDay ?? "");
+        (cardFrom, cardForm, cardDay, morningDay, nightDay, cardVariant) = (pendingSave.CardFrom, pendingSave.CardForm ?? "child", pendingSave.CardDay ?? "", pendingSave.MorningDay ?? "", pendingSave.NightDay ?? "", pendingSave.CardVariant);
         (runBest, runLast, runLevel, runScores) = (pendingSave.RunBest, pendingSave.RunLast, Math.Max(1, pendingSave.RunLevel), pendingSave.RunScores ?? new());
         if (pendingSave.X != 0) { b.X = pendingSave.X; b.Y = pendingSave.Y; b.Settle(); }
         foreach (var h in pendingSave.Holes) b.AddHole(h[0], h[1], false);
@@ -299,7 +304,7 @@ public sealed class PetForm : Form, IGameHost
 
     void Save()
     {
-        var data = new SaveData { Pet = b.P, X = b.X, Y = b.Y, Holes = b.Holes.Select(h => new[] { h.Cx, h.Cy }).ToList(), GameBest = gameBest, GameSound = Sfx.On, AutoUpdate = autoUpdate, Species = species, Met = met.ToList(), Released = released, RunBest = runBest, RunLast = runLast, RunLevel = runLevel, RunScores = runScores, BreakBest = breakBest, WormsWins = wormsWins, VisitDay = visitDay, VisitMin = visitMin, LastVisitDay = lastVisitDay, Visits = visits, Language = language, Clover = clover.Snapshot(),
+        var data = new SaveData { Pet = b.P, X = b.X, Y = b.Y, Holes = b.Holes.Select(h => new[] { h.Cx, h.Cy }).ToList(), GameBest = gameBest, GameSound = Sfx.On, AutoUpdate = autoUpdate, Species = species, Met = met.ToList(), Released = released, RunBest = runBest, RunLast = runLast, RunLevel = runLevel, RunScores = runScores, BreakBest = breakBest, WormsWins = wormsWins, VisitDay = visitDay, VisitMin = visitMin, LastVisitDay = lastVisitDay, Visits = visits, Language = language, Clover = clover.Snapshot(), Variant = variant, CardVariant = cardVariant,
             GameData = modes.Select(m => (m.Id, Json: m.SaveState())).Where(x => x.Json != null).ToDictionary(x => x.Id, x => x.Json!),
             Gifts = gifts, Album = album, Cards = cards, VisitCounts = visitCounts, CardFrom = cardFrom, CardForm = cardForm, CardDay = cardDay, MorningDay = morningDay, NightDay = nightDay };
         var tmp = savePath + ".tmp";
@@ -656,7 +661,7 @@ public sealed class PetForm : Form, IGameHost
     double leaveTo;
     string lastStage = "";
 
-    PetBook Book() => new(species, b.P.Stage == "egg", met, released, visits) { Gifts = gifts, Album = album, Cards = cards, VisitCounts = visitCounts };
+    PetBook Book() => new(species, b.P.Stage == "egg", met, released, visits) { Variant = variant, Gifts = gifts, Album = album, Cards = cards, VisitCounts = visitCounts };
     void BookChanged() { if (settings is { IsDisposed: false }) settings.UpdateBook(Book()); }
 
     // 설정 창 상태 탭에 보여줄 것
@@ -687,7 +692,7 @@ public sealed class PetForm : Form, IGameHost
     {
         if (leaving || InGame || b.P.Stage == "egg") return false;
         TakePhoto(b.P.Stage, "love"); // 작별 사진
-        released.Add(new ReleasedPet(species, b.P.Stage, Math.Round(b.P.AgeMin), DateTime.Now));
+        released.Add(new ReleasedPet(species, b.P.Stage, Math.Round(b.P.AgeMin), DateTime.Now, variant));
         var area = b.Area;
         leaveTo = b.X < area.Left + area.Width / 2.0 ? area.Left - b.CellPx : area.Right + b.CellPx; // 가까운 쪽 화면 밖 자연으로
         leaving = true;
@@ -709,7 +714,7 @@ public sealed class PetForm : Form, IGameHost
         b.Reset();
         var area = b.Area;
         (b.X, b.Y) = (area.Left + area.Width / 2.0, area.Bottom - b.K.FloorGap);
-        SetSpecies(next);
+        NewEgg(next);
         lastStage = "egg";
         b.Emote("ask", 2.5);
         TakePhoto("egg");
@@ -761,7 +766,7 @@ public sealed class PetForm : Form, IGameHost
             ? released.LastOrDefault(r => r.Species == only) ?? new ReleasedPet(only, "child", 0, DateTime.Now)
             : Visitor.Pick(released, visits, species, Random.Shared);
         if (pick == null) return;
-        if (SpritesFor(pick.Species) is not { } friendSprites) return; // 없어진 종
+        if (SpritesFor(PetArt.Key(pick.Species, pick.Variant)) is not { } friendSprites) return; // 없어진 종 (떠날 때 색 그대로 온다)
         visitorSprites = friendSprites;
         var area = b.Area;
         double x = b.X < area.Left + area.Width / 2.0 ? area.Left - b.CellPx : area.Right + b.CellPx; // 가까운 화면 옆에서 걸어 들어온다
@@ -779,7 +784,7 @@ public sealed class PetForm : Form, IGameHost
             lastVisitDay = Today;
             visits[pick.Species] = DateTime.Now;
             visitCounts[pick.Species] = visitCounts.GetValueOrDefault(pick.Species) + 1; // 우정 하트
-            if (Random.Shared.NextDouble() < Memories.CardChance) (cardFrom, cardForm, cardDay) = (pick.Species, pick.Stage, DateTime.Now.AddDays(1).ToString("yyyy-MM-dd")); // 내일 엽서
+            if (Random.Shared.NextDouble() < Memories.CardChance) (cardFrom, cardForm, cardDay, cardVariant) = (pick.Species, pick.Stage, DateTime.Now.AddDays(1).ToString("yyyy-MM-dd"), pick.Variant); // 내일 엽서
         }
         v.Baby = visitCounts.GetValueOrDefault(pick.Species) >= 5; // 우정 하트 다섯: 아기를 데리고 온다
         Dbg.Log("visit-start", ("friend", pick.Species), ("form", pick.Stage), ("counts", counts));
@@ -811,6 +816,7 @@ public sealed class PetForm : Form, IGameHost
     Dictionary<string, int> visitCounts = new();
     string? cardFrom;
     string cardForm = "child", cardDay = "", morningDay = "", nightDay = "";
+    int cardVariant;
     (string Kind, string From, double X, double Y, double At)? present;
     long nextPresentWalk;
 
@@ -840,7 +846,7 @@ public sealed class PetForm : Form, IGameHost
         try
         {
             string sprite = stage == "egg" ? "egg/idle" : $"{stage}/0/{pose}";
-            if (!sprites.Has(sprite) || stage != "egg" && sprites.Species != species) return;
+            if (!sprites.Has(sprite) || stage != "egg" && sprites.BaseSpecies != species) return;
             var file = Path.Combine(memDir, "album", $"{DateTime.Now:yyyyMMdd-HHmmss}-{species}-{stage}.png");
             Memories.Photo(sprites, sprite, stage, file);
             album.Add(new PhotoRecord(species, stage, DateTime.Now, file));
@@ -857,9 +863,9 @@ public sealed class PetForm : Form, IGameHost
         if (InGame || Afk() || b.Mode != Mode.Wander || b.P.Asleep) return;
         try
         {
-            var friend = SpritesFor(from);
+            var friend = SpritesFor(PetArt.Key(from, cardVariant));
             var file = Path.Combine(memDir, "cards", $"{DateTime.Now:yyyyMMdd-HHmmss}-{from}.png");
-            Memories.Card(sprites, friend, from, cardForm, DateTime.Now.DayOfYear * 31 + from.Sum(ch => ch), file);
+            Memories.Card(sprites, friend, PetArt.Key(from, cardVariant), cardForm, DateTime.Now.DayOfYear * 31 + from.Sum(ch => ch), file);
             cards.Add(new CardRecord(from, DateTime.Now, file));
             b.Emote("mail", 2.5);
             b.Greet("happy", 1.2);
@@ -895,7 +901,7 @@ public sealed class PetForm : Form, IGameHost
         if (nextDream == 0) nextDream = now + 8;
         if (now >= nextDream)
         {
-            var list = released.Select(r => "thumb/" + r.Species).Distinct().Concat(gifts.Select(g => "item/" + g.Kind).Distinct()).ToList();
+            var list = released.Select(r => "thumb/" + PetArt.Key(r.Species, r.Variant)).Distinct().Concat(gifts.Select(g => "item/" + g.Kind).Distinct()).ToList();
             list.Add("icon/seed");
             if (released.Count == 0) list.Add("icon/heart");
             dreamNow = new[] { list[Random.Shared.Next(list.Count)] };
@@ -1075,7 +1081,7 @@ public sealed class PetForm : Form, IGameHost
         if (b.P.Asleep) { b.Emote("zzz"); return; }
         if (b.P.Energy < 10) { b.Emote("no"); return; } // 고칠 기운이 없으면 안 쏜다
         var ic = icbm = new Icbm(Screen.AllScreens.Select(s => s.WorkingArea).ToList(), b.X, b.Y, b.Scale, new Random())
-            { Friends = released.Select(r => r.Species).Distinct().ToList() }; // 구멍에서 가끔 빼꼼
+            { Friends = released.Select(r => PetArt.Key(r.Species, r.Variant)).Distinct().ToList() }; // 구멍에서 가끔 빼꼼 (떠날 때 색 그대로)
         ic.OnEvent = e =>
         {
             switch (e)
