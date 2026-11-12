@@ -420,24 +420,6 @@ public sealed class PetArt
         Marks(g, S, c, cx, cy, rx, ry, fx, ey, my, gap, true, sk);
         foreach (int s in Sides)
             g.Ell(fx + .5 + s * (F.N("eyegap") + 1.8), cy + ry * .1, (2 + F.N("blush") * .3) * S.N("blush_k", 1), 1.2, c["blush"], true);
-        if (S.S("tail", "") == "wrap") // 몽마: 가는 꼬리가 몸 아래 앞을 한 바퀴 감고 왼쪽으로 올라와 끝이 뾰족한 세모 (몸 앞에 그린다)
-        {
-            uint tc = S.Has("point") ? Col(S, "point") : Mix(c["shade"], c["line"], .3);
-            var pts = new List<(double X, double Y)>();
-            for (int i = 0; i <= 14; i++) // 오른쪽 옆 → 배 앞 → 왼쪽 옆 (아래로 휜 띠)
-            {
-                double t = Math.PI * i / 14;
-                pts.Add((cx + rx * .95 * Math.Cos(t), cy + ry * .6 + ry * .2 * Math.Sin(t)));
-            }
-            double lx = cx - rx * 1.02, tipY = cy - ry * (.15 + .35 * fk);
-            pts.Add((lx - .6, cy + ry * .3));
-            pts.Add((lx - .8, cy));
-            pts.Add((lx - .4, tipY + 1));
-            for (int i = 1; i < pts.Count; i++)
-                foreach (double dy in new[] { 0.0, 1.0 }) g.Line(pts[i - 1].X, pts[i - 1].Y + dy, pts[i].X, pts[i].Y + dy, tc);
-            double ts = 2.6 * (.5 + .5 * fk); // 끝 세모 (아기는 작게)
-            g.Poly(new[] { (lx - .4 - ts, tipY + 1.2), (lx - .4 + ts, tipY + 1.2), (lx - .4 - ts * .4, tipY - ts * 1.5) }, tc);
-        }
         if (ears == "flop") // 리트리버: 머리 위 옆에서 시작해 볼 옆으로 축 처진 귀. 얼굴 위에 덮고 둘레 한 칸을 짙게 둘러 갈라 보이게
         {
             uint earColor = S.Has("ear_fill") ? Col(S, "ear_fill") : Mix(c["fur"], c["shade"], .45), rim = Mix(c["shade"], c["line"], .12);
@@ -454,6 +436,12 @@ public sealed class PetArt
 
         // 3) 윤곽선 → 얼굴
         g.Outline(c["line"]);
+        if (S.S("tail", "") == "wrap") // 몽마 꼬리: 테두리 없는 가는 한 칸 선 (몸에서 나와 고리 한 번 → 끝 세모까지)
+        {
+            uint tl = Mix(S.Has("point") ? Col(S, "point") : c["shade"], c["line"], .35);
+            var path = WrapTail(cx, cy, rx, ry, F.N("feature", 1));
+            for (int i = 1; i < path.Count; i++) g.Line(path[i - 1].X, path[i - 1].Y, path[i].X, path[i].Y, tl);
+        }
         Marks(g, S, c, cx, cy, rx, ry, fx, ey, my, gap, false, sk);
         if (ears == "fold") // 접힌 자리: 귀 아래쪽에 짧은 선
             foreach (var x in earX)
@@ -601,6 +589,21 @@ public sealed class PetArt
     static bool HeadMark(Bag S) => S.List("marks").Any(m => m is "cap" or "topknot" or "moss" or "hair" or "tuft" or "mane") || S.S("horns", "") is "unicorn" or "one"
         || S.S("body", "") is "blob" or "ghost" or "orb";
 
+    // 몽마 꼬리 길: 몸 오른쪽 아래에서 가는 선으로 나와 고리를 한 번 그리고 위로 올라간다 (끝에 뾰족한 세모). 칸 밖으로는 안 나가게
+    static List<(double X, double Y)> WrapTail(double cx, double cy, double rx, double ry, double fk)
+    {
+        double r = 1.6 + 1.6 * fk, lx = Math.Min(cx + rx + 1.5 + 2.4 * fk, 37.5 - r), ly = cy + ry * .1;
+        var pts = new List<(double, double)> { (cx + rx * .8, cy + ry * .45), (lx - r * .7, cy + ry * .42) };
+        for (int i = 0; i <= 20; i++) // 왼쪽 아래에서 시작해 시계 방향으로 한 바퀴 (ℓ 모양 고리)
+        {
+            double a = Math.PI * .75 + 2 * Math.PI * i / 20;
+            pts.Add((lx + r * Math.Cos(a), ly + r * Math.Sin(a)));
+        }
+        pts.Add((lx - r * .55, ly - r - 1.2 * fk));
+        pts.Add((lx - r * .3, cy - ry * (.25 + .3 * fk)));
+        return pts;
+    }
+
     // 몸 뒤에 그리는 것: 꼬리, 가시·털뭉치, 뿔, 날개
     // fk: 형태마다 크기 (아기 .5 → 어른 1). soft 는 너무 작아지면 안 보이는 것(털뭉치·지느러미)용
     void Behind(Canvas g, Bag S, Dictionary<string, uint> c, double cx, double cy, double rx, double ry, bool lying, double fk)
@@ -650,6 +653,13 @@ public sealed class PetArt
                 uint tc = S.Has("point") ? Col(S, "point") : shade;
                 g.Ell(cx + rx * .92, cy - ry * .05, 4.6 * fk, ry * .85, tc);
                 g.Ell(cx + rx * .92 + .8 * fk, cy - ry * .35, 2.2 * fk, 2 * fk, Mix(tc, c["white"], .22));
+                break;
+            }
+            case "wrap": // 몽마: 꼬리 끝 뾰족한 세모 (꼬리 선은 테두리 뒤에 가늘게)
+            {
+                var tip = WrapTail(cx, cy, rx, ry, fk)[^1];
+                double ts = 1.6 + 1.2 * fk;
+                g.Poly(new[] { (tip.X - ts, tip.Y + 1), (tip.X + ts, tip.Y + 1), (tip.X, tip.Y - ts * 1.6) }, S.Has("point") ? Col(S, "point") : shade);
                 break;
             }
             case "long": // 드래곤: 바닥을 따라 길게 뻗다가 끝이 말려 올라가는 꼬리 (칸 밖으로는 안 나가게)
