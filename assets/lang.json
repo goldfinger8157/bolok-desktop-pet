@@ -707,6 +707,66 @@
   "pt": "Shiba",
   "ru": "Сиба-ину"
  },
+ "sp.jindo": {
+  "en": "Jindo",
+  "ko": "진돗개",
+  "ja": "珍島犬",
+  "zh-Hans": "珍岛犬",
+  "zh-Hant": "珍島犬",
+  "es": "Jindo coreano",
+  "de": "Jindo",
+  "fr": "Jindo coréen",
+  "pt": "Jindo coreano",
+  "ru": "Чиндо"
+ },
+ "sp.malamute": {
+  "en": "Malamute",
+  "ko": "말라뮤트",
+  "ja": "マラミュート",
+  "zh-Hans": "阿拉斯加雪橇犬",
+  "zh-Hant": "阿拉斯加雪橇犬",
+  "es": "Malamute",
+  "de": "Malamute",
+  "fr": "Malamute",
+  "pt": "Malamute",
+  "ru": "Маламут"
+ },
+ "sp.retriever": {
+  "en": "Retriever",
+  "ko": "리트리버",
+  "ja": "レトリバー",
+  "zh-Hans": "寻回犬",
+  "zh-Hant": "尋回犬",
+  "es": "Retriever",
+  "de": "Retriever",
+  "fr": "Retriever",
+  "pt": "Retriever",
+  "ru": "Ретривер"
+ },
+ "sp.poodle": {
+  "en": "Poodle",
+  "ko": "푸들",
+  "ja": "プードル",
+  "zh-Hans": "贵宾犬",
+  "zh-Hant": "貴賓犬",
+  "es": "Caniche",
+  "de": "Pudel",
+  "fr": "Caniche",
+  "pt": "Poodle",
+  "ru": "Пудель"
+ },
+ "sp.maltese": {
+  "en": "Maltese",
+  "ko": "말티즈",
+  "ja": "マルチーズ",
+  "zh-Hans": "马尔济斯犬",
+  "zh-Hant": "瑪爾濟斯",
+  "es": "Maltés",
+  "de": "Malteser",
+  "fr": "Bichon maltais",
+  "pt": "Maltês",
+  "ru": "Мальтезе"
+ },
  "sp.fox": {
   "en": "Fox",
   "ko": "여우",
