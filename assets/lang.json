@@ -1151,6 +1151,18 @@
   "pt": "Espírito dos sonhos",
   "ru": "Дух снов"
  },
+ "sp.shadowimp": {
+  "en": "Shadow devil",
+  "ko": "까망 악마",
+  "ja": "くろあくま",
+  "zh-Hans": "小黑魔",
+  "zh-Hant": "小黑魔",
+  "es": "Diablillo negro",
+  "de": "Schwarzer Teufel",
+  "fr": "Petit diable noir",
+  "pt": "Diabinho preto",
+  "ru": "Чёрный бесёнок"
+ },
  "sp.gumiho": {
   "en": "Gumiho",
   "ko": "구미호",
