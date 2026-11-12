@@ -401,22 +401,18 @@ public sealed class PetArt
         Marks(g, S, c, cx, cy, rx, ry, fx, ey, my, gap, true, sk);
         foreach (int s in Sides)
             g.Ell(fx + .5 + s * (F.N("eyegap") + 1.8), cy + ry * .1, (2 + F.N("blush") * .3) * S.N("blush_k", 1), 1.2, c["blush"], true);
-        if (ears is "flop" or "puff") // 강아지 귀: 머리 양옆으로 축 처진 귀(리트리버·말티즈), 동그란 곱슬 귀(푸들). 얼굴 위에 덮는다
+        if (ears == "flop") // 리트리버: 머리 위 옆에서 시작해 볼 옆으로 축 처진 귀. 얼굴 위에 덮고 둘레 한 칸을 짙게 둘러 갈라 보이게
         {
-            uint earColor = S.Has("ear_fill") ? Col(S, "ear_fill") : Mix(c["fur"], c["shade"], .45), rim = Mix(c["shade"], c["line"], .25);
-            foreach (int s in Sides) // 둘레 한 칸을 짙게 둘러 얼굴과 갈라 보이게
+            uint earColor = S.Has("ear_fill") ? Col(S, "ear_fill") : Mix(c["fur"], c["shade"], .45), rim = Mix(c["shade"], c["line"], .12);
+            foreach (int s in Sides) // 물방울처럼 아래가 조금 넓게 (위는 머리에 붙고 끝은 볼 옆으로 늘어진다)
             {
-                var (ex2, ey2, erx, ery) = ears == "flop" ? (cx + s * rx * .9, cy - ry * .12, ear * .78, ear * 1.5) : (cx + s * rx * .9, cy + ry * .12, ear * .95, ear * 1.55);
+                double ex2 = cx + s * rx * .84, ey2 = cy - ry * .15, erx = ear * .62, ery = ear * 1.6;
+                double bx = ex2 + s * .4, by = ey2 + ery * .5, brx = erx * 1.25, bry = ery * .5;
                 g.Ell(ex2, ey2, erx + 1, ery + 1, rim);
+                g.Ell(bx, by, brx + 1, bry + 1, rim);
                 g.Ell(ex2, ey2, erx, ery, earColor);
+                g.Ell(bx, by, brx, bry, earColor);
             }
-        }
-        if (S.List("marks").Contains("curls")) // 푸들: 털빛 칸에만 곱슬 무늬 (얼굴 크림색·눈은 그대로)
-        {
-            uint curl = Mix(c["fur"], c["shade"], .7), earC = S.Has("ear_fill") ? Col(S, "ear_fill") : Mix(c["fur"], c["shade"], .45);
-            for (int y = 0; y < Cell; y++)
-                for (int x = 0; x < Cell; x++)
-                    if ((y % 3 == 0 && x % 3 == (y / 3) % 3) && (g.P[y * Cell + x] == c["fur"] || g.P[y * Cell + x] == earC)) g.P[y * Cell + x] = curl;
         }
 
         // 3) 윤곽선 → 얼굴
@@ -563,7 +559,7 @@ public sealed class PetArt
     };
 
     // 아기 머리털을 안 그리는 종: 머리에 갓·털뭉치·이끼·갈기·뿔이 있거나, 뾰족 머리가 다른 캐릭터를 닮는 몸(슬라임·유령)
-    static bool HeadMark(Bag S) => S.List("marks").Any(m => m is "cap" or "topknot" or "moss" or "hair" or "tuft" or "mane" or "pompom") || S.S("horns", "") is "unicorn" or "one"
+    static bool HeadMark(Bag S) => S.List("marks").Any(m => m is "cap" or "topknot" or "moss" or "hair" or "tuft" or "mane") || S.S("horns", "") is "unicorn" or "one"
         || S.S("body", "") is "blob" or "ghost";
 
     // 몸 뒤에 그리는 것: 꼬리, 가시·털뭉치, 뿔, 날개
@@ -610,9 +606,6 @@ public sealed class PetArt
                     for (int x = R(tx - w) + 1 + (y / 2 % 2); x < R(tx + w); x += 2) g.Put(x, y, scale, true);
                 break;
             }
-            case "pom": // 푸들: 동그란 방울 꼬리
-                g.Ell(cx + rx * .98, cy + ry * .02, 2.7 * soft, 2.7 * soft, c["fur"]);
-                break;
             case "plume": // 렉돌: 크고 풍성한 깃털 꼬리 (포인트 색)
             {
                 uint tc = S.Has("point") ? Col(S, "point") : shade;
@@ -759,10 +752,6 @@ public sealed class PetArt
                             (fx + 3 * sk, cy - ry * .75), (fx + 5 * sk, cy - ry - 1 * sk), (fx + 6 * sk, cy - ry * .6) }, Rgb(60, 70, 90));
                         break;
                     case "tuft": g.Pix(c["fur"], (fx, cy - ry - 1), (fx + 1, cy - ry - 2), (fx + 1, cy - ry - 1), (fx + 2, cy - ry - 3)); break; // 오리: 정수리 깃
-                    case "pompom": // 푸들·말티즈: 정수리에 둥근 털뭉치 하나 (털빛, 둘레를 짙게 둘러 머리와 갈라 보이게)
-                        g.Ell(fx + .5, cy - ry * .92, rx * .44 + 1, ry * .34 + 1, Mix(c["shade"], line, .25));
-                        g.Ell(fx + .5, cy - ry * .92, rx * .44, ry * .34, c["fur"]);
-                        break;
                     case "blaze": // 말라뮤트: 코에서 이마로 올라가는 흰 줄
                         g.Poly(new[] { (fx + .5 - 2.2 * sk, my - 1.0), (fx + .5 + 2.2 * sk, my - 1.0), (fx + .5, cy - ry * .8) }, cream, true);
                         break;

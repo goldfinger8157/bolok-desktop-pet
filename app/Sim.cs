@@ -424,7 +424,7 @@ static class Sim
     static void PetSheetChecks()
     {
         var art = PetArt.Embedded;
-        Expect(art.Species.Count == 42 && art.Species.All(art.Can), $"42종 모두 데이터로 그린다 ({art.Species.Count})");
+        Expect(art.Species.Count == 40 && art.Species.All(art.Can), $"40종 모두 데이터로 그린다 ({art.Species.Count})");
         foreach (var id in new[] { "fox", "octopus", "ghost" })
             Expect(Sprites.Drawn(art, id, null) is { } sp && sp.Species == id && sp.Has("adult_grumpy/3/fix") && sp.Has("thumb/" + id), $"그린 그림에 모든 줄이 있다: {id}");
         Expect(Sprites.Embedded("no-such-pet").Species == Sprites.DefaultSpecies, "모르는 종이면 햄스터");

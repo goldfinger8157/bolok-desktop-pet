@@ -743,30 +743,6 @@
   "pt": "Retriever",
   "ru": "Ретривер"
  },
- "sp.poodle": {
-  "en": "Poodle",
-  "ko": "푸들",
-  "ja": "プードル",
-  "zh-Hans": "贵宾犬",
-  "zh-Hant": "貴賓犬",
-  "es": "Caniche",
-  "de": "Pudel",
-  "fr": "Caniche",
-  "pt": "Poodle",
-  "ru": "Пудель"
- },
- "sp.maltese": {
-  "en": "Maltese",
-  "ko": "말티즈",
-  "ja": "マルチーズ",
-  "zh-Hans": "马尔济斯犬",
-  "zh-Hant": "瑪爾濟斯",
-  "es": "Maltés",
-  "de": "Malteser",
-  "fr": "Bichon maltais",
-  "pt": "Maltês",
-  "ru": "Мальтезе"
- },
  "sp.fox": {
   "en": "Fox",
   "ko": "여우",
