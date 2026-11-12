@@ -18,7 +18,7 @@ public sealed class PetArt
     {
         "name", "note", "fur", "shade", "cream", "ear", "paw", "blush", "form_colors", "ears", "ear_k", "ear_out", "tail", "back", "spike", "horns", "wings",
         "marks", "cap", "mane", "whisker", "face", "snout", "belly", "nose", "beak", "smile", "teeth", "mouth_in", "no_cover", "body", "wide", "eye_k", "eye_up", "blush_k",
-        "eye", "point", "ear_fill", "tongue", "sleepy",
+        "eye", "point", "ear_fill", "tongue", "sleepy", "munch",
     };
     static readonly string[] ColorKeys = { "fur", "shade", "cream", "ear", "paw", "blush", "eye" }; // eye: 렉돌 파란 눈
     static readonly string[] FrameKeys =
@@ -395,6 +395,15 @@ public sealed class PetArt
         else if (face == "snout") g.Ell(fx + .5, my - .5, rx * .42, ry * .3, Col(S, "snout"), true);
         else if (face == "cheeks") g.Ell(fx + .5, my + .5, rx * .62, ry * .34, c["cream"], true); // 여우·레서판다: 볼과 주둥이가 하얗다
         else if (face == "urajiro") g.Ell(fx + .5, my + .3, rx * .76, ry * .42, c["cream"], true); // 시바: 주둥이부터 볼·턱까지 넓게 크림색(우라지로)
+        else if (face == "muzzle") // 리트리버: 도톰하게 튀어나온 크림색 주둥이와 양쪽으로 처진 볼살 (YELL: 특징은 주댕이)
+        {
+            uint rim = Mix(c["shade"], c["cream"], .15);
+            double mw = rx * .52, mh = ry * .31;
+            g.Ell(fx + .5, my - .4, mw + 1, mh + 1, rim, true);
+            foreach (int s in Sides) g.Ell(fx + .5 + s * mw * .5, my + mh * .55, mw * .55 + 1, mh * .6 + 1, rim, true);
+            g.Ell(fx + .5, my - .4, mw, mh, c["cream"], true);
+            foreach (int s in Sides) g.Ell(fx + .5 + s * mw * .5, my + mh * .55, mw * .55, mh * .6, c["cream"], true);
+        }
         if (face == "pale") g.Ell(fx + .5, cy - ry * .08, rx * .72, ry * .56, c["cream"], true); // 수달: 얼굴이 밝다
         else if (face is not ("bigbelly" or "wool" or "frog")) g.Ell(fx + .5, my, rx * .36, ry * .26, c["cream"], true);
         double sk = Math.Min(1, F.N("rx") / 10.5); // 아기는 얼굴이 작아서 무늬도 작게
@@ -438,6 +447,7 @@ public sealed class PetArt
                 foreach (var (bx, by) in new[] { (x - 2 * s, ey - 3), (x - s, ey - 4), (x, ey - 5), (x + s, ey - 5), (x + 2 * s, ey - 6) }) g.Put(bx, by, c["line"], true);
             }
         string beak = S.S("beak", ""), mk = f.S("mouth", "w");
+        if (S.T("munch") && !f.Has("mouth") && (f.Has("sq") || f.Has("dy"))) mk = "chew"; // 리트리버: 가만히·걸을 때 입을 오물오물 (찹츄찹츄)
         if (beak != "")
         {
             if (mk is "open" or "wide" or "o") Mouth(g, mk, fx, my, c);
@@ -766,6 +776,9 @@ public sealed class PetArt
                     case "points": // 렉돌: 눈 둘레가 짙은 포인트, 코에서 이마까지는 흰 역V (바이컬러)
                         g.Ell(fx + .5, ey + .3, gap + 2.6 * sk, 3.6 * sk, Mix(Col(S, "point"), c["fur"], .3), true);
                         g.Poly(new[] { (fx + .5 - 3 * sk, my + 1.0), (fx + .5 + 3 * sk, my + 1.0), (fx + .5, ey - 1.5 * sk) }, cream, true);
+                        break;
+                    case "bib": // 리트리버: 주둥이 아래 가슴에 크림색 털 (주둥이와 섞이지 않게 아래로)
+                        g.Ell(fx + .5, cy + ry * .92, rx * .56, ry * .28, cream, true);
                         break;
                     case "ruff": // 렉돌: 가슴 목털이 풍성하다
                         g.Ell(fx + .5, cy + ry * .42, rx * .74, ry * .42, cream, true);
