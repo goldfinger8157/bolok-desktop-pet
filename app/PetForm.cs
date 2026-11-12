@@ -25,13 +25,12 @@ public sealed class SaveData
     public int RunLevel { get; set; } = 1;
     public int BreakBest { get; set; }
     public int WormsWins { get; set; }
-    public int SquadLevel { get; set; } = 1;   // 볼록이 부대: 다음 판 레벨
-    public int SquadBest { get; set; }         // 깬 가장 높은 레벨
     public string VisitDay { get; set; } = "";       // 떠난 친구 방문: 오늘 계획을 세운 날
     public int VisitMin { get; set; } = -1;           // 그날 몇 시 몇 분(분)에 올지. -1 이면 오늘은 안 온다
     public string LastVisitDay { get; set; } = "";    // 마지막으로 놀러 온 날 (하루 한 번)
     public Dictionary<string, DateTime> Visits { get; set; } = new(); // 종마다 마지막으로 놀러 온 때
     public string? Language { get; set; }             // 설정에서 고른 언어. 없으면 윈도우 언어
+    public Dictionary<string, string> GameData { get; set; } = new(); // 게임 모듈 기록 (id → JSON 글)
     public List<GiftRecord> Gifts { get; set; } = new();     // 추억: 친구가 두고 간 선물
     public List<PhotoRecord> Album { get; set; } = new();    // 추억: 자랄 때마다 찍힌 사진
     public List<CardRecord> Cards { get; set; } = new();     // 추억: 놀러 왔던 친구가 보낸 엽서
@@ -46,7 +45,7 @@ public sealed class SaveData
 }
 
 // 볼록이 본체 창. 투명색 자리는 클릭이 뒤로 지나가고, 몸통 픽셀만 마우스를 받는다
-public sealed class PetForm : Form
+public sealed class PetForm : Form, IGameHost
 {
     public static readonly Color Key = Color.FromArgb(255, 0, 255);
 
@@ -105,6 +104,7 @@ public sealed class PetForm : Form
         memDir = Path.Combine(dataDir, "memories");
         var area = Screen.PrimaryScreen!.WorkingArea;
         b = new Brain(LoadPet(k), k, new World(Screen.AllScreens.Select(s => s.WorkingArea)), area) { Scale = ScaleFor(k) };
+        modes = GameModes.Create(this); // 게임 모듈 (app/Games): 기록을 읽기 전에 만든다
         b.Windows = Native.ListWindows;
         b.Foreground = () => Native.OwnForeground() ? b.Active : Native.Foreground(); // 메뉴를 열어도 활성 창이 바뀐 걸로 치지 않는다
         Restore();
@@ -128,7 +128,7 @@ public sealed class PetForm : Form
         hud.SpeciesName = () => b.P.Stage == "egg" ? "" : L.Species(species);
         if (!debug) // 새 버전을 받아 바꿔 두면 메뉴에 알린다. 그냥 둬도 다음에 켤 때 새 버전이다
             Updater.Start(() => autoUpdate, tag => BeginInvoke(() => { updateTag = tag; updateItem.Text = L.T("menu.update", tag); updateItem.Visible = true; settings?.ShowReady(); }));
-        foreach (var o in overlays) { o.Runner = () => runner; o.Break = () => breakout; o.WormsGame = () => worms; o.MinigunGame = () => minigun; o.IcbmGame = () => icbm; o.SquadGame = () => squad; o.SquadFriends = () => squadFriends; o.Guest = () => visitor; o.GuestSprites = () => visitorSprites; o.Present = () => present; o.Dreams = Dreams; }
+        foreach (var o in overlays) { o.Runner = () => runner; o.Break = () => breakout; o.WormsGame = () => worms; o.MinigunGame = () => minigun; o.IcbmGame = () => icbm; o.Guest = () => visitor; o.GuestSprites = () => visitorSprites; o.Present = () => present; o.Dreams = Dreams; o.Modes = () => modes; }
         hud.PlaceAt(area);
         if (runDir != null) dev = new DevLink(runDir, assetsDir!, b, this);
 
@@ -301,10 +301,10 @@ public sealed class PetForm : Form
         (met, released) = (pendingSave.Met?.ToHashSet() ?? new(), pendingSave.Released ?? new());
         if (b.P.Stage != "egg") met.Add(species); // 도감 전부터 키우던 아이도 도감에
         (breakBest, wormsWins) = (pendingSave.BreakBest, pendingSave.WormsWins);
-        (squadLevel, squadBest) = (Math.Max(1, pendingSave.SquadLevel), pendingSave.SquadBest);
         (visitDay, visitMin, lastVisitDay, visits) = (pendingSave.VisitDay ?? "", pendingSave.VisitMin, pendingSave.LastVisitDay ?? "", pendingSave.Visits ?? new());
         language = pendingSave.Language;
         L.Use(language);
+        foreach (var m in modes) m.LoadState(pendingSave.GameData?.GetValueOrDefault(m.Id));
         (gifts, album, cards, visitCounts) = (pendingSave.Gifts ?? new(), pendingSave.Album ?? new(), pendingSave.Cards ?? new(), pendingSave.VisitCounts ?? new());
         (cardFrom, cardForm, cardDay, morningDay, nightDay) = (pendingSave.CardFrom, pendingSave.CardForm ?? "child", pendingSave.CardDay ?? "", pendingSave.MorningDay ?? "", pendingSave.NightDay ?? "");
         (runBest, runLast, runLevel, runScores) = (pendingSave.RunBest, pendingSave.RunLast, Math.Max(1, pendingSave.RunLevel), pendingSave.RunScores ?? new());
@@ -315,7 +315,8 @@ public sealed class PetForm : Form
 
     void Save()
     {
-        var data = new SaveData { Pet = b.P, X = b.X, Y = b.Y, Holes = b.Holes.Select(h => new[] { h.Cx, h.Cy }).ToList(), GameBest = gameBest, GameSound = Sfx.On, AutoUpdate = autoUpdate, Species = species, Met = met.ToList(), Released = released, RunBest = runBest, RunLast = runLast, RunLevel = runLevel, RunScores = runScores, BreakBest = breakBest, WormsWins = wormsWins, SquadLevel = squadLevel, SquadBest = squadBest, VisitDay = visitDay, VisitMin = visitMin, LastVisitDay = lastVisitDay, Visits = visits, Language = language,
+        var data = new SaveData { Pet = b.P, X = b.X, Y = b.Y, Holes = b.Holes.Select(h => new[] { h.Cx, h.Cy }).ToList(), GameBest = gameBest, GameSound = Sfx.On, AutoUpdate = autoUpdate, Species = species, Met = met.ToList(), Released = released, RunBest = runBest, RunLast = runLast, RunLevel = runLevel, RunScores = runScores, BreakBest = breakBest, WormsWins = wormsWins, VisitDay = visitDay, VisitMin = visitMin, LastVisitDay = lastVisitDay, Visits = visits, Language = language,
+            GameData = modes.Select(m => (m.Id, Json: m.SaveState())).Where(x => x.Json != null).ToDictionary(x => x.Id, x => x.Json!),
             Gifts = gifts, Album = album, Cards = cards, VisitCounts = visitCounts, CardFrom = cardFrom, CardForm = cardForm, CardDay = cardDay, MorningDay = morningDay, NightDay = nightDay };
         var tmp = savePath + ".tmp";
         File.WriteAllText(tmp, JsonSerializer.Serialize(data));
@@ -336,8 +337,8 @@ public sealed class PetForm : Form
         Add("menu.run", () => BeginInvoke(StartRun));
         Add("menu.breakout", () => BeginInvoke(StartBreak));
         Add("menu.minigun", () => BeginInvoke(StartMinigun));
-        Add("menu.squad", () => BeginInvoke(StartSquad));
         Add("menu.icbm", () => BeginInvoke(StartIcbm));
+        foreach (var m in modes) Add(m.MenuKey, () => BeginInvoke(() => { if (!InGame && b.P.Stage != "egg") m.Start(); })); // 게임 모듈
         var cannon = new ToolStripMenuItem(); // 대포를 고르면 체력이 정해진다
         menuTexts.Add((cannon, () => L.T("menu.fortress")));
         foreach (var gun in Worms.Guns)
@@ -361,6 +362,19 @@ public sealed class PetForm : Form
             returnFocus = IntPtr.Zero;
         };
     }
+
+    // ── 게임 모듈에 빌려주는 것 (IGameHost) ──
+    readonly List<IGameMode> modes;
+    Brain IGameHost.Pet => b;
+    Sprites IGameHost.Sprites => sprites;
+    bool IGameHost.Busy => InGame || b.P.Stage == "egg";
+    GameLayer IGameHost.OpenLayer(Rectangle field, MouseEventHandler down, MouseEventHandler up, Action quit) { gameFocus = Native.GetForegroundWindow(); return OpenLayer(field, down, up, quit); }
+    void IGameHost.CloseLayer() => CloseLayer();
+    void IGameHost.ShowPet(bool show) { if (show) { Show(); Native.Topmost(Handle); } else Hide(); }
+    void IGameHost.Save() => Save();
+
+    // 디버그 명령 중 게임 모듈 것 (<게임 id> ...)
+    public bool ModeCommand(string[] a) => modes.Any(m => m.Command(a));
 
     // 언어가 바뀌면 메뉴·트레이 글을 다시 쓴다 (설정 창은 스스로 다시 짠다)
     void Localize()
@@ -401,7 +415,7 @@ public sealed class PetForm : Form
         if (breakout != null) BreakFrame(dt);
         if (worms != null) WormsFrame(dt);
         if (minigun != null) MinigunFrame(dt);
-        if (squad != null) SquadFrame(dt);
+        foreach (var m in modes) if (m.Running) m.Frame(dt);
         if (leaving) LeaveFrame(dt);
         WatchHatch();
         KeepSheet();
@@ -678,8 +692,7 @@ public sealed class PetForm : Form
                 new(L.T("game.breakout"), breakBest > 0 ? L.T("game.breakout_val", breakBest.ToString("N0", L.Culture)) : never, breakBest > 0),
                 new(L.T("game.fortress"), wormsWins > 0 ? L.T("game.fortress_val", wormsWins) : L.T("game.fortress_none"), wormsWins > 0),
                 new(L.T("game.shoot"), gameBest > 0 ? L.T("game.shoot_val", gameBest) : never, gameBest > 0),
-                new(L.T("game.squad"), squadBest > 0 ? L.T("game.squad_val", squadBest, squadLevel) : never, squadBest > 0),
-            });
+            }.Concat(modes.SelectMany(m => m.Stats())).ToList()); // 게임 모듈 기록도
     }
 
     // 확인은 설정 창 도감 탭에서 받는다. 지금 풀어줄 수 없으면 false
@@ -976,7 +989,7 @@ public sealed class PetForm : Form
         lastStage = b.P.Stage;
     }
 
-    bool InGame => game != null || runner != null || breakout != null || worms != null || minigun != null || icbm != null || squad != null || leaving;
+    bool InGame => game != null || runner != null || breakout != null || worms != null || minigun != null || icbm != null || leaving || modes.Any(m => m.Running);
 
     // 게임판: 그 모니터 위에 1% 판을 깔아 클릭·키를 받는다. 다른 창은 안 눌린다
     GameLayer OpenLayer(Rectangle field, MouseEventHandler down, MouseEventHandler up, Action quit)
@@ -1149,84 +1162,6 @@ public sealed class PetForm : Form
         minigun = null;
         CloseLayer();
         b.EndPuppet(true, "gun", ("shots", mg.Shots), ("gone", mg.GoneCount()), ("esc", quit)); // 이기고 지는 건 없다. 실컷 쏘면 즐겁다
-    }
-
-    // ── 볼록이 부대: 화면 가운데 세로 띠, 좌우로만 움직이며 자동으로 쏜다. 「+N」 문으로 도감 친구가 합류, 선물 상자로 무기, 끝에 보스 ──
-    Squad? squad;
-    IReadOnlyList<string> squadFriends = Array.Empty<string>();
-    int squadLevel = 1, squadBest, squadKeys;
-    bool squadAuto;
-    Point squadMouse;
-
-    public void StartSquad()
-    {
-        if (InGame || b.P.Stage == "egg") return;
-        gameFocus = Native.GetForegroundWindow();
-        var area = b.Area;
-        int w = Math.Min(area.Width, 220 * b.Scale); // 배율 3 이면 660px 띠: 화면을 다 덮지 않는다
-        var field = new Rectangle(area.Left + (area.Width - w) / 2, area.Top, w, area.Height);
-        var sq = squad = new Squad(field, field.Bottom - b.K.FloorGap, b.Scale, new Random(), squadLevel);
-        // 부대원 그림: 도감에서 만난 친구들 (없으면 지금 아이)
-        var met = this.met.Where(sprites.SpeciesNames.ContainsKey).ToList();
-        squadFriends = met.Count > 0 ? met : new List<string> { species };
-        sq.OnEvent = e =>
-        {
-            switch (e)
-            {
-                case "fire": if (sq.Volleys % 3 == 0) Sfx.Play(sq.Weapon >= 1 ? "mg" : "pistol"); break;
-                case "hurt": Sfx.Play("hit"); break;
-                case "boom": case "icbm": Sfx.Play("boom"); break;
-                case "boss": b.Emote("bang", 1.4); break;
-                case "won": b.Emote("star", 2); Sfx.Play("reload"); break;
-                case "lost": b.Emote("tear", 2); break;
-                default:
-                    if (e.StartsWith("join:")) { b.Emote("heart", .8); Sfx.Play("reload"); }
-                    else if (e.StartsWith("upgrade:")) { b.Emote("spark", 1); Sfx.Play("reload"); }
-                    break;
-            }
-            if (e is "boss" or "won" or "lost" or "icbm" || e.StartsWith("upgrade:")) Dbg.Log("squad", ("event", e), ("members", sq.Members), ("weapon", sq.Weapon), ("sec", Math.Round(sq.Clock)));
-        };
-        (squadKeys, squadMouse) = (0, MousePosition);
-        var layer = OpenLayer(field, (_, _) => { }, (_, _) => { }, () => EndSquad(true));
-        layer.KeyDown += (_, e) => { if (e.KeyCode == Keys.Left) squadKeys = -1; else if (e.KeyCode == Keys.Right) squadKeys = 1; };
-        layer.KeyUp += (_, e) => { if (e.KeyCode is Keys.Left or Keys.Right) { squadKeys = 0; squad?.SetTarget(squad.X); } };
-        b.StartPuppet();
-        Dbg.Log("squad-start", ("level", squadLevel), ("field", field.ToString()), ("friends", squadFriends.Count));
-    }
-
-    void SquadFrame(double dt)
-    {
-        var sq = squad!;
-        if (squadAuto) sq.SetTarget(sq.BotTarget());
-        else if (squadKeys != 0) sq.SetTarget(sq.X + squadKeys * sq.Field.Width); // ← → 누르는 동안 그쪽으로
-        else if (MousePosition != squadMouse) { squadMouse = MousePosition; sq.SetTarget(squadMouse.X); } // 마우스를 움직이면 따라간다
-        double x0 = sq.X;
-        sq.Update(dt);
-        (b.X, b.Y) = (sq.X, sq.Ground);
-        if (Math.Abs(sq.X - x0) > .5) b.Dir = sq.X > x0 ? 1 : -1;
-        b.Pose = sq.Stage == Squad.Phase.Won ? "happy" : sq.Stage == Squad.Phase.Lost ? "sad" : Math.Abs(sq.X - x0) > .5 ? "walk" : "angry";
-        if (sq.Done) EndSquad(false);
-    }
-
-    // 디버그: squad / squad auto (알아서 움직인다, 기록 안 남김) / squad level <n> / squad stop
-    public void SquadCommand(string[] a)
-    {
-        if (a.Length > 1 && a[1] == "stop") EndSquad(true);
-        else if (a.Length > 1 && a[1] == "auto") squadAuto = true;
-        else if (a.Length > 2 && a[1] == "level") squadLevel = Math.Max(1, int.Parse(a[2]));
-        else StartSquad();
-    }
-
-    void EndSquad(bool quit)
-    {
-        if (squad is not { } sq) return;
-        squad = null;
-        CloseLayer();
-        bool won = sq.Stage == Squad.Phase.Won;
-        if (won && !squadAuto) { squadBest = Math.Max(squadBest, sq.Level); squadLevel = sq.Level + 1; } // 이기면 다음 판은 한 레벨 위
-        squadAuto = false;
-        b.EndPuppet(won, "squad", ("level", sq.Level), ("members", sq.Members), ("weapon", sq.Weapon), ("kills", sq.Kills), ("sec", Math.Round(sq.Clock)), ("esc", quit));
-        Save();
     }
 
     // ── 포트리스: 창모드 창들이 섬, 볼록이와 라이벌이 번갈아 쏜다 ──

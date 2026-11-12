@@ -6,8 +6,9 @@ import pathlib
 import sys
 
 LOG = pathlib.Path(__file__).resolve().parent.parent / 'run/log.jsonl'
-START = {'game': '총쏘기', 'run-start': '달리기', 'break-start': '벽돌깨기', 'worms-start': '포트리스', 'gun-start': '미니건', 'icbm-start': 'ICBM', 'squad-start': '볼록이 부대'}
-END = {'game-end': '총쏘기', 'run-end': '달리기', 'run-quit': '달리기', 'break-end': '벽돌깨기', 'break-quit': '벽돌깨기', 'worms-end': '포트리스', 'gun-end': '미니건', 'icbm-end': 'ICBM', 'squad-end': '볼록이 부대'}
+START = {'game': '총쏘기', 'run-start': '달리기', 'break-start': '벽돌깨기', 'worms-start': '포트리스', 'gun-start': '미니건', 'icbm-start': 'ICBM'}
+END = {'game-end': '총쏘기', 'run-end': '달리기', 'run-quit': '달리기', 'break-end': '벽돌깨기', 'break-quit': '벽돌깨기', 'worms-end': '포트리스', 'gun-end': '미니건', 'icbm-end': 'ICBM'}
+# 게임 모듈(app/Games/<게임>/)은 이름을 따로 적지 않는다: mode-start / mode-end 의 id 로 안다
 
 try:
     lines = LOG.read_bytes().decode('utf-8', 'replace').splitlines()[-5000:]
@@ -16,8 +17,15 @@ except OSError:
 active = set()
 for raw in lines:
     try:
-        ev = json.loads(raw).get('ev')
+        rec = json.loads(raw)
     except ValueError:
+        continue
+    ev = rec.get('ev')
+    if ev == 'mode-start':
+        active.add(rec.get('id', '게임'))
+        continue
+    if ev == 'mode-end':
+        active.discard(rec.get('id', '게임'))
         continue
     if ev == 'start':
         active.clear()

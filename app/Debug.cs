@@ -136,7 +136,6 @@ public sealed class DevLink
             case "nap": if (!b.TryNap()) Dbg.Log("nap-none"); break;
             case "worms": form.WormsCommand(a); break;
             case "minigun": form.MinigunCommand(a); break;
-            case "squad": form.SquadCommand(a); break;
             case "visit": form.VisitCommand(a); break;
             case "icbm": form.IcbmCommand(a); break;
             case "species": form.SetSpecies(a[1]); break; // 예: species fox
@@ -171,7 +170,7 @@ public sealed class DevLink
                     default: throw new ArgumentException("모르는 값: " + a[1]);
                 }
                 break;
-            default: throw new ArgumentException("모르는 명령");
+            default: if (!form.ModeCommand(a)) throw new ArgumentException("모르는 명령"); break; // 게임 모듈 명령: <게임 id> ...
         }
     }
 

@@ -107,18 +107,6 @@
   "pt": "Minigun",
   "ru": "Миниган"
  },
- "menu.squad": {
-  "en": "Bolok Squad",
-  "ko": "볼록이 부대",
-  "ja": "Bolok部隊",
-  "zh-Hans": "Bolok 小队",
-  "zh-Hant": "Bolok 小隊",
-  "es": "Escuadrón Bolok",
-  "de": "Bolok-Trupp",
-  "fr": "Escouade Bolok",
-  "pt": "Esquadrão Bolok",
-  "ru": "Отряд Bolok"
- },
  "menu.icbm": {
   "en": "Launch ICBM",
   "ko": "ICBM 발사",
@@ -130,6 +118,18 @@
   "fr": "Lancer l'ICBM",
   "pt": "Lançar ICBM",
   "ru": "Запуск ICBM"
+ },
+ "menu.raid": {
+  "en": "Bug Raid",
+  "ko": "버그 습격",
+  "ja": "バグ襲来",
+  "zh-Hans": "虫子来袭",
+  "zh-Hant": "蟲子來襲",
+  "es": "Ataque de bichos",
+  "de": "Käferangriff",
+  "fr": "Raid de bestioles",
+  "pt": "Ataque dos bichos",
+  "ru": "Налёт жуков"
  },
  "menu.fortress": {
   "en": "Fortress",
@@ -490,6 +490,30 @@
   "fr": "Flèche haut : Vent",
   "pt": "Seta para cima: Vento",
   "ru": "Стрелка вверх: ветер"
+ },
+ "note.raid_move": {
+  "en": "←→ / Mouse: Move",
+  "ko": "←→ / 마우스: 움직이기",
+  "ja": "←→ / マウス: 移動",
+  "zh-Hans": "←→ / 鼠标: 移动",
+  "zh-Hant": "←→ / 滑鼠: 移動",
+  "es": "←→ / Ratón: Moverse",
+  "de": "←→ / Maus: Bewegen",
+  "fr": "←→ / Souris : Bouger",
+  "pt": "←→ / Mouse: Mover",
+  "ru": "←→ / Мышь: Двигаться"
+ },
+ "note.raid_fire": {
+  "en": "Space / Hold left click: Fire",
+  "ko": "Space / 왼쪽 누르고 있기: 쏘기",
+  "ja": "Space / 左ボタン長押し: 発射",
+  "zh-Hans": "Space / 按住左键: 射击",
+  "zh-Hant": "Space / 按住左鍵: 射擊",
+  "es": "Space / Mantén clic izq.: Disparar",
+  "de": "Space / Linke Taste halten: Feuern",
+  "fr": "Space / Maintenir clic gauche : Tirer",
+  "pt": "Space / Segurar clique esq.: Atirar",
+  "ru": "Space / Удерживать ЛКМ: Огонь"
  },
  "stage.egg": {
   "en": "Egg",
@@ -1511,6 +1535,30 @@
   "pt": "Ainda não jogou",
   "ru": "Ещё не играли"
  },
+ "game.raid": {
+  "en": "Bug Raid",
+  "ko": "버그 습격",
+  "ja": "バグ襲来",
+  "zh-Hans": "虫子来袭",
+  "zh-Hant": "蟲子來襲",
+  "es": "Ataque de bichos",
+  "de": "Käferangriff",
+  "fr": "Raid de bestioles",
+  "pt": "Ataque dos bichos",
+  "ru": "Налёт жуков"
+ },
+ "game.raid_val": {
+  "en": "Best {0} · Lv.{1}",
+  "ko": "최고 {0}점 · Lv.{1}",
+  "ja": "ベスト {0} · Lv.{1}",
+  "zh-Hans": "最高 {0} · Lv.{1}",
+  "zh-Hant": "最高 {0} · Lv.{1}",
+  "es": "Récord {0} · Lv.{1}",
+  "de": "Bestwert {0} · Lv.{1}",
+  "fr": "Record {0} · Lv.{1}",
+  "pt": "Recorde {0} · Lv.{1}",
+  "ru": "Рекорд {0} · Lv.{1}"
+ },
  "game.run": {
   "en": "Running",
   "ko": "달리기",
@@ -1618,30 +1666,6 @@
   "fr": "Record : {0} touches",
   "pt": "Melhor: {0} acertos",
   "ru": "Рекорд: {0} попаданий"
- },
- "game.squad": {
-  "en": "Bolok Squad",
-  "ko": "볼록이 부대",
-  "ja": "Bolok部隊",
-  "zh-Hans": "Bolok 小队",
-  "zh-Hant": "Bolok 小隊",
-  "es": "Escuadrón Bolok",
-  "de": "Bolok-Trupp",
-  "fr": "Escouade Bolok",
-  "pt": "Esquadrão Bolok",
-  "ru": "Отряд Bolok"
- },
- "game.squad_val": {
-  "en": "Cleared Lv.{0} · next Lv.{1}",
-  "ko": "Lv.{0} 깼어요 · 다음 Lv.{1}",
-  "ja": "Lv.{0}クリア · 次はLv.{1}",
-  "zh-Hans": "已通关 Lv.{0} · 下一关 Lv.{1}",
-  "zh-Hant": "已通關 Lv.{0} · 下一關 Lv.{1}",
-  "es": "Lv.{0} superado · siguiente Lv.{1}",
-  "de": "Lv.{0} geschafft · nächstes Lv.{1}",
-  "fr": "Lv.{0} réussi · prochain Lv.{1}",
-  "pt": "Lv.{0} concluído · próximo Lv.{1}",
-  "ru": "Пройден Lv.{0} · дальше Lv.{1}"
  },
  "bk.desc": {
   "en": "You won't know who it is until the egg hatches. Friends you've met are shown clearly; the rest are faded. When a new egg arrives, that friend's picture (about 300 KB) is downloaded from the repository.",
