@@ -1,7 +1,7 @@
 {
   "about": "볼록이 캐릭터 그림 데이터. 앱(app/PetArt.cs)과 생성기(tools/sprites.py)가 둘 다 이 파일로 그린다. 색은 #RRGGBB, 칸은 40px. 종 하나 = species 한 줄",
   "species_rule": "실존 동물과 판타지만. 유명 캐릭터와 겹치는 조합은 피한다 (흰 토끼는 미피 판례로 뺐다). 옷·소품은 안 입힌다. name·note 는 설명일 뿐 그림에 안 쓰인다",
-  "forms_rule": "형태: 체형. 어른 3종은 키운 방식으로 갈린다 (docs/model.md). tints 는 form_colors 가 없는 종에 형태별로 섞는 색",
+  "forms_rule": "형태: 체형. 어른 3종은 키운 방식으로 갈린다 (docs/model.md). feature 는 꼬리·뿔·날개 크기(아기 .5 → 어른 1), paw_k 발 크기, tuft 아기 머리털, pear 통통이 서양배 몸, lash 애교쟁이 속눈썹, lid 심술이 반쯤 감은 눈. tints 는 form_colors 가 없는 종에 형태별로 섞는 색",
   "cell": 40,
   "cheeks": 4,
   "colors": {
@@ -27,11 +27,11 @@
     "adult_sweet": ["#FFC8A0", 0.12]
   },
   "forms": {
-    "baby": {"rx": 8.5, "ry": 8, "ear": 2.2, "eye": 2.6, "eyegap": 5},
-    "child": {"rx": 10.5, "ry": 10, "ear": 3, "eye": 2.6, "eyegap": 6},
-    "adult_chubby": {"rx": 14, "ry": 12.5, "ear": 3.4, "eye": 2.6, "eyegap": 7},
-    "adult_sweet": {"rx": 12.5, "ry": 12, "ear": 3.6, "eye": 3, "eyegap": 7, "flower": true, "blush": 2},
-    "adult_grumpy": {"rx": 12.5, "ry": 11.5, "ear": 3.2, "eye": 2.3, "eyegap": 6, "brow": true}
+    "baby": {"rx": 7.2, "ry": 6.8, "ear": 1.9, "eye": 2.6, "eyegap": 4, "feature": 0.5, "paw_k": 0.7, "tuft": true},
+    "child": {"rx": 10.5, "ry": 10, "ear": 3, "eye": 2.6, "eyegap": 6, "feature": 0.8},
+    "adult_chubby": {"rx": 14, "ry": 12.5, "ear": 3.4, "eye": 2.6, "eyegap": 7, "feature": 1, "pear": true},
+    "adult_sweet": {"rx": 12.5, "ry": 12, "ear": 3.6, "eye": 3, "eyegap": 7, "flower": true, "blush": 2, "feature": 1, "lash": true},
+    "adult_grumpy": {"rx": 12.5, "ry": 11.5, "ear": 3.2, "eye": 2.6, "eyegap": 6, "brow": true, "feature": 1, "lid": true}
   },
   "poses": {
     "idle": [{}, {"sq": 1}, {}, {"eye": "blink"}],
@@ -79,7 +79,7 @@
     "penguin": {"name": "펭귄", "fur": "#546482", "shade": "#3E4C68", "cream": "#FAFAFC", "paw": "#F4A03C", "ears": "none", "wings": "flipper", "face": "bigbelly", "beak": "small", "note": "푸른 회색 (뽀로로·턱스)"},
     "owl": {"name": "부엉이", "fur": "#966E52", "shade": "#78563E", "cream": "#ECDCC0", "paw": "#F0B446", "ears": "tuft", "wings": "wing", "marks": ["disc"], "beak": "hook"},
     "squirrel": {"name": "다람쥐", "fur": "#C6763E", "shade": "#A85C2E", "ears": "pointy", "ear_k": 0.75, "tail": "bushy", "nose": "dark"},
-    "otter": {"name": "수달", "fur": "#846046", "shade": "#6A4C38", "cream": "#EEDCC0", "ears": "small", "ear_k": 0.8, "face": "snout", "snout": "#ECDABE", "nose": "dark", "whisker": true},
+    "otter": {"name": "수달", "fur": "#846046", "shade": "#6A4C38", "cream": "#EEDCC0", "ears": "small", "ear_k": 0.8, "face": "pale", "nose": "dark", "whisker": true, "tail": "taper", "note": "바다수달처럼 밝은 크림색 얼굴, 굵다가 가늘어지는 꼬리"},
     "duck": {"name": "오리", "fur": "#FFD650", "shade": "#ECBA32", "cream": "#FFF0AA", "paw": "#FA9632", "ears": "none", "wings": "small", "beak": "bill", "marks": ["tuft"]},
     "frog": {"name": "개구리", "fur": "#78C460", "shade": "#58A046", "cream": "#E2F4C8", "paw": "#8CCE6E", "ears": "none", "face": "frog", "nose": "none", "blush": "#FFA096"},
     "hedgehog": {"name": "고슴도치", "fur": "#E8D2B2", "shade": "#CCB492", "ears": "small", "ear_k": 0.7, "back": "spikes", "spike": "#7A5C46", "nose": "dark", "note": "파랑 없이 (소닉)"},
@@ -88,8 +88,8 @@
     "sheep": {"name": "양", "fur": "#FAF6EC", "shade": "#E2DCCE", "cream": "#ECD4B4", "ear": "#ECC8AA", "ears": "side", "back": "wool", "face": "wool", "note": "검은 얼굴 없이 (숀더쉽)"},
     "deer": {"name": "사슴", "fur": "#CE925A", "shade": "#B07646", "ears": "side", "horns": "antler", "face": "snout", "snout": "#F4E2C8", "nose": "dark", "note": "흰 점 없이 (밤비)"},
     "goat": {"name": "염소", "fur": "#E0D6C4", "shade": "#C4B8A4", "cream": "#FAF6EE", "ear": "#E6C4B4", "ears": "side", "horns": "goat", "marks": ["beard"], "nose": "dark"},
-    "beaver": {"name": "비버", "fur": "#96643E", "shade": "#7A4E2E", "cream": "#E8CEA8", "ears": "small", "ear_k": 0.7, "tail": "flat", "face": "snout", "snout": "#DEC4A0", "nose": "dark", "teeth": true},
-    "quokka": {"name": "쿼카", "fur": "#A8927E", "shade": "#8C7866", "cream": "#F0E4D4", "ears": "small", "ear_k": 0.85, "nose": "dark", "smile": true},
+    "beaver": {"name": "비버", "fur": "#96643E", "shade": "#7A4E2E", "cream": "#E8CEA8", "ears": "small", "ear_k": 0.7, "tail": "flat", "face": "snout", "snout": "#DEC4A0", "nose": "dark", "teeth": "#F2B04A", "note": "옆으로 비죽 나온 넓적한 꼬리(비늘 무늬)와 주황 앞니"},
+    "quokka": {"name": "쿼카", "fur": "#A8927E", "shade": "#8C7866", "cream": "#F0E4D4", "ears": "round", "ear_k": 0.9, "nose": "dark", "smile": true, "face": "cheeks", "note": "둥근 귀, 크림색 볼에 늘 웃는 입"},
     "capybara": {"name": "카피바라", "fur": "#AA784E", "shade": "#8C603C", "cream": "#C49668", "ears": "small", "ear_k": 0.6, "face": "capy", "snout": "#966A46", "nose": "nostrils", "wide": 1.12, "belly": false, "eye_k": 0.75, "eye_up": 2},
     "koala": {"name": "코알라", "fur": "#AAACB6", "shade": "#8C8E9A", "cream": "#ECECF0", "ear": "#F6F6FA", "ears": "big", "nose": "big"},
     "panda": {"name": "판다", "fur": "#F6F6F2", "shade": "#D6D6D2", "cream": "#FFFFFC", "ear": "#3C383C", "ear_out": "#343036", "paw": "#423E44", "ears": "round", "ear_k": 0.9, "marks": ["eyepatch"], "nose": "dark", "belly": false},

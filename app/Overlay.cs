@@ -390,7 +390,7 @@ public sealed class Overlay : Form
         g.DrawImageUnscaled(gs.Get(name, (int)(v.Clock * 1000 / ms), v.K, v.Dir < 0), p.X, p.Y);
         if (v.Clock < v.EmoteUntil && sprites().Has("emo/" + v.Emote))
         {
-            double head = v.Y - cell * (v.Form == "baby" ? .5 : v.Form == "child" ? .6 : .72);
+            double head = v.Y - cell * PetArt.Embedded.HeadRatio(v.Form);
             var e = ToClient(v.X - cell / 2.0, head - 27 * v.K);
             g.DrawImageUnscaled(sprites().Get("emo/" + v.Emote, 0, v.K), e.X, e.Y);
         }

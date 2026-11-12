@@ -119,6 +119,14 @@ static class Program
             return 0;
         }
 
+        if (args.Length >= 2 && args[0] == "--art-all") // 모든 종의 아기·어린이·어른을 한 장으로 (디버그: --art-all 그림.png [자세])
+        {
+            ApplicationConfiguration.Initialize();
+            L.Use("ko");
+            Showcase.Overview(Directory.Exists("assets") ? PetArt.FromDir("assets") : PetArt.Embedded, args[1], args.Length > 2 ? args[2] : "idle");
+            return 0;
+        }
+
         if (args.Length == 2 && args[0] == "--art-gif") // README 용 움직이는 그림 (34종 행진)
         {
             Gif.Parade(Directory.Exists("assets") ? PetArt.FromDir("assets") : PetArt.Embedded, args[1]);

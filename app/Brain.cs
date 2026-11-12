@@ -106,7 +106,7 @@ public sealed class Brain
     }
 
     // 그림이 뜰 머리 위 높이. 작을수록 머리가 낮다
-    public double HeadY => Y - CellPx * (P.Stage switch { "egg" => .68, "baby" => .5, "child" => .6, _ => .72 }) - 6 * S;
+    public double HeadY => Y - CellPx * PetArt.Embedded.HeadRatio(P.Stage) - 6 * S; // 몸 크기는 그림 데이터에서
 
     void Play(string pose, double sec, Action? after = null)
     {

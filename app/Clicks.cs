@@ -3,14 +3,12 @@ namespace Bolok;
 // 클릭 반응 고르기. 누른 곳·연타 횟수·성격·기분으로 정한다. 순수 계산이라 --selfcheck 로 검사한다
 public static class Clicks
 {
-    // 칸(40×40) 안에서 몸이 시작되는 높이와 몸 너비의 절반
-    static (double Top, double Half) Body(string stage) => stage switch
+    // 칸(40×40) 안에서 몸이 시작되는 높이와 몸 너비의 절반 (그림 데이터의 몸 크기를 따른다: 발은 37, 몸 위는 그 위로 지름만큼)
+    static (double Top, double Half) Body(string stage)
     {
-        "baby" => (20, 8.5),
-        "child" => (16, 10.5),
-        "adult_chubby" => (12, 14),
-        _ => (13, 12.5),
-    };
+        var (rx, ry) = PetArt.Embedded.Size(stage);
+        return (36 - 2 * ry, rx);
+    }
 
     public static string Zone(string stage, double x, double y)
     {

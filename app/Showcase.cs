@@ -199,6 +199,35 @@ sealed class Showcase : IGameMode
         return root;
     }
 
+    // 한 장으로 보기 (디버그 도구: Bolok.exe --art-all 그림.png [자세]): 모든 종의 아기·어린이·어른 3종을 2배로, 칸마다 종 이름
+    public static void Overview(PetArt art, string path, string pose = "idle")
+    {
+        const int k = 2, cols = 4, pad = 10, gap = 2;
+        int cell = PetArt.Cell * k, bw = Forms.Length * cell + (Forms.Length - 1) * gap + pad * 2, bh = 26 + cell + 8, top = 40;
+        int rows = (art.Species.Count + cols - 1) / cols;
+        using var bmp = new Bitmap(cols * (bw + 10) + 10, top + rows * (bh + 10) + 6);
+        using var g = Graphics.FromImage(bmp);
+        g.Clear(Color.FromArgb(236, 239, 244));
+        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+        using var title = new Font(L.Font, 13, FontStyle.Bold);
+        using var name = new Font(L.Font, 10, FontStyle.Bold);
+        using var ink = new SolidBrush(Color.FromArgb(50, 56, 70));
+        using var line = new Pen(Color.FromArgb(200, 206, 216));
+        g.DrawString($"{art.Species.Count} · {string.Join(" → ", Forms.Select(L.Stage))} · {pose}", title, ink, 10, 8);
+        for (int i = 0; i < art.Species.Count; i++)
+        {
+            string id = art.Species[i];
+            int bx = 10 + i % cols * (bw + 10), by = top + i / cols * (bh + 10);
+            g.FillRectangle(Brushes.White, bx, by, bw, bh);
+            g.DrawString(L.Species(id), name, ink, bx + 8, by + 5);
+            var sp = Sprites.Drawn(art, id, null);
+            for (int f = 0; f < Forms.Length; f++)
+                g.DrawImageUnscaled(sp.Get($"{Forms[f]}/0/{pose}", 0, k), bx + pad + f * (cell + gap), by + 24);
+            g.DrawLine(line, bx + pad, by + 24 + 38 * k, bx + bw - pad, by + 24 + 38 * k);
+        }
+        bmp.Save(path);
+    }
+
     public IEnumerable<GameStat> Stats() => Array.Empty<GameStat>();
     public string? SaveState() => null;
     public void LoadState(string? json) { }
