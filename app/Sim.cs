@@ -329,6 +329,42 @@ static class Sim
         return $"달리기 잘하는 사람 ({string.Join(" / ", rows)}), 가만히 {lazy.Sec:F0}초";
     }
 
+    // 떠난 친구가 놀러 온다: 걸어 들어와 인사, 따라다니기, 같이 자기, 바쁠 땐 기다리기, 5분 뒤 돌아가기, 누가 올지 고르기
+    static void VisitorChecks()
+    {
+        var area = new Rectangle(0, 0, 1920, 1080);
+        double ground = 1030, cell = 120;
+        var v = new Visitor("fox", "adult_sweet", -cell, ground, 3, new Random(1));
+        var ev = new List<string>();
+        v.OnEvent = ev.Add;
+        void Run(double sec, double mx, bool free = true, bool asleep = false) { for (int i = 0; i < sec * 60; i++) v.Update(1 / 60.0, mx, ground, free, asleep, area); }
+        Run(15, 900);
+        Expect(v.Stage == Visitor.Phase.Stay && ev.Contains("hello") && Math.Abs(Math.Abs(v.X - 900) - Visitor.Side * cell) < 2, $"걸어 들어와 볼록이 옆에서 인사: {v.Stage} x {v.X:F0}");
+        Run(20, 1400);
+        Expect(Math.Abs(v.X - 1400) < Visitor.Side * cell + cell * .6, $"볼록이를 따라다닌다 (가끔 반대쪽으로 자리를 바꾼다): x {v.X:F0}");
+        double still = v.X;
+        Run(5, 300, free: false);
+        Expect(Math.Abs(v.X - still) < 1, "볼록이가 바쁘면(게임·잡힘) 제자리에서 기다린다");
+        Run(15, 1400, asleep: true);
+        Expect(v.Pose == "sleep" && ev.Contains("sleep") && Math.Abs(v.X - 1400) < cell * 1.1, $"볼록이가 자면 옆에서 같이 잔다: {v.Pose}");
+        Run(2, 1400);
+        Expect(v.Pose != "sleep", "볼록이가 깨면 같이 일어난다");
+        Run(Visitor.StaySec, 1400);
+        Run(30, 1400);
+        Expect(v.Gone && ev.Contains("bye") && ev.Contains("gone") && (v.X < area.Left || v.X > area.Right), $"5분 뒤 인사하고 화면 밖으로 돌아간다: x {v.X:F0}");
+
+        var rel = new List<ReleasedPet>
+        {
+            new("hamster", "adult_chubby", 100, new DateTime(2026, 11, 1)), new("fox", "child", 50, new DateTime(2026, 11, 2)),
+            new("cat", "adult_sweet", 80, new DateTime(2026, 11, 3)), new("fox", "adult_grumpy", 90, new DateTime(2026, 11, 4)),
+        };
+        var seen = new Dictionary<string, DateTime> { ["hamster"] = new(2026, 11, 10), ["cat"] = new(2026, 11, 11) };
+        var pick = Visitor.Pick(rel, seen, "beaver", new Random(1));
+        Expect(pick?.Species == "fox" && pick.Stage == "adult_grumpy", $"가장 오래 안 온 친구, 같은 종은 마지막 모습으로: {pick?.Species} {pick?.Stage}");
+        Expect(Visitor.Pick(rel, seen, "fox", new Random(1))?.Species == "hamster", "지금 키우는 종과 같은 친구는 뒤로");
+        Expect(Visitor.Pick(new List<ReleasedPet>(), seen, "fox", new Random(1)) == null, "떠난 친구가 없으면 아무도 안 온다");
+    }
+
     // 볼록이 부대: 문·상자·버그·ICBM 규칙, 자동 조종으로 레벨별 난이도
     static string SquadChecks()
     {
@@ -1693,6 +1729,7 @@ static class Sim
         UpdaterChecks();
         PetSheetChecks();
         o.WriteLine(SquadChecks());
+        VisitorChecks();
         ClickChecks(k);
         EmoteChecks(k);
 

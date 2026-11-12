@@ -14,6 +14,8 @@ public sealed class Overlay : Form
     public Func<Icbm?> IcbmGame = () => null;
     public Func<Squad?> SquadGame = () => null;
     public Func<IReadOnlyList<string>> SquadFriends = () => Array.Empty<string>();
+    public Func<Visitor?> Guest = () => null;           // 놀러 온 떠난 친구
+    public Func<Sprites?> GuestSprites = () => null;
     Icbm? icbmSeen;
     int icbmVersion = -1;
     List<Rectangle> craterRects = new();
@@ -133,6 +135,7 @@ public sealed class Overlay : Form
             foreach (var sh in bo.Shards) r.Add(Client(new Rectangle((int)sh.X - sh.Size * 2, (int)sh.Y - sh.Size * 2, sh.Size * 4, sh.Size * 4)));
             if (BreakNote(bo) is { } note) r.Add(Client(NoteRect(b.X, b.Y, bo.Field, note)));
         }
+        if (Guest() is { } gv) r.Add(Client(GuestRect(gv)));
         if (SquadGame() is { } sq)
         {
             int k = sq.K;
@@ -293,6 +296,31 @@ public sealed class Overlay : Form
         if (MinigunGame() is { } mg) DrawMinigun(g, mg);
         if (IcbmGame() is { } ic) DrawIcbm(g, ic);
         if (SquadGame() is { } sq) DrawSquad(g, sq);
+        if (Guest() is { } gv && GuestSprites() is { } gs) DrawGuest(g, gv, gs);
+    }
+
+    // ── 놀러 온 친구: 볼록이처럼 발이 (X, Y), 머리 위에 하트·zzz ──
+    Rectangle GuestRect(Visitor v)
+    {
+        int cell = 40 * v.K;
+        return new Rectangle((int)v.X - cell / 2 - 8, (int)v.Y - cell - 30 * v.K, cell + 16, cell + 30 * v.K + 8);
+    }
+
+    void DrawGuest(Graphics g, Visitor v, Sprites gs)
+    {
+        int cell = 40 * v.K;
+        string name = $"{v.Form}/0/{v.Pose}";
+        if (!gs.Has(name)) name = $"{v.Form}/0/idle";
+        if (!gs.Has(name)) return;
+        int ms = v.Pose switch { "walk" => 130, "sleep" => 800, "idle" => 600, _ => 220 };
+        var p = ToClient(v.X - cell / 2.0, v.Y - cell);
+        g.DrawImageUnscaled(gs.Get(name, (int)(v.Clock * 1000 / ms), v.K, v.Dir < 0), p.X, p.Y);
+        if (v.Clock < v.EmoteUntil && sprites().Has("emo/" + v.Emote))
+        {
+            double head = v.Y - cell * (v.Form == "baby" ? .5 : v.Form == "child" ? .6 : .72);
+            var e = ToClient(v.X - cell / 2.0, head - 27 * v.K);
+            g.DrawImageUnscaled(sprites().Get("emo/" + v.Emote, 0, v.K), e.X, e.Y);
+        }
     }
 
     // ── 쿠키런 모드: 점수판 없이 길 위의 것과 발밑의 가는 체력 막대만 ──

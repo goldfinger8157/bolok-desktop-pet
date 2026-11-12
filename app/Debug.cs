@@ -137,6 +137,7 @@ public sealed class DevLink
             case "worms": form.WormsCommand(a); break;
             case "minigun": form.MinigunCommand(a); break;
             case "squad": form.SquadCommand(a); break;
+            case "visit": form.VisitCommand(a); break;
             case "icbm": form.IcbmCommand(a); break;
             case "species": form.SetSpecies(a[1]); break; // 예: species fox
             case "release": form.Release(); break;

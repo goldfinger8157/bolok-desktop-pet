@@ -5,7 +5,8 @@ namespace Bolok;
 
 // 도감에 보여줄 것: 지금 키우는 아이, 만나 본 종, 자연으로 떠난 친구들
 public sealed record ReleasedPet(string Species, string Stage, double AgeMin, DateTime At);
-public sealed record PetBook(string Species, bool IsEgg, IReadOnlyCollection<string> Met, IReadOnlyList<ReleasedPet> Released);
+public sealed record PetBook(string Species, bool IsEgg, IReadOnlyCollection<string> Met, IReadOnlyList<ReleasedPet> Released,
+    IReadOnlyDictionary<string, DateTime>? Visits = null); // Visits: 떠난 친구가 마지막으로 놀러 온 때
 
 // 상태 탭에 보여줄 것 (1초마다 새로 받는다)
 public sealed record GameStat(string Name, string Value, bool Played);
@@ -283,8 +284,9 @@ public sealed class Settings : Form
         if (b.Released.Count == 0) goneCard.Add("아직 떠난 친구가 없어요").LabelColor = Ui.Dim;
         foreach (var r in b.Released.Reverse().Take(12))
         {
+            string visit = b.Visits?.TryGetValue(r.Species, out var v) == true && v > r.At ? $" · {v:M월 d일}에 놀러 왔어요" : "";
             var it = goneCard.Add($"{names.GetValueOrDefault(r.Species, r.Species)} · {Names.Form(r.Stage)}",
-                $"{r.At:M월 d일}에 떠났어요 · 함께한 시간 {Span(r.AgeMin)}");
+                $"{r.At:M월 d일}에 떠났어요 · 함께한 시간 {Span(r.AgeMin)}{visit}");
             it.Icon = thumbs.TryGetValue(r.Species, out var rt) ? rt.One : null;
         }
         goneFoot.Text = b.Released.Count > 12 ? $"그 전에 떠난 친구 {b.Released.Count - 12}명은 줄였어요." : "";

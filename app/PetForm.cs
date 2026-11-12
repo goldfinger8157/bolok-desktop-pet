@@ -27,6 +27,10 @@ public sealed class SaveData
     public int WormsWins { get; set; }
     public int SquadLevel { get; set; } = 1;   // 볼록이 부대: 다음 판 레벨
     public int SquadBest { get; set; }         // 깬 가장 높은 레벨
+    public string VisitDay { get; set; } = "";       // 떠난 친구 방문: 오늘 계획을 세운 날
+    public int VisitMin { get; set; } = -1;           // 그날 몇 시 몇 분(분)에 올지. -1 이면 오늘은 안 온다
+    public string LastVisitDay { get; set; } = "";    // 마지막으로 놀러 온 날 (하루 한 번)
+    public Dictionary<string, DateTime> Visits { get; set; } = new(); // 종마다 마지막으로 놀러 온 때
     public List<RunRecord> RunScores { get; set; } = new();   // 최근 50판
     public DateTime SavedAt { get; set; } = DateTime.UtcNow;
 }
@@ -111,7 +115,7 @@ public sealed class PetForm : Form
         hud.SpeciesName = () => b.P.Stage == "egg" ? "" : sprites.SpeciesNames.GetValueOrDefault(species, "");
         if (!debug) // 새 버전을 받아 바꿔 두면 메뉴에 알린다. 그냥 둬도 다음에 켤 때 새 버전이다
             Updater.Start(() => autoUpdate, tag => BeginInvoke(() => { updateItem.Text = $"새 버전 {tag} 으로 다시 시작"; updateItem.Visible = true; settings?.ShowReady(); }));
-        foreach (var o in overlays) { o.Runner = () => runner; o.Break = () => breakout; o.WormsGame = () => worms; o.MinigunGame = () => minigun; o.IcbmGame = () => icbm; o.SquadGame = () => squad; o.SquadFriends = () => squadFriends; }
+        foreach (var o in overlays) { o.Runner = () => runner; o.Break = () => breakout; o.WormsGame = () => worms; o.MinigunGame = () => minigun; o.IcbmGame = () => icbm; o.SquadGame = () => squad; o.SquadFriends = () => squadFriends; o.Guest = () => visitor; o.GuestSprites = () => visitorSprites; }
         hud.PlaceAt(area);
         if (runDir != null) dev = new DevLink(runDir, assetsDir!, b, this);
 
@@ -283,6 +287,7 @@ public sealed class PetForm : Form
         if (b.P.Stage != "egg") met.Add(species); // 도감 전부터 키우던 아이도 도감에
         (breakBest, wormsWins) = (pendingSave.BreakBest, pendingSave.WormsWins);
         (squadLevel, squadBest) = (Math.Max(1, pendingSave.SquadLevel), pendingSave.SquadBest);
+        (visitDay, visitMin, lastVisitDay, visits) = (pendingSave.VisitDay ?? "", pendingSave.VisitMin, pendingSave.LastVisitDay ?? "", pendingSave.Visits ?? new());
         (runBest, runLast, runLevel, runScores) = (pendingSave.RunBest, pendingSave.RunLast, Math.Max(1, pendingSave.RunLevel), pendingSave.RunScores ?? new());
         if (pendingSave.X != 0) { b.X = pendingSave.X; b.Y = pendingSave.Y; b.Settle(); }
         foreach (var h in pendingSave.Holes) b.AddHole(h[0], h[1], false);
@@ -291,7 +296,7 @@ public sealed class PetForm : Form
 
     void Save()
     {
-        var data = new SaveData { Pet = b.P, X = b.X, Y = b.Y, Holes = b.Holes.Select(h => new[] { h.Cx, h.Cy }).ToList(), GameBest = gameBest, GameSound = Sfx.On, AutoUpdate = autoUpdate, Species = species, Met = met.ToList(), Released = released, RunBest = runBest, RunLast = runLast, RunLevel = runLevel, RunScores = runScores, BreakBest = breakBest, WormsWins = wormsWins, SquadLevel = squadLevel, SquadBest = squadBest };
+        var data = new SaveData { Pet = b.P, X = b.X, Y = b.Y, Holes = b.Holes.Select(h => new[] { h.Cx, h.Cy }).ToList(), GameBest = gameBest, GameSound = Sfx.On, AutoUpdate = autoUpdate, Species = species, Met = met.ToList(), Released = released, RunBest = runBest, RunLast = runLast, RunLevel = runLevel, RunScores = runScores, BreakBest = breakBest, WormsWins = wormsWins, SquadLevel = squadLevel, SquadBest = squadBest, VisitDay = visitDay, VisitMin = visitMin, LastVisitDay = lastVisitDay, Visits = visits };
         var tmp = savePath + ".tmp";
         File.WriteAllText(tmp, JsonSerializer.Serialize(data));
         File.Move(tmp, savePath, true);
@@ -361,6 +366,8 @@ public sealed class PetForm : Form
         WatchHatch();
         KeepSheet();
         GateHatch();
+        VisitTick();
+        if (visitor != null) visitor.Update(dt, b.X, b.Y, b.Mode is Mode.Wander or Mode.Anim || b.P.Asleep, b.P.Asleep, b.Area);
         if (icbm != null) IcbmFrame(dt);
         SyncScale();
         if (game != null)
@@ -606,7 +613,7 @@ public sealed class PetForm : Form
     double leaveTo;
     string lastStage = "";
 
-    PetBook Book() => new(species, b.P.Stage == "egg", met, released);
+    PetBook Book() => new(species, b.P.Stage == "egg", met, released, visits);
     void BookChanged() { if (settings is { IsDisposed: false }) settings.UpdateBook(Book()); }
 
     // 설정 창 상태 탭에 보여줄 것
@@ -684,6 +691,79 @@ public sealed class PetForm : Form
         }
         if (!hold) hatchHeld = false;
         b.P.HoldHatch = hold;
+    }
+
+    // ── 떠난 친구가 하루 한 번 놀러 온다 (YELL 2026-11-12): 한 친구, 5분. 같이 다니고 같이 잔다 ──
+    Visitor? visitor;
+    Sprites? visitorSprites;
+    string visitDay = "", lastVisitDay = "";
+    int visitMin = -1;
+    Dictionary<string, DateTime> visits = new();
+    long nextVisitCheck, nextVisitFetch;
+
+    static string Today => DateTime.Now.ToString("yyyy-MM-dd");
+    static int NowMin => DateTime.Now.Hour * 60 + DateTime.Now.Minute;
+
+    // 오늘 언제 올지: 그날 처음 볼 때 정한다. 지금부터 20분~3시간 사이 아무 때 (밤 11시 반을 넘으면 오늘은 안 온다)
+    void PlanVisit()
+    {
+        if (visitDay == Today) return;
+        visitDay = Today;
+        int at = NowMin + 20 + Random.Shared.Next(160);
+        visitMin = at < 23 * 60 + 30 ? at : -1;
+        Dbg.Log("visit-plan", ("at", visitMin < 0 ? "내일" : $"{visitMin / 60}:{visitMin % 60:00}"));
+        Save();
+    }
+
+    // 1초에 한 번: 때가 됐고, 볼록이가 한가하고, YELL 이 자리에 있으면 부른다
+    void VisitTick()
+    {
+        if (Environment.TickCount64 < nextVisitCheck || visitor != null) return;
+        nextVisitCheck = Environment.TickCount64 + 1000;
+        PlanVisit();
+        if (lastVisitDay == Today || visitMin < 0 || NowMin < visitMin) return;
+        if (released.Count == 0 || InGame || b.P.Stage == "egg" || Afk() || b.Mode is not (Mode.Wander or Mode.Anim)) return;
+        StartVisit(null);
+    }
+
+    public void StartVisit(string? only, bool counts = true)
+    {
+        if (visitor != null) return;
+        var pick = only != null
+            ? released.LastOrDefault(r => r.Species == only) ?? new ReleasedPet(only, "child", 0, DateTime.Now)
+            : Visitor.Pick(released, visits, species, Random.Shared);
+        if (pick == null) return;
+        if (pets.Read(pick.Species) is not { } sheet) // 그 친구 그림이 없으면(예전 판에서 떠난 아이) 받아 두고 다음에
+        {
+            if (Environment.TickCount64 > nextVisitFetch) { nextVisitFetch = Environment.TickCount64 + 60_000; Task.Run(() => pets.Fetch(pick.Species)); }
+            return;
+        }
+        visitorSprites = Sprites.With(pick.Species, sheet, assetsDir);
+        var area = b.Area;
+        double x = b.X < area.Left + area.Width / 2.0 ? area.Left - b.CellPx : area.Right + b.CellPx; // 가까운 화면 옆에서 걸어 들어온다
+        var v = visitor = new Visitor(pick.Species, pick.Stage, x, area.Bottom - b.K.FloorGap, b.Scale, new Random());
+        v.OnEvent = e =>
+        {
+            if (e is "hello" or "bye") b.Emote("heart", 2); // 반갑고, 아쉽다
+            else if (e == "play" && Random.Shared.NextDouble() < .5) b.Emote("heart", 1.2);
+            if (e != "play") Dbg.Log("visit", ("event", e), ("friend", v.Species));
+            if (e == "gone") { visitor = null; visitorSprites = null; foreach (var o in overlays) o.Invalidate(); }
+        };
+        if (counts) // 디버그로 부른 건 오늘의 방문으로 치지 않는다
+        {
+            lastVisitDay = Today;
+            visits[pick.Species] = DateTime.Now;
+        }
+        Dbg.Log("visit-start", ("friend", pick.Species), ("form", pick.Stage), ("counts", counts));
+        Save();
+        BookChanged();
+    }
+
+    // 디버그: visit (지금 부르기) / visit <종> / visit end (지금 돌아가기)
+    public void VisitCommand(string[] a)
+    {
+        if (a.Length > 1 && a[1] == "end") visitor?.GoHome();
+        else StartVisit(a.Length > 1 ? a[1] : null, counts: false);
     }
 
     // 새 알의 종: 34종 중 아무나 (처음 알도, 풀어준 뒤 오는 알도)
