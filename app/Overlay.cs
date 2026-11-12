@@ -12,6 +12,8 @@ public sealed class Overlay : Form
     public Func<Worms?> WormsGame = () => null;
     public Func<Minigun?> MinigunGame = () => null;
     public Func<Icbm?> IcbmGame = () => null;
+    public Func<Squad?> SquadGame = () => null;
+    public Func<IReadOnlyList<string>> SquadFriends = () => Array.Empty<string>();
     Icbm? icbmSeen;
     int icbmVersion = -1;
     List<Rectangle> craterRects = new();
@@ -130,6 +132,17 @@ public sealed class Overlay : Form
             r.Add(Client(LivesRect(bo)));
             foreach (var sh in bo.Shards) r.Add(Client(new Rectangle((int)sh.X - sh.Size * 2, (int)sh.Y - sh.Size * 2, sh.Size * 4, sh.Size * 4)));
             if (BreakNote(bo) is { } note) r.Add(Client(NoteRect(b.X, b.Y, bo.Field, note)));
+        }
+        if (SquadGame() is { } sq)
+        {
+            int k = sq.K;
+            foreach (var bg in sq.Bugs) r.Add(Client(Around(bg.X, bg.Y, sq.BugR + 4 * k, sq.BugR + 4 * k)));
+            if (sq.Boss is { } boss) r.Add(Client(Around(boss.X, boss.Y - 8 * k, sq.BossR + 12 * k, sq.BossR + 22 * k)));
+            foreach (var gt in sq.Gates) r.Add(Client(Around(gt.X, gt.Y, gt.W / 2 + 4, sq.GateH / 2 + 10 * k)));
+            foreach (var bx in sq.Boxes) r.Add(Client(Around(bx.X, bx.Y - 8 * k, sq.BoxHalf + 8 * k, sq.BoxHalf + 22 * k)));
+            foreach (var sh in sq.Shots) r.Add(Client(Around(sh.X, sh.Y, 5 * k, 8 * k)));
+            foreach (var pp in sq.Pops) r.Add(Client(Around(pp.X, pp.Y, pp.R + 6, pp.R + 6)));
+            r.Add(Client(SquadRect(sq)));
         }
         if (game() is { } gm)
         {
@@ -279,6 +292,7 @@ public sealed class Overlay : Form
         if (WormsGame() is { } wm) DrawWorms(g, wm);
         if (MinigunGame() is { } mg) DrawMinigun(g, mg);
         if (IcbmGame() is { } ic) DrawIcbm(g, ic);
+        if (SquadGame() is { } sq) DrawSquad(g, sq);
     }
 
     // ── 쿠키런 모드: 점수판 없이 길 위의 것과 발밑의 가는 체력 막대만 ──
@@ -654,6 +668,101 @@ public sealed class Overlay : Form
         g.RotateTransform((float)(Math.Atan2(ic.MVy, ic.MVx) * 180 / Math.PI));
         g.DrawImageUnscaled(sp.Get("game/missile", 0, 2 * k), -39 * k, -39 * k);
         g.Restore(state);
+    }
+
+    // ── 볼록이 부대 ──
+    static Rectangle Around(double x, double y, double hw, double hh) => new((int)(x - hw), (int)(y - hh), (int)(hw * 2), (int)(hh * 2));
+
+    // 부대원·헬기·머릿수 숫자가 있는 자리
+    static Rectangle SquadRect(Squad sq)
+    {
+        int k = sq.K;
+        double left = sq.X - sq.SquadHalf - 24 * k, right = Math.Max(sq.X + sq.SquadHalf + 24 * k, sq.HeliX + 24 * k);
+        return Rectangle.FromLTRB((int)left, (int)(sq.SquadTop - 30 * k), (int)right, (int)sq.Ground + 6 * k);
+    }
+
+    // 숫자와 + × (도트 숫자 그림, 화면 좌표 가운데)
+    void Label(Graphics g, string text, double cx, double cy, int k)
+    {
+        int step = 5 * k, x0 = (int)cx - (text.Length - 1) * step / 2;
+        for (int i = 0; i < text.Length; i++) Put(g, sprites().Get("num/" + (text[i] == '×' ? 'x' : text[i]), 0, k), x0 + i * step, (int)cy);
+    }
+
+    // 문: 파란 테두리 + 체크무늬 (빈 칸은 투명이라 뒤가 비친다 — 투명색 창이라 진짜 반투명은 분홍빛이 돈다)
+    readonly Dictionary<(int, int, int), Bitmap> glass = new();
+    Bitmap Glass(int w, int h, int k)
+    {
+        if (glass.TryGetValue((w, h, k), out var bmp)) return bmp;
+        bmp = new Bitmap(Math.Max(1, w), Math.Max(1, h), System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        using var g = Graphics.FromImage(bmp);
+        using var edge = new SolidBrush(Color.FromArgb(40, 110, 220));
+        using var fill = new SolidBrush(Color.FromArgb(120, 180, 250));
+        using var light = new SolidBrush(Color.FromArgb(200, 230, 255));
+        for (int y = 0; y < h; y += k)
+            for (int x = 0; x < w; x += k)
+            {
+                bool border = x < 2 * k || y < 2 * k || x >= w - 2 * k || y >= h - 2 * k;
+                if (border) g.FillRectangle(edge, x, y, k, k);
+                else if (y < 3 * k) g.FillRectangle(light, x, y, k, k);
+                else if ((x / k + y / k) % 2 == 0) g.FillRectangle(fill, x, y, k, k);
+            }
+        return glass[(w, h, k)] = bmp;
+    }
+
+    static readonly string[] SquadPrize = { "", "game/mg", "game/grenade", "game/heli" };
+
+    void DrawSquad(Graphics g, Squad sq)
+    {
+        var sp = sprites();
+        int k = sq.K, small = Math.Max(2, k - 1);
+        foreach (var gt in sq.Gates) // 문: 「+3」「×2」
+        {
+            if (gt.Used) continue;
+            var p = ToClient(gt.X - gt.W / 2, gt.Y - sq.GateH / 2);
+            g.DrawImageUnscaled(Glass((int)gt.W, (int)sq.GateH, k), p.X, p.Y);
+            Label(g, gt.Mul > 1 ? "×" + gt.Mul : "+" + gt.Add, gt.X, gt.Y, k + 2); // 크게: 어느 문이 좋은지 한눈에
+        }
+        foreach (var bx in sq.Boxes) // 선물 상자: 위에 받을 무기, 앞에 남은 숫자. 맞으면 살짝 들썩
+        {
+            int shake = sq.Clock - bx.Hit < .05 ? k : 0;
+            Put(g, sp.Get("game/gift", 0, k), (int)bx.X, (int)bx.Y - shake);
+            string prize = sq.Weapon >= Squad.MaxWeapon ? "game/missile" : SquadPrize[sq.Weapon + 1];
+            Put(g, sp.Get(prize, 0, prize == "game/grenade" ? k + 1 : small), (int)bx.X, (int)(bx.Y - sq.BoxHalf - 8 * k));
+            Label(g, bx.Hp.ToString(), bx.X, bx.Y + 3 * k, k);
+        }
+        int n = 0;
+        foreach (var bg in sq.Bugs) Put(g, sp.Get("game/bug", ((int)(sq.Clock * 6) + n++) % 2, sq.BugScale), (int)bg.X, (int)bg.Y);
+        if (sq.Boss is { } boss) // 보스: 체력 막대와 숫자
+        {
+            Put(g, sp.Get("game/bugboss", (int)(sq.Clock * 4) % 2, k + 1), (int)boss.X, (int)boss.Y);
+            var bar = ToClient(boss.X - 22 * k, boss.Y - sq.BossR - 6 * k);
+            using var dark = new SolidBrush(Color.FromArgb(60, 34, 80));
+            using var red = new SolidBrush(Color.FromArgb(232, 72, 92));
+            g.FillRectangle(dark, bar.X - k, bar.Y - k, 44 * k + 2 * k, 3 * k + 2 * k);
+            g.FillRectangle(red, bar.X, bar.Y, (int)(44 * k * Math.Max(0, boss.Hp) / (double)boss.Max), 3 * k);
+            Label(g, Math.Max(0, boss.Hp).ToString(), boss.X, boss.Y - sq.BossR - 14 * k, k);
+        }
+        using (var bullet = new SolidBrush(Color.FromArgb(255, 220, 90)))
+        using (var edge = new SolidBrush(Color.FromArgb(150, 90, 30)))
+            foreach (var sh in sq.Shots)
+            {
+                if (sh.Nade) { Put(g, sp.Get("game/grenade", 0, small), (int)sh.X, (int)sh.Y); continue; }
+                var p = ToClient(sh.X - k, sh.Y - 3 * k);
+                g.FillRectangle(edge, p.X - 1, p.Y - 1, 2 * k + 2, 6 * k + 2);
+                g.FillRectangle(bullet, p.X, p.Y, 2 * k, 6 * k);
+            }
+        foreach (var pp in sq.Pops) // 터짐
+            Put(g, sp.Get("game/boom", Math.Min(3, (int)((sq.Clock - pp.At) / .12)), Math.Max(1, (int)(pp.R / 14))), (int)pp.X, (int)pp.Y);
+        var friends = SquadFriends();
+        int i = 0;
+        foreach (var (fx, fy) in sq.Formation()) // 부대원: 도감 친구들이 통통 튄다
+        {
+            int bob = Math.Sin(sq.Clock * 12 + i) > 0 ? -k : 0;
+            Put(g, sp.Get("thumb/" + (friends.Count > 0 ? friends[i % friends.Count] : "hamster"), 0, 1), (int)fx, (int)fy + bob);
+            i++;
+        }
+        if (sq.Weapon >= 3) Put(g, sp.Get("game/heli", (int)(sq.Clock * 20) % 2, k), (int)sq.HeliX, (int)(sq.SquadTop - 10 * k));
+        if (sq.Stage == Squad.Phase.Play) Label(g, sq.Members.ToString(), sq.X, sq.SquadTop - 14 * k, k + 1); // 머릿수
     }
 
     // ── 미니건 ──

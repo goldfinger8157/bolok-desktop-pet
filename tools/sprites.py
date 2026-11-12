@@ -799,6 +799,86 @@ GAME = {
     'missile': ('rr..........r..|rrrwwwwwwwwwrr.|.rrwwwwwwwwwrrr|rrrwwwwwwwwwrr.|rr..........r..', 'k'),
     'mg': ('.kkkkkkkkkkkkkkkk.|kggggggggggggggggk|kggggggkkkkkkkkk..|kggkk.kgk.........|kkk...kgk.........|......kkk.........', 'w'),
 }
+def bug(i, boss=False):
+    """볼록이 부대: 내려오는 「화면 버그」. 동글한 보라 딱정벌레, 다리 꼼지락 두 장 (i).
+    보스는 칸을 꽉 채우고 눈썹이 성났다. 머리가 아래(볼록이 쪽)를 본다"""
+    g = Canvas()
+    body, shade, belly, leg = (160, 112, 224), (118, 80, 186), (204, 176, 246), (70, 46, 110)
+    if boss:
+        body, shade, belly, leg = (196, 84, 150), (150, 56, 116), (240, 160, 200), (90, 30, 70)
+    cx, cy, rx, ry = (20, 16, 15, 13) if boss else (20, 22, 7, 6)  # 보스는 더듬이 끝이 칸 안에 들게
+    k = 2 if boss else 1
+    for s_ in (-1, 1):  # 다리 셋씩, 장마다 앞뒤로
+        for n, dy in enumerate((-.5, 0, .5)):
+            wig = (1 if (n + i) % 2 else -1) * k
+            x0, y0 = cx + s_ * rx * .8, cy + dy * ry
+            for t in range(3 * k):
+                g.put(round(x0 + s_ * t), round(y0 + (wig if t >= 2 * k else 0)), leg)
+    for s_ in (-1, 1):  # 더듬이 (머리 쪽 = 아래)
+        for t in range(3 * k):
+            g.put(round(cx + s_ * (2 + t) * k / 1.5), round(cy + ry + t), leg)
+        g.ell(cx + s_ * (2 + 3 * k) * k / 1.5, cy + ry + 3 * k, 1.2 * k, 1.2 * k, (250, 220, 90))
+    g.ell(cx, cy, rx, ry, shade)
+    g.ell(cx, cy - .6, rx - 1, ry - 1.2, body, True)
+    g.ell(cx, cy - ry * .45, rx * .55, ry * .3, belly, True)  # 등 무늬
+    g.pix(shade, *[(cx, cy - ry + 2 + t) for t in range(int(ry * 1.2))])  # 날개 가운데 줄
+    ex, ey, er = rx * .42, cy + ry * .45, (2.2 if boss else 1.3)
+    for s_ in (-1, 1):  # 눈 (아래쪽)
+        g.ell(cx + s_ * ex, ey, er, er, (255, 255, 255))
+        g.ell(cx + s_ * ex, ey + .4 * k, er * .55, er * .55, (40, 24, 50))
+        if boss:  # 성난 눈썹
+            g.pix(leg, *[(cx + s_ * (ex - 2 + t), ey - 3 - (t if s_ < 0 else 3 - t) * .5) for t in range(4)])
+    g.outline((60, 34, 80))
+    return g
+
+
+def gift():
+    """볼록이 부대: 선물 상자 (쏘면 숫자가 줄고 0 이면 위의 무기를 준다)"""
+    g = Canvas()
+    box, shade, rib = (236, 92, 112), (196, 64, 88), (255, 214, 80)
+    for y in range(20, 33):
+        for x in range(10, 30):
+            g.put(x, y, shade if x in (10, 29) or y == 32 else box)
+    for y in range(16, 20):
+        for x in range(8, 32):
+            g.put(x, y, (246, 120, 136))
+    for y in range(16, 33):
+        for x in (19, 20):
+            g.put(x, y, rib)
+    for x in range(8, 32):
+        g.put(x, 18, rib)
+    g.ell(16.5, 13.5, 3.5, 2.6, rib)  # 리본 고리
+    g.ell(23.5, 13.5, 3.5, 2.6, rib)
+    g.ell(16.5, 13.5, 1.4, 1, (230, 170, 40))
+    g.ell(23.5, 13.5, 1.4, 1, (230, 170, 40))
+    g.put(20, 15, rib)
+    g.outline((92, 40, 50))
+    return g
+
+
+def heli(i):
+    """볼록이 부대: 옆에서 같이 쏘는 헬기 친구. 노란 몸통, 동그란 창, 프로펠러 두 장"""
+    g = Canvas()
+    body, shade, glass = (250, 200, 70), (220, 160, 40), (150, 210, 250)
+    g.ell(20, 23, 8, 6, shade)
+    g.ell(20, 22.4, 7, 5, body, True)
+    for x in range(26, 34):  # 꼬리
+        g.put(x, 21 + (x - 26) // 4, shade)
+        g.put(x, 22 + (x - 26) // 4, shade)
+    g.ell(33, 22, 1.6, 2.4, (232, 72, 92))
+    g.ell(17, 21, 3, 2.6, glass)
+    g.put(16, 20, (255, 255, 255))
+    for x in range(14, 27):  # 다리
+        g.put(x, 31, (110, 90, 70))
+    g.pix((110, 90, 70), (16, 29), (16, 30), (24, 29), (24, 30))
+    g.pix((110, 90, 70), (20, 16), (20, 15))
+    w = 12 if i == 0 else 7  # 프로펠러: 길게 ↔ 짧게
+    for x in range(20 - w, 20 + w + 1):
+        g.put(x, 14, (90, 90, 100))
+    g.outline((70, 50, 30))
+    return g
+
+
 def nuke(i):
     """ICBM 버섯구름 여덟 장: 섬광 → 불덩이 → 기둥이 솟고 갓이 퍼짐 → 연기. 바닥 가운데가 (20, 38)"""
     g = Canvas()
@@ -1149,6 +1229,8 @@ def build():
     rows += [(f'prop/{k}', [f()]) for k, f in PROPS.items()]
     rows += [(f'game/{k}', [gun(v)]) for k, v in GUNS.items()]
     rows += [('game/nuke', [nuke(i) for i in range(8)])]
+    rows += [('game/bug', [bug(0), bug(1)]), ('game/bugboss', [bug(0, True), bug(1, True)]), ('game/gift', [gift()]), ('game/heli', [heli(0), heli(1)])]
+    rows += [('num/+', [art('...|.#.|###|.#.|...', 'b', C['white'])]), ('num/x', [art('...|#.#|.#.|#.#|...', 'b', C['white'])])]
     rows += [('game/flash', [art('..y..|.yyy.|yywyy|.yyy.|..y..', 'r')])]
     rows += [('game/muzzle', [muzzle(a) for a in MUZZLE])]
     # 설정 창 도감(0번), ICBM 구멍에서 빼꼼하는 떠난 친구(0번 + 눈 감은 1번으로 깜빡)

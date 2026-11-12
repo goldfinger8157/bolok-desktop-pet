@@ -115,6 +115,53 @@ static class Program
             return 0;
         }
 
+        if (args.Length == 3 && args[0] == "--squad-sim") // 볼록이 부대 한 판을 자동 조종으로: 레벨, 시드 → 사건과 부대원 수 (균형 맞추기)
+        {
+            var sq = new Squad(new Rectangle(630, 0, 660, 1080), 1030, 3, new Random(int.Parse(args[2])), int.Parse(args[1]));
+            sq.OnEvent = e => { if (e != "fire") Console.WriteLine($"{sq.Clock,6:F1}s {e,-10} 부대 {sq.Members,3} 무기 {sq.Weapon} 버그 {sq.Bugs.Count,3}"); };
+            for (int i = 0; i < 60 * 240 && !sq.Done; i++)
+            {
+                sq.SetTarget(sq.BotTarget());
+                sq.Update(1 / 60.0);
+                if (i % 300 == 0) Console.WriteLine($"{sq.Clock,6:F1}s ----       부대 {sq.Members,3} 무기 {sq.Weapon} 버그 {sq.Bugs.Count,3} x {sq.X:F0}");
+            }
+            Console.WriteLine($"끝: {sq.Stage} {sq.Clock:F0}초, 처치 {sq.Kills}");
+            return 0;
+        }
+
+        if (args.Length == 2 && args[0] == "--squad-scene") // 볼록이 부대를 자동 조종으로 돌리다가 두 장면(한창 때, 보스)을 그린다 (화면을 띄우지 않는다)
+        {
+            ApplicationConfiguration.Initialize();
+            var sp = Sprites.Embedded();
+            var area = new Rectangle(0, 0, 1920, 1080);
+            var brain = new Brain(new Pet { Stage = "child" }, new Tuning(), area) { Scale = 3 };
+            var sq = new Squad(new Rectangle(630, 0, 660, 1080), 1030, 3, new Random(7), 1);
+            using var ov = new Overlay(brain, () => sp, () => null, area) { SquadGame = () => sq, SquadFriends = () => new[] { "hamster", "fox", "penguin", "slime", "panda" } };
+            using var bmp = new Bitmap(660 * 2 + 20, 1080);
+            using var g = Graphics.FromImage(bmp);
+            g.Clear(Color.White);
+            int shot = 0;
+            for (int i = 0; i < 60 * 240 && shot < 2 && !sq.Done; i++)
+            {
+                sq.SetTarget(sq.BotTarget());
+                sq.Update(1 / 60.0);
+                if (shot == 0 && sq.Clock >= 26 || shot == 1 && sq.Boss is { } bs && bs.Hp < bs.Max * .7)
+                {
+                    using var frame = new Bitmap(1920, 1080);
+                    using (var fg = Graphics.FromImage(frame))
+                    {
+                        fg.Clear(Color.FromArgb(150, 160, 170));
+                        ov.Render(fg);
+                        fg.DrawImageUnscaled(sp.Get("child/0/walk", 0, 3), (int)sq.X - 60, (int)sq.Ground - 120); // 볼록이(대장)는 본체 창이 그린다: 여기선 흉내만
+                    }
+                    g.DrawImage(frame, new Rectangle(shot * 680, 0, 660, 1080), new Rectangle(630, 0, 660, 1080), GraphicsUnit.Pixel);
+                    shot++;
+                }
+            }
+            bmp.Save(args[1]);
+            return 0;
+        }
+
         if (args.Length == 3 && args[0] == "--scene") // 창 위 소품만 그려 본다 (화면을 찍지 않는다)
         {
             var sp = Sprites.Embedded();

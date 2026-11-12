@@ -37,6 +37,7 @@ Get **`Bolok.exe`** from the [latest release](https://github.com/goldfinger8157/
 | Runner (달리기 게임) | Cookie-Run-style runner along the bottom of the screen, keyboard only, with levels |
 | Breakout (벽돌깨기) | Your windows become bricks; the hamster carries the paddle |
 | Minigun (미니건) | Unlimited minigun and grenades versus your windows. No score, just stress relief |
+| Squad (볼록이 부대) | Move left and right (mouse or arrow keys) while your pet fires upward. Walk through +N / ×2 gates to recruit the friends you've met, shoot gift boxes for better weapons, and beat the giant bug boss. Gets harder each level |
 | Fortress (포트리스) | Turn-based artillery on window islands, with wind |
 | ICBM (ICBM 발사) | The hamster presses the red button, a mushroom cloud follows, then it walks over and repairs the crater |
 
@@ -93,6 +94,7 @@ out\Bolok.exe
 | 달리기 게임 | 화면 아래를 달리는 쿠키런식 게임. 키보드만 쓰고 레벨이 올라요 |
 | 벽돌깨기 | 창이 벽돌이 되고, 볼록이가 쟁반으로 쇠공을 튕겨요 |
 | 미니건 | 탄창 없는 미니건과 수류탄으로 창 부수기. 점수 없이 스트레스 풀기용이에요 |
+| 볼록이 부대 | 마우스나 ← → 로 좌우만 움직이면 위로 알아서 쏴요. +N·×2 문을 지나 도감 친구들을 모으고, 선물 상자를 쏴서 무기를 키우고, 거대 버그 보스를 잡아요. 이길수록 레벨이 올라요 |
 | 포트리스 | 창이 섬이 되는 턴제 포격전. 바람이 불어요 |
 | ICBM 발사 | 볼록이가 빨간 버튼을 누르면 버섯구름이 피고, 볼록이가 걸어가서 고쳐요 |
 

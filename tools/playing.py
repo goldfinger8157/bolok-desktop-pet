@@ -6,8 +6,8 @@ import pathlib
 import sys
 
 LOG = pathlib.Path(__file__).resolve().parent.parent / 'run/log.jsonl'
-START = {'game': '총쏘기', 'run-start': '달리기', 'break-start': '벽돌깨기', 'worms-start': '포트리스', 'gun-start': '미니건', 'icbm-start': 'ICBM'}
-END = {'game-end': '총쏘기', 'run-end': '달리기', 'run-quit': '달리기', 'break-end': '벽돌깨기', 'break-quit': '벽돌깨기', 'worms-end': '포트리스', 'gun-end': '미니건', 'icbm-end': 'ICBM'}
+START = {'game': '총쏘기', 'run-start': '달리기', 'break-start': '벽돌깨기', 'worms-start': '포트리스', 'gun-start': '미니건', 'icbm-start': 'ICBM', 'squad-start': '볼록이 부대'}
+END = {'game-end': '총쏘기', 'run-end': '달리기', 'run-quit': '달리기', 'break-end': '벽돌깨기', 'break-quit': '벽돌깨기', 'worms-end': '포트리스', 'gun-end': '미니건', 'icbm-end': 'ICBM', 'squad-end': '볼록이 부대'}
 
 try:
     lines = LOG.read_bytes().decode('utf-8', 'replace').splitlines()[-5000:]

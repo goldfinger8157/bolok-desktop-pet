@@ -329,6 +329,74 @@ static class Sim
         return $"달리기 잘하는 사람 ({string.Join(" / ", rows)}), 가만히 {lazy.Sec:F0}초";
     }
 
+    // 볼록이 부대: 문·상자·버그·ICBM 규칙, 자동 조종으로 레벨별 난이도
+    static string SquadChecks()
+    {
+        var field = new Rectangle(630, 0, 660, 1080);
+        var sq = new Squad(field, 1030, 3, new Random(1), script: false);
+        void Run(Squad s, double sec) { for (int i = 0; i < sec * 60 && !s.Done; i++) s.Update(1 / 60.0); }
+        sq.Gates.Add(new Squad.Gate { X = sq.X, Y = sq.SquadTop - 30, W = sq.LaneW, Add = 3 });
+        Run(sq, 1);
+        Expect(sq.Members == 4, $"「+3」 문을 지나면 셋이 들어온다: {sq.Members}");
+        Run(sq, 1);
+        Expect(sq.Members == 4, "문은 한 번만");
+        sq.Gates.Add(new Squad.Gate { X = sq.X, Y = sq.SquadTop - 30, W = sq.LaneW, Mul = 2 });
+        Run(sq, 1);
+        Expect(sq.Members == 8, $"「×2」 문은 두 배: {sq.Members}");
+        var miss = new Squad.Gate { X = sq.Lane(sq.X < field.Left + field.Width / 2 ? 1 : 0), Y = sq.SquadTop - 30, W = sq.LaneW - 30, Add = 5 };
+        sq.Gates.Add(miss);
+        Run(sq, 1);
+        Expect(sq.Members == 8 && !miss.Used, "다른 차선 문은 안 들어간다");
+        var box = new Squad.Box { X = sq.X, Y = sq.SquadTop - 260, Hp = 6, Max = 6 };
+        sq.Boxes.Add(box);
+        Run(sq, 2);
+        Expect(sq.Weapon == 1 && !sq.Boxes.Contains(box), $"선물 상자를 0 으로 만들면 무기가 한 단계: {sq.Weapon}");
+
+        var hurt = new Squad(field, 1030, 3, new Random(2), script: false) { Members = 6 };
+        hurt.Bugs.Add(new Squad.Bug { X = hurt.X, Y = hurt.SquadTop + hurt.BugR, Hp = 2, Max = 2 });
+        hurt.Update(1 / 60.0);
+        Expect(hurt.Members == 4 && hurt.Bugs.Count == 0, $"버그에 닿으면 그 체력만큼 빠진다: {hurt.Members}");
+        hurt.Bugs.Add(new Squad.Bug { X = hurt.X, Y = hurt.SquadTop + hurt.BugR, Hp = 9, Max = 9 });
+        hurt.Update(1 / 60.0);
+        Expect(hurt.Stage == Squad.Phase.Lost, "다 빠지면 진다");
+        Run(hurt, Squad.EndSec + .5);
+        Expect(hurt.Done, "지고 나면 잠깐 뒤 끝난다");
+
+        var nuke = new Squad(field, 1030, 3, new Random(3), script: false) { Weapon = Squad.MaxWeapon, Members = 10 };
+        for (int i = 0; i < 12; i++) nuke.Bugs.Add(new Squad.Bug { X = field.Left + 40 + i * 50, Y = 120, Hp = 50, Max = 50 });
+        nuke.Boxes.Add(new Squad.Box { X = nuke.X, Y = nuke.SquadTop - 200, Hp = 1, Max = 1 });
+        bool icbm = false;
+        nuke.OnEvent = e => icbm |= e == "icbm";
+        Run(nuke, .5);
+        Expect(icbm && nuke.Bugs.Count == 0, "무기를 다 모은 뒤 상자는 ICBM: 버그가 싹 사라진다");
+
+        // 자동 조종: 레벨 1 은 거의 이기고(한 판 45~120초), 레벨이 오르면 어려워진다
+        (bool Won, double Sec) Play(int level, int seed)
+        {
+            var s = new Squad(field, 1030, 3, new Random(seed), level);
+            bool won = false;
+            s.OnEvent = e => won |= e == "won";
+            for (int i = 0; i < 60 * 240 && !s.Done; i++)
+            {
+                s.SetTarget(s.BotTarget());
+                s.Update(1 / 60.0);
+                Expect(s.X - s.SquadHalf >= field.Left - 1 && s.X + s.SquadHalf <= field.Right + 1, "부대는 띠 밖으로 안 나간다");
+                Expect(s.Shots.Count <= Squad.MaxShots + 20 && s.Bugs.Count <= Squad.MaxBugs, "탄·버그 수 한도");
+            }
+            Expect(s.Done, $"판은 끝난다 (레벨 {level}, seed {seed})");
+            return (won, s.Clock);
+        }
+        var easy = Enumerable.Range(0, 6).Select(seed => Play(1, seed)).ToList();
+        var hard = Enumerable.Range(0, 6).Select(seed => Play(25, seed)).ToList();
+        int easyWins = easy.Count(r => r.Won), hardWins = hard.Count(r => r.Won);
+        double sec = easy.Where(r => r.Won).Select(r => r.Sec).DefaultIfEmpty(0).Average();
+        Expect(easyWins >= 5, $"레벨 1 은 거의 이긴다: {easyWins}/6");
+        Expect(hardWins <= 1, $"레벨 25 는 거의 진다: {hardWins}/6");
+        Expect(sec is >= 45 and <= 120, $"한 판 길이: {sec:F0}초");
+        var mid = Enumerable.Range(0, 6).Select(seed => Play(8, seed)).Count(r => r.Won);
+        return $"볼록이 부대: 레벨 1 {easyWins}/6 승(평균 {sec:F0}초), 레벨 8 {mid}/6, 레벨 25 {hardWins}/6";
+    }
+
     // 가짜 저장소: 주소별로 바이트를 돌려준다 (없으면 404). 요청한 주소를 적어 둔다
     sealed class FakeRaw : HttpMessageHandler
     {
@@ -1624,6 +1692,7 @@ static class Sim
         o.WriteLine(IcbmChecks());
         UpdaterChecks();
         PetSheetChecks();
+        o.WriteLine(SquadChecks());
         ClickChecks(k);
         EmoteChecks(k);
 

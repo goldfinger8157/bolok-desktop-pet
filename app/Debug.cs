@@ -136,6 +136,7 @@ public sealed class DevLink
             case "nap": if (!b.TryNap()) Dbg.Log("nap-none"); break;
             case "worms": form.WormsCommand(a); break;
             case "minigun": form.MinigunCommand(a); break;
+            case "squad": form.SquadCommand(a); break;
             case "icbm": form.IcbmCommand(a); break;
             case "species": form.SetSpecies(a[1]); break; // 예: species fox
             case "release": form.Release(); break;
