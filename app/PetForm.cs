@@ -904,14 +904,25 @@ public sealed class PetForm : Form
         else if (Night && nightDay != NightKey) { nightDay = NightKey; b.Emote("moon", 2.5); b.Greet("stretch", 1.6); Dbg.Log("greet", ("when", "night")); Save(); }
     }
 
-    // 꿈 말풍선: 잘 때 떠난 친구·선물·밥이 번갈아 (게임·숨기 중엔 안)
+    // 꿈 말풍선: 잘 때 가끔 한 번씩 (YELL: 계속 보이면 걸리적거린다). 잠든 지 8초 뒤 처음, 그 뒤 25~45초마다 4초 동안 그림 하나
+    //   그림: 떠난 친구·받은 선물·밥 중 아무거나 (게임·숨기 중엔 안)
+    double nextDream, dreamUntil;
+    string[] dreamNow = Array.Empty<string>();
+
     IReadOnlyList<string> Dreams()
     {
-        if (!b.P.Asleep || b.Pose != "sleep" || InGame || b.Behind) return Array.Empty<string>();
-        var list = released.Select(r => "thumb/" + r.Species).Distinct().Concat(gifts.Select(g => "item/" + g.Kind).Distinct()).ToList();
-        list.Add("icon/seed");
-        if (released.Count == 0) list.Add("icon/heart");
-        return list;
+        if (!b.P.Asleep || b.Pose != "sleep" || InGame || b.Behind) { nextDream = 0; return Array.Empty<string>(); }
+        double now = Environment.TickCount64 / 1000.0;
+        if (nextDream == 0) nextDream = now + 8;
+        if (now >= nextDream)
+        {
+            var list = released.Select(r => "thumb/" + r.Species).Distinct().Concat(gifts.Select(g => "item/" + g.Kind).Distinct()).ToList();
+            list.Add("icon/seed");
+            if (released.Count == 0) list.Add("icon/heart");
+            dreamNow = new[] { list[Random.Shared.Next(list.Count)] };
+            (dreamUntil, nextDream) = (now + 4, now + 25 + Random.Shared.NextDouble() * 20);
+        }
+        return now < dreamUntil ? dreamNow : Array.Empty<string>();
     }
 
     // 밤에 자는 동안 수면 모자 (머리 꼭대기: 몸 가운데 열에서 가장 위 칸)

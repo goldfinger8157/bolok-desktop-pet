@@ -314,8 +314,8 @@ public sealed class Overlay : Form
     Rectangle DreamRect()
     {
         int k = b.Scale;
-        double cx = b.X + 20 * k, cy = b.HeadY - 18 * k;
-        return Around(cx, cy, 17 * k, 16 * k);
+        double cx = b.X + 15 * k, cy = b.HeadY - 13 * k; // 작게 (YELL: 좀 크다)
+        return Around(cx, cy, 11 * k, 10 * k);
     }
 
     void DrawDream(Graphics g, IReadOnlyList<string> dreams)
@@ -326,8 +326,8 @@ public sealed class Overlay : Form
         using var line = new SolidBrush(Color.FromArgb(92, 58, 40));
         using var white = new SolidBrush(Color.White);
         void Puff(int x, int y, int rad) { g.FillEllipse(line, x - rad - k, y - rad - k, (rad + k) * 2, (rad + k) * 2); g.FillEllipse(white, x - rad, y - rad, rad * 2, rad * 2); }
-        Puff(head.X + 4 * k, head.Y - 4 * k, 2 * k);
-        Puff(head.X + 8 * k, head.Y - 9 * k, 3 * k);
+        Puff(head.X + 3 * k, head.Y - 2 * k, k);
+        Puff(head.X + 6 * k, head.Y - 5 * k, 2 * k);
         var mode = g.SmoothingMode;
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None; // 투명색 창: 부드럽게 그리면 분홍 테두리
         g.FillEllipse(line, r.X + k, r.Y + 3 * k, r.Width - 2 * k, r.Height - 6 * k);
@@ -339,7 +339,7 @@ public sealed class Overlay : Form
         {
             var one = sp.Get(pic, 0, 1);
             if (!dreamCrops.TryGetValue(pic, out var c)) dreamCrops[pic] = c = Ui.Opaque(one, 0);
-            int innerW = r.Width - 12 * k, innerH = r.Height - 14 * k, z = Math.Max(1, Math.Min(innerW / c.Width, innerH / c.Height));
+            int innerW = r.Width - 7 * k, innerH = r.Height - 9 * k, z = Math.Max(1, Math.Min(innerW / c.Width, innerH / c.Height));
             Ui.Pixel(g, one, new Rectangle(r.X + (r.Width - c.Width * z) / 2, r.Y + (r.Height - c.Height * z) / 2, c.Width * z, c.Height * z), c);
         }
     }
