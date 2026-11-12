@@ -281,6 +281,7 @@ public sealed class PetArt
     {
         var c = new Dictionary<string, uint>(colors);
         foreach (var k in ColorKeys) if (S.Has(k)) c[k] = Col(S, k);
+        if (S.Has("snout")) c["snout"] = Col(S, "snout");
         if (S.Has("form_colors")) // 햄스터: 형태마다 털색을 따로 정해 두었다
         {
             if (S.Obj("form_colors")!.Obj(form) is { } fc) foreach (var k in fc.Keys) c[k] = Col(fc, k);
@@ -464,7 +465,7 @@ public sealed class PetArt
         else
         {
             string nose = S.S("nose", "pink");
-            if (nose != "none") Nose(g, nose, fx, my, c);
+            if (nose is not ("none" or "snoot")) Nose(g, nose, fx, my, c);
             if (S.T("smile") && mk == "w") // 쿼카: 늘 활짝 웃는다
             {
                 g.Pix(c["line"], (fx - 3, my), (fx - 2, my + 1), (fx - 1, my + 2), (fx, my + 2), (fx + 1, my + 2), (fx + 2, my + 2), (fx + 3, my + 1), (fx + 4, my));
@@ -473,6 +474,7 @@ public sealed class PetArt
             else if (face == "frog" && mk == "w") // 개구리: 넓게 웃는 입
                 g.Pix(c["line"], Enumerable.Range(-4, 9).Select(i => ((double)(fx + i), (double)(my + (Math.Abs(i) < 3 ? 1 : 0)))).ToArray());
             else Mouth(g, mk, fx, my, S.Has("mouth_in") ? new Dictionary<string, uint>(c) { ["red"] = Col(S, "mouth_in") } : c);
+            if (nose == "snoot") Nose(g, nose, fx, my, c); // 돼지 코는 입보다 앞에 (입을 벌려도 코가 보이게)
             if (S.T("tongue") && mk == "w") // 시바: 살짝 내민 분홍 혀
             {
                 g.Pix(Rgb(236, 112, 128), (fx, my + 1), (fx + 1, my + 1), (fx, my + 2), (fx + 1, my + 2));
@@ -868,6 +870,11 @@ public sealed class PetArt
                 g.Pix(c["line"], (fx - 1, my - 2), (fx + 2, my - 2));
                 break;
             case "nostrils": g.Pix(c["line"], (fx - 1, my - 2), (fx + 2, my - 2), (fx - 1, my - 1), (fx + 2, my - 1)); break; // 카피바라
+            case "snoot": // 돼지: 얼굴 가운데 크게 튀어나온 동그란 코 (테두리·밝은 코판·콧구멍 둘)
+                g.Ell(fx + .5, my - 1.1, 3.9, 2.7, c["line"]);
+                g.Ell(fx + .5, my - 1.1, 3.0, 1.9, c.TryGetValue("snout", out var disc) ? disc : c["ear"]);
+                g.Pix(Mix(c["line"], c["ear"], .25), (fx - 1, my - 2), (fx - 1, my - 1), (fx + 2, my - 2), (fx + 2, my - 1));
+                break;
             case "dog": // 강아지: 크고 까만 코에 반짝임
                 g.Ell(fx + .5, my - 1.6, 2.1, 1.5, c["eye"]);
                 g.Put(fx - 1, my - 2, Rgb(140, 128, 128));
