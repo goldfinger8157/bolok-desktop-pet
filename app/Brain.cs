@@ -34,6 +34,8 @@ public sealed class Brain
     public readonly List<Bit> Bits = new();
     public readonly List<Heart> Hearts = new();
     public readonly List<Seed> Foods = new(); // 날아오는 중인 씨앗
+    public double BasketX, BasketY, BasketUntil; public bool BasketEmpty; // 먹이 바구니 (밥을 줄 때 잠깐 나와 씨앗을 던진다)
+    double nextBiteTry, nextShakeSpit;
     public bool PlayingAlone => solo;
     public int HolesVersion;
 
@@ -133,7 +135,15 @@ public sealed class Brain
         switch (what)
         {
             case "feed":
-                if (!P.Act(K, "feed")) { TossSeed(true); return; } // 배불러도 던지기는 보이고, 닿으면 고개를 젓는다
+                if (P.Food <= 0) // 바구니가 비었다: 빈 바구니를 흔들어 보이고 시무룩
+                {
+                    (BasketX, BasketY, BasketUntil, BasketEmpty) = (X + Dir * 160 * S, Y - CellPx * .9, Now + 1.6, true);
+                    Refuse("tear");
+                    Say(2.5, L.T("say.no_food"));
+                    return;
+                }
+                if (Full() >= 100) { TossSeed(true); return; } // 배불러도 던지기는 보이고, 닿으면 고개를 젓는다 (먹이는 안 쓴다)
+                P.Act(K, "feed");
                 TossSeed(false);
                 if (Mode == Mode.Anim && Pose == "eat" && !solo) until = Math.Min(Now + 2.5, until + .7); // 연달아 주면 더 오물오물
                 else Play("happy", K.TossSec, () => Play("eat", 1.1)); // 씨앗이 입에 닿으면 먹기 시작한다
@@ -809,7 +819,7 @@ public sealed class Brain
     public void GiveBack() // 트레이의 비상구: 발표 직전처럼 당장 화면이 필요할 때
     {
         P.Bites = 0;
-        P.Mood = Math.Max(P.Mood, K.SpitMood);
+        P.Mood = Math.Max(P.Mood, 30);
     }
 
     void OnEvents(List<string> list)
@@ -859,6 +869,7 @@ public sealed class Brain
         if (sx < Area.Left + 20 || sx > Area.Right - 20) { Dir = -Dir; sx = X + Dir * reach; }
         double sy = Y - CellPx * Rand(.7, 1.1);
         Foods.Add(new Seed { Sx = sx, Sy = sy, X = sx, Y = sy, Reject = reject });
+        (BasketX, BasketY, BasketUntil, BasketEmpty) = (sx, sy + 10 * S, Now + 1.3, false); // 바구니에서 꺼내 던진다
     }
 
     // 다른 모니터로 가야 하면 맞닿은 곳을 거쳐 간다. 빈 공간으로 들어가지 않는다
@@ -896,14 +907,20 @@ public sealed class Brain
 
     bool OnActive(double x, double y) => Active is { } w && w.R.IntersectsWith(Body(x, y));
 
-    (double, double) PickSpot()
+    // 일하는 창(활성 창) 위인가: 화면을 파먹는 자리·구멍은 활성 창과 겹치면 안 된다 (YELL 2026-11-13)
+    bool ActiveAt(double x, double y, double r) => Active is { } w && w.R.IntersectsWith(new Rectangle((int)(x - r), (int)(y - r), (int)(2 * r), (int)(2 * r)));
+
+    double Full() => P.Full;
+
+    (double, double)? PickSpot()
     {
         for (int i = 0; ; i++)
         {
             var a = i < 12 ? Area : World.Areas[rng.Next(World.Areas.Count)]; // 있는 모니터가 활성 창으로 꽉 차면 다른 모니터로
             double x = Rand(a.Left + 100 * S, a.Right - 100 * S), y = Rand(a.Top + 100 * S, a.Bottom - 100 * S);
             double dx = x - Mouse.X, dy = y - Mouse.Y;
-            if (i >= 40 || (dx * dx + dy * dy > 240 * S * 240 * S && !OnActive(x, y))) return (x, y); // 커서 밑과 일하는 창은 피해 준다
+            if (dx * dx + dy * dy > 240 * S * 240 * S && !OnActive(x, y) && !ActiveAt(x, y, 80 * S)) return (x, y); // 커서 밑과 일하는 창은 피해 준다
+            if (i >= 40) return null; // 다 활성 창이면 이번엔 안 먹는다
         }
     }
 
@@ -987,7 +1004,8 @@ public sealed class Brain
             if (pending is { } s)
             {
                 pending = null; // 먼저 비운다: 아래에서 실패해도 매 프레임 다시 시도하며 멈추지 않게
-                AddHole(s.X, s.Y, true);
+                if (!ActiveAt(s.X, s.Y, 80 * S)) AddHole(s.X, s.Y, true);
+                else nextBiteTry = Now + 10; // 먹으려던 사이에 그 창이 활성 창이 됐다: 다음에
             }
             Mode = Mode.Wander;
             next = Math.Max(Now + Rand(.6, 2), lastPoke + K.ClickHoldSec);
@@ -999,18 +1017,21 @@ public sealed class Brain
         }
         if (Mode == Mode.Wander && !P.Asleep && P.Stage != "egg")
         {
-            if (Holes.Count > P.Bites)
+            int onActive = Holes.FindIndex(h => ActiveAt(h.Cx, h.Cy, 60 * S)); // 일하는 창 위 구멍은 바로 뱉어 메운다
+            if (Holes.Count > P.Bites || onActive >= 0)
             {
-                var h = Holes[^1];
-                Holes.RemoveAt(Holes.Count - 1);
+                var h = Holes[onActive >= 0 ? onActive : Holes.Count - 1];
+                Holes.Remove(h);
+                if (onActive >= 0 && P.Bites > Holes.Count) P.Bites = Holes.Count;
                 HolesVersion++;
                 SpitBack(h);
                 Play("spit", .7);
+                Say(1, L.T("say.spit"));
             }
-            else if (Holes.Count < P.Bites)
+            else if (Holes.Count < P.Bites && Now >= nextBiteTry)
             {
-                spot = PickSpot();
-                Mode = Mode.GoBite;
+                if (PickSpot() is { } s) { spot = s; Mode = Mode.GoBite; }
+                else nextBiteTry = Now + 20;
             }
         }
 
@@ -1058,6 +1079,7 @@ public sealed class Brain
             case Mode.GoBite:
                 Pose = "walk";
                 var (sx, sy) = spot!.Value;
+                if (ActiveAt(sx, sy, 80 * S)) { Mode = Mode.Wander; next = Now + 1; nextBiteTry = Now + 10; spot = null; break; } // 가는 사이 활성 창이 됐다
                 if (Walk(Math.Clamp(sx - CellPx * .6, MinX, MaxX), Math.Clamp(sy + CellPx * .5, MinY, MaxY), 170, dt))
                 {
                     Dir = 1;
@@ -1087,6 +1109,16 @@ public sealed class Brain
                 {
                     if (!spinning) { Dbg.Log("shake"); }
                     shakenFor += dt;
+                    if (Holes.Count > 0 && Now >= nextShakeSpit) // 잡고 흔들면 볼 속 화면을 퉤! (YELL 2026-11-13)
+                    {
+                        var h = Holes[^1];
+                        Holes.RemoveAt(Holes.Count - 1);
+                        P.Bites = Math.Min(P.Bites, Holes.Count);
+                        HolesVersion++;
+                        SpitBack(h);
+                        Say(1, L.T("say.spit"));
+                        nextShakeSpit = Now + .5;
+                    }
                 }
                 spinning = shaking;
                 Pose = shaking ? "fly" : "held";

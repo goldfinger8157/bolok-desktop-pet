@@ -23,10 +23,10 @@ public sealed class Tuning
     public double CallAt { get; set; } = 25;        // 이 아래로 내려가면 말풍선으로 부른다
     public double GraceMin { get; set; } = 15;      // 0 에서 15분 방치 → 돌봄 실수 (P1 의 15분 규칙)
     public double MissEveryMin { get; set; } = 60;  // 이후 1시간마다 하나 더
-    public double BiteEveryMin { get; set; } = 10;  // 기분 0 에서 15분 뒤부터 10분마다 한 입
+    public double BiteEveryMin { get; set; } = 20;  // 배가 덜 차 있으면 간간이 한 입: 포만 0 이면 20분, 50 이면 40분, 90 이면 3시간 20분쯤마다 (YELL 2026-11-13)
     public int MaxBites { get; set; } = 12;
-    public double SpitMood { get; set; } = 30;      // 기분이 풀리면 3초에 한 입씩 뱉는다
-    public double SpitMin { get; set; } = 0.05;
+    public int FoodMax { get; set; } = 5;           // 먹이 바구니에 들어가는 최대 (YELL 2026-11-13: 일정 시간마다 생기고, 다 떨어지면 못 준다)
+    public double FoodEveryMin { get; set; } = 40;  // 바구니에 먹이가 하나 생기는 간격
     public double EggMin { get; set; } = 5;
     public double BabyMin { get; set; } = 65;
     public double ChildMin { get; set; } = 38 * 60; // 월요일에 부화해서 금요일 오후에 어른 (하루 8시간)
@@ -95,7 +95,8 @@ public sealed class Pet
     public int Bites { get; set; }
     public double SulkMin { get; set; }
     public double BiteIn { get; set; }
-    public double SpitIn { get; set; }
+    public int Food { get; set; } = 3;      // 바구니에 든 먹이
+    public double FoodIn { get; set; }      // 다음 먹이까지 쌓인 분
     public double ZeroFull { get; set; }
     public double ZeroMood { get; set; }
     public int Miss { get; set; }
@@ -116,6 +117,9 @@ public sealed class Pet
     public List<string> Tick(Tuning k, double m, bool afk = false)
     {
         var ev = new List<string>();
+        // 먹이 바구니: 일정 시간마다 하나씩 찬다 (알·잠·자리 비움에도 시간은 간다)
+        if (Food >= k.FoodMax) FoodIn = 0;
+        else if ((FoodIn += m) >= k.FoodEveryMin) { Food++; FoodIn -= k.FoodEveryMin; ev.Add("food"); }
         if (Stage == "egg")
         {
             if (afk) return ev;
@@ -142,21 +146,15 @@ public sealed class Pet
         ZeroMood = Mood > 0 ? 0 : ZeroMood + m;
         if (ZeroMood >= k.GraceMin) { Miss++; ZeroMood -= k.MissEveryMin; ev.Add("miss"); }
 
+        // 배가 덜 차 있으면 간간이 화면을 파먹는다 (YELL 2026-11-13): 배고플수록 자주, 꽉 차 있으면 안 먹는다.
+        // 볼 속에 넣어 둔 화면은 밥을 주거나(Act feed) 잡아 흔들면(Brain) 퉤! 하고 뱉는다. 심술이가 되는 건 배고플 때(부르는 선 아래) 먹은 것만 센다
         SulkMin = Mood > 0 ? 0 : SulkMin + m;
-        if (SulkMin >= k.GraceMin)
+        if (Full >= 100 || Bites >= k.MaxBites) BiteIn = k.BiteEveryMin;
+        else
         {
-            BiteIn -= m;
-            if (BiteIn <= 0 && Bites < k.MaxBites)
-            {
-                Bites++; BitesTotal++; BiteIn = k.BiteEveryMin; ev.Add("bite");
-            }
-        }
-        else BiteIn = 0;
-
-        if (Bites > 0 && Mood >= k.SpitMood)
-        {
-            SpitIn -= m;
-            if (SpitIn <= 0) { Bites--; SpitIn = k.SpitMin; ev.Add("spit"); }
+            if (BiteIn <= 0) BiteIn = k.BiteEveryMin; // 처음(옛 기록)엔 바로 먹지 않게
+            BiteIn -= m * (100 - Full) / 100;
+            if (BiteIn <= 0) { Bites++; if (Full < k.CallAt) BitesTotal++; BiteIn = k.BiteEveryMin; ev.Add("bite"); }
         }
 
         if (Stage == "baby" && AgeMin >= k.BabyMin) { Stage = "child"; ev.Add("grow"); }
@@ -171,9 +169,11 @@ public sealed class Pet
         if (Asleep && what != "wake") return false;
         switch (what)
         {
-            case "feed":
-                if (Full >= 100) return false;
+            case "feed": // 바구니에서 하나 꺼내 준다. 먹으면 볼 속 화면을 다 뱉는다
+                if (Full >= 100 || Food <= 0) return false;
                 Full = Clamp(Full + k.FeedFull); Mood = Clamp(Mood + k.FeedMood); Feeds++;
+                Food--;
+                Bites = 0;
                 return true;
             case "pet":
                 Mood = Clamp(Mood + k.PetMood); Pets++;

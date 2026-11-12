@@ -316,7 +316,8 @@ public sealed class PetForm : Form, IGameHost
     {
         void Add(string key, Action go) => menuTexts.Add((menu.Items.Add(L.T(key), null, (_, _) => go()), () => L.T(key)));
         // 돌보기 / 게임 / 앱 / 종료 를 분리선으로 나눈다
-        Add("menu.feed", () => b.Care("feed"));
+        var feedItem = menu.Items.Add("", null, (_, _) => b.Care("feed")); // 밥 주기 (바구니에 남은 먹이)
+        menuTexts.Add((feedItem, () => L.T("menu.feed_n", b.P.Food, b.K.FoodMax)));
         Add("menu.play", () => b.Care("play"));
         sleepItem.Click += (_, _) => b.Care(b.P.Asleep ? "wake" : "sleep");
         menu.Items.Add(sleepItem);
@@ -345,7 +346,7 @@ public sealed class PetForm : Form, IGameHost
         menu.Items.Add(new ToolStripSeparator());
         Add("menu.quit", Application.Exit);
         Localize();
-        menu.Opening += (_, _) => sleepItem.Text = L.T(b.P.Asleep ? "menu.wake" : "menu.sleep");
+        menu.Opening += (_, _) => { sleepItem.Text = L.T(b.P.Asleep ? "menu.wake" : "menu.sleep"); Localize(); }; // 바구니 수도 새로
         menu.Closed += (_, _) =>
         {
             if (returnFocus != IntPtr.Zero) Native.SetForegroundWindow(returnFocus);

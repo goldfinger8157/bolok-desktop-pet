@@ -1588,11 +1588,27 @@ static class Sim
         Expect(once.P.BitesTotal > 0, "하루 1번이면 화면을 먹는다");
         Expect(none.P.Stage == "adult_grumpy" && none.P.Bites == k.MaxBites, "방치하면 심술이");
 
-        var back = none.P; // 돌봐주면 먹은 화면을 전부 뱉는다
-        back.Tick(k, 0);
-        back.Act(k, "pet"); back.Act(k, "pet"); back.Act(k, "play");
-        for (int i = 0; i < 60 && back.Bites > 0; i++) back.Tick(k, k.SpitMin);
-        Expect(back.Bites == 0, "기분이 풀리면 뱉는다");
+        var back = none.P; // 밥을 주면 먹은 화면을 전부 뱉는다 (YELL 2026-11-13)
+        (back.Food, back.Asleep) = (1, false);
+        Expect(back.Act(k, "feed") && back.Bites == 0 && back.Food == 0, "밥을 주면 볼 속 화면을 다 뱉고, 바구니에서 하나 줄어든다");
+        Expect(!back.Act(k, "feed"), "바구니가 비면 못 준다");
+        var basket = new Pet { Food = 0 }; // 먹이 바구니는 일정 시간마다 하나씩, 최대까지
+        basket.Tick(k, k.FoodEveryMin - 1);
+        Expect(basket.Food == 0, "먹이는 시간이 차야 생긴다");
+        basket.Tick(k, 2);
+        Expect(basket.Food == 1, "시간이 차면 하나 생긴다");
+        for (int i = 0; i < 20; i++) basket.Tick(k, k.FoodEveryMin);
+        Expect(basket.Food == k.FoodMax, "바구니는 최대까지만");
+        var full = new Pet(); // 배가 덜 차 있으면 간간이, 배고플수록 자주 먹는다
+        full.Tick(k, k.EggMin);
+        full.Full = 0; full.Mood = 80;
+        for (int i = 0; i < 25; i++) full.Tick(k, 1);
+        Expect(full.Bites >= 1, $"배가 비면 20분쯤에 한 입 ({full.Bites})");
+        var fed = new Pet();
+        fed.Tick(k, k.EggMin);
+        fed.Full = 95; fed.Mood = 80;
+        for (int i = 0; i < 60; i++) { fed.Tick(k, 1); fed.Full = 95; }
+        Expect(fed.Bites == 0, "거의 배부르면 한 시간 동안은 안 먹는다");
 
         var away = new Pet(); // 자리를 비운 동안은 나빠지지 않는다
         away.Tick(k, k.EggMin);

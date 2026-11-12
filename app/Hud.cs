@@ -20,10 +20,10 @@ public sealed class Hud : Form
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
         BackColor = Color.FromArgb(188, 201, 166);
-        big = new Font("Malgun Gothic", 10.5f, FontStyle.Bold);
-        small = new Font("Malgun Gothic", 8.5f);
+        big = new Font("Malgun Gothic", 8.5f, FontStyle.Bold); // 작게 (YELL 2026-11-13: 글자·창을 줄여)
+        small = new Font("Malgun Gothic", 7.5f);
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
-        Size = new Size(LogicalToDeviceUnits(230), LogicalToDeviceUnits(debugLine != null ? 165 : 122));
+        Size = new Size(LogicalToDeviceUnits(196), LogicalToDeviceUnits(debugLine != null ? 128 : 96));
         Click += (_, _) => Hide();
     }
 
@@ -57,7 +57,7 @@ public sealed class Hud : Form
             $"포만 {Hearts(p.Full)}",
             $"기분 {Hearts(p.Mood)}",
             $"기운 {Hearts(p.Energy)}",
-            $"실수 {p.Miss}    볼 속 {Math.Max(p.Bites, b.Holes.Count)}입  {RunLine()}",
+            $"실수 {p.Miss}  볼 속 {Math.Max(p.Bites, b.Holes.Count)}입  밥 {p.Food}/{b.K.FoodMax}  {RunLine()}",
             debugLine?.Invoke() ?? "",
         };
     }
@@ -71,7 +71,7 @@ public sealed class Hud : Form
 
     protected override void OnPaint(PaintEventArgs e)
     {
-        int y = LogicalToDeviceUnits(8), x = LogicalToDeviceUnits(10), line = LogicalToDeviceUnits(21);
+        int y = LogicalToDeviceUnits(6), x = LogicalToDeviceUnits(8), line = LogicalToDeviceUnits(16);
         var lines = shown.Split('\n');
         for (int i = 0; i < lines.Length; i++)
         {

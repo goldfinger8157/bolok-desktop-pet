@@ -193,6 +193,7 @@ ITEMS = {
     'berry': ('...v...|..vv...|.rrrrr.|rrrrrrr|rrwrrrr|rrrrrrr|.rrrrr.', 'b'),
     'clover': ('...vv.vv.....|..vvvvvvv....|...vvvvv.....|vv..vvv..vv..|vvvv.v.vvvv..|.vvvveevvv...|vvvv.v.vvvv..|vv..vvv..vv..|...vvvvvv....|..vvvvvv.v...|...vv.vv..v..|..........v..|..........v..|..........v..', 'e'),  # 하트 잎 넷이 십자로, 긴 줄기 (YELL: 하트처럼 보였다 → 줄기를 더 길게)
     'sprout': ('.........vv..|.......vvvvv.|......vvvvevv|......vvvevvv|vvv..vvvevvv.|vvvv.vvevvv..|.veev.vevv...|...vvv.v.....|......v......|......v......|.....v.......|.....v.......|......v......', 'e'),  # 새싹: 왼쪽 작은 잎·오른쪽 둥근 큰 잎을 V로 떼고 잎맥, 휜 줄기 (YELL 이 보낸 그림을 참고)
+    'basket': ('...nnn...|..n...n..|.n.....n.|ooooooooo|onononono|ooooooooo|.ononono.|..ooooo..', 'b'),  # 먹이 바구니 (밥을 줄 때 잠깐 나와 씨앗을 던진다)
 }
 def bug(i, boss=False):
     """버그 습격: 편대로 날아드는 「화면 버그」. 동글한 보라 딱정벌레, 다리 꼼지락 두 장 (i).

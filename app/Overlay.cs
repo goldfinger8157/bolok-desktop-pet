@@ -142,6 +142,7 @@ public sealed class Overlay : Form
         if (Guest() is { } gv) r.Add(Client(GuestRect(gv)));
         if (Present() is { } pr) r.Add(Client(Around(pr.X, pr.Y - 8 * b.Scale, 14 * b.Scale, 14 * b.Scale)));
         if (Clover() is { } cl) r.Add(Client(Around(cl.X, cl.Y - 10 * b.Scale, 16 * b.Scale, 16 * b.Scale)));
+        if (b.Now < b.BasketUntil + .1) r.Add(Client(Around(b.BasketX, b.BasketY, 18 * b.Scale, 14 * b.Scale)));
         if (Dreams().Count > 0) r.Add(Client(DreamRect()));
         if (game() is { } gm)
         {
@@ -268,6 +269,12 @@ public sealed class Overlay : Form
             using var br = new SolidBrush(f.C == PetForm.Key ? Color.White : f.C);
             var p = ToClient(f.X, f.Y);
             g.FillRectangle(br, p.X, p.Y, 8, 8);
+        }
+        if (b.Now < b.BasketUntil) // 먹이 바구니: 씨앗을 꺼내 던지고 남은 수를 보인다. 비었으면 흔들어 보인다
+        {
+            int k = b.Scale, wob = b.BasketEmpty ? (int)Math.Round(Math.Sin(b.Now * 40) * 2 * k) : 0;
+            Put(g, sp.Get("item/basket", 0, k), (int)b.BasketX + wob, (int)b.BasketY);
+            Label(g, b.P.Food.ToString(), b.BasketX + 9 * k, b.BasketY - 6 * k, Math.Max(1, k - 1));
         }
         foreach (var seed in b.Foods)
         {
