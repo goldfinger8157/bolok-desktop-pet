@@ -143,7 +143,7 @@ EMOTES = {
 # 총쏘기 게임 그림. 글자는 #=주색, k=검정, g=진회색, l=연회색, w=흰색, r=빨강, y=금색, o=황동, b=갈색 선
 PAL = {'k': (18, 18, 22), 'g': (80, 80, 88), 'l': (200, 200, 206), 'w': (255, 255, 255), 'r': (232, 72, 92),
        'y': (250, 185, 40), 'o': (190, 130, 40), 'b': (92, 58, 40), 'd': (150, 150, 160),
-       'u': (96, 150, 230), 'v': (110, 190, 110), 'p': (240, 140, 170), 'n': (240, 150, 60), 'm': (170, 110, 220), 'e': (58, 126, 70)}
+       'u': (96, 150, 230), 'v': (110, 190, 110), 'p': (240, 140, 170), 'n': (240, 150, 60), 'm': (170, 110, 220), 'e': (58, 126, 70), 'c': (80, 214, 226)}
 GAME = {
     'aim': ('....rrr....|..rr...rr..|.r.......r.|.r...r...r.|r....r....r|r..rr.rr..r|r....r....r|.r...r...r.|.r.......r.|..rr...rr..|....rrr....', 'w'),
     'hole0': ('.....l.....|.....l.....|...ggg.....|..gkkkg.l..|lgkkkkkg...|..gkkkkgll.|...gkkg....|....ggl....|......l....', None),
@@ -178,6 +178,9 @@ GAME = {
     'button_down': ('............|............|..rrrrrrrr..|..rrrrrrrr..|dddddddddddd|dggggggggggd|dddddddddddd', 'b'),
     'missile': ('rr..........r..|rrrwwwwwwwwwrr.|.rrwwwwwwwwwrrr|rrrwwwwwwwwwrr.|rr..........r..', 'k'),
     'mg': ('.kkkkkkkkkkkkkkkk.|kggggggggggggggggk|kggggggkkkkkkkkk..|kggkk.kgk.........|kkk...kgk.........|......kkk.........', 'w'),
+    # 버그 떼: 벌레가 떨어뜨리는 보석, 칼 (레벨이 오를 때 뜨는 그림)
+    'gem': ('..c..|.cwc.|cwccc|ccccu|.ccu.|..u..', 'b'),
+    'sword': ('.......ll|......lwl|.....lwl.|o...lwl..|.o.lwl...|..owl....|..boo....|.b...o...|b........', 'b'),
     # 밤에 잘 때 쓰는 수면 모자 (끝에 흰 방울)
     'nightcap': ('........ww|.......uww|......uu..|.....uuu..|....uuuu..|...uuuuu..|..uuuuuu..|wwwwwwwwww', 'b'),
 }
@@ -225,6 +228,47 @@ def bug(i, boss=False):
         if boss:  # 성난 눈썹
             g.pix(leg, *[(cx + s_ * (ex - 2 + t), ey - 3 - (t if s_ < 0 else 3 - t) * .5) for t in range(4)])
     g.outline((60, 34, 80))
+    return g
+
+
+def critter(kind, i):
+    """버그 떼: 사방에서 걸어오는 벌레 두 가지, 두 장씩 (i). 머리가 아래를 본다 (버그와 같다)
+    wasp = 노란 줄무늬 말벌 (작고 빠르다, 날개가 파닥), beetle = 초록 딱정벌레 (느리고 단단하다, 다리 꼼지락)"""
+    g = Canvas()
+    if kind == 'wasp':
+        cx, cy, rx, ry = 20, 21, 4.5, 6
+        gold, dark, wing = (250, 196, 50), (70, 46, 30), (236, 244, 255)
+        for s_ in (-1, 1):  # 날개: 올렸다 내렸다
+            g.ell(cx + s_ * 6.5, cy - 2 + (2.5 if i else -1.5), 4, 2.6 if i else 3.4, wing)
+        g.put(cx, round(cy - ry) - 1, dark)  # 침 (꼬리 = 위)
+        g.ell(cx, cy, rx, ry, gold)
+        for y in (cy - 3, cy):  # 줄무늬
+            for x in range(CELL):
+                if g.p[y][x] == gold and abs(x + .5 - cx) < rx:
+                    g.put(x, y, dark)
+        for s_ in (-1, 1):
+            g.ell(cx + s_ * 2, cy + 3.4, 1.2, 1.2, (255, 255, 255))
+            g.put(round(cx + s_ * 2 - .5), round(cy + 3.6), (40, 24, 20))
+        g.outline(dark)
+        return g
+    cx, cy, rx, ry = 20, 20, 9, 8
+    body, shade, light, leg = (104, 184, 96), (64, 134, 74), (176, 226, 150), (34, 74, 44)
+    for s_ in (-1, 1):  # 다리 셋씩, 장마다 앞뒤로
+        for n, dy in enumerate((-.55, 0, .55)):
+            wig = 1 if (n + i) % 2 else -1
+            for t in range(4):
+                g.put(round(cx + s_ * (rx * .8 + t)), round(cy + dy * ry + (wig if t >= 2 else 0)), leg)
+        for t in range(3):  # 작은 뿔 (머리 쪽 = 아래)
+            g.put(round(cx + s_ * (2 + t)), round(cy + ry + t), leg)
+    g.ell(cx, cy, rx, ry, shade)
+    g.ell(cx, cy - .8, rx - 1.2, ry - 1.4, body, True)
+    for x, y in ((-4, -3), (4, -3), (-3.5, 1.5), (3.5, 1.5)):  # 등딱지 점
+        g.ell(cx + x, cy + y, 1.5, 1.5, light, True)
+    g.pix(shade, *[(cx, cy - ry + 2 + t) for t in range(int(ry * 1.3))])  # 등딱지 가운데 줄
+    for s_ in (-1, 1):  # 눈 (아래쪽)
+        g.ell(cx + s_ * 3.6, cy + ry * .55, 1.5, 1.5, (255, 255, 255))
+        g.put(round(cx + s_ * 3.6 - .5), round(cy + ry * .55 + .3), (30, 40, 30))
+    g.outline(leg)
     return g
 
 
@@ -579,6 +623,7 @@ def build():
     rows += [(f'game/{k}', [gun(v)]) for k, v in GUNS.items()]
     rows += [('game/nuke', [nuke(i) for i in range(8)])]
     rows += [('game/bug', [bug(0), bug(1)]), ('game/bugboss', [bug(0, True), bug(1, True)])]
+    rows += [(f'game/{k}', [critter(k, 0), critter(k, 1)]) for k in ('wasp', 'beetle')]
     rows += [('num/+', [art('...|.#.|###|.#.|...', 'b', C['white'])]), ('num/x', [art('...|#.#|.#.|#.#|...', 'b', C['white'])])]
     rows += [(f'item/{k}', [art(*v)]) for k, v in ITEMS.items()]
     rows += [('game/flash', [art('..y..|.yyy.|yywyy|.yyy.|..y..', 'r')])]

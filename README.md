@@ -40,6 +40,7 @@ Get **`Bolok.exe`** from the [latest release](https://github.com/goldfinger8157/
 | Breakout (벽돌깨기) | Your windows become bricks; the hamster carries the paddle |
 | Minigun (미니건) | Unlimited minigun and grenades versus your windows. No score, just stress relief |
 | Bug Raid (버그 습격) | A classic fixed shooter in a small box next to your pet: bug squadrons swoop in, line up and dive at you. Move with the mouse or arrow keys; it fires automatically |
+| Bug Swarm (버그 떼) | Bugs pour in from every side of a small arena around your pet. Move with the arrow keys; the gun and sword attack on their own. Pick up gems to level up and hold out for three minutes |
 | Fortress (포트리스) | Turn-based artillery on window islands, with wind |
 | ICBM (ICBM 발사) | The hamster presses the red button, a mushroom cloud follows, then it walks over and repairs the crater |
 
@@ -100,6 +101,7 @@ out\Bolok.exe
 | 벽돌깨기 | 창이 벽돌이 되고, 볼록이가 쟁반으로 쇠공을 튕겨요 |
 | 미니건 | 탄창 없는 미니건과 수류탄으로 창 부수기. 점수 없이 스트레스 풀기용이에요 |
 | 버그 습격 | 볼록이 옆 작은 판에서 하는 고전 슈팅이에요. 버그 편대가 날아들어 줄을 서고 내려와 공격해요. 마우스나 ← →로 움직이기만 하면 쏘는 건 자동이에요 |
+| 버그 떼 | 볼록이 둘레 작은 판으로 벌레가 사방에서 몰려와요. 방향키로 피해 다니면 총과 칼은 알아서 싸워요. 보석을 주워 세지면서 3분을 버티면 이겨요 |
 | 포트리스 | 창이 섬이 되는 턴제 포격전. 바람이 불어요 |
 | ICBM 발사 | 볼록이가 빨간 버튼을 누르면 버섯구름이 피고, 볼록이가 걸어가서 고쳐요 |
 
