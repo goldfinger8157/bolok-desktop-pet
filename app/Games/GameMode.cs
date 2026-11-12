@@ -35,11 +35,11 @@ interface IGameHost
 static class GameModes
 {
     // 메뉴에 이 순서로 나온다
-    public static List<IGameMode> Create(IGameHost host) => new() { new RaidGame(host) };
+    public static List<IGameMode> Create(IGameHost host) => new() { new RaidGame(host), new SwarmGame(host) };
 
     // 자가 검사: 게임마다 제 규칙을 검사하고 한 줄 결과를 돌려준다 (실패면 예외)
-    public static IEnumerable<Func<string>> Checks => new Func<string>[] { RaidGame.Check };
+    public static IEnumerable<Func<string>> Checks => new Func<string>[] { RaidGame.Check, SwarmGame.Check };
 
     // 화면을 띄우지 않고 그려 보기: Bolok.exe --mode-scene <id> <그림.png>
-    public static Dictionary<string, Action<string>> Scenes => new() { ["raid"] = RaidGame.Scene };
+    public static Dictionary<string, Action<string>> Scenes => new() { ["raid"] = RaidGame.Scene, ["swarm"] = SwarmGame.Scene };
 }

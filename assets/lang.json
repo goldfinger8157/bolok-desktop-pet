@@ -131,6 +131,18 @@
   "pt": "Ataque dos bichos",
   "ru": "Налёт жуков"
  },
+ "menu.swarm": {
+  "en": "Bug Swarm",
+  "ko": "버그 떼",
+  "ja": "バグの大群",
+  "zh-Hans": "虫群围攻",
+  "zh-Hant": "蟲群圍攻",
+  "es": "Enjambre de bichos",
+  "de": "Käferschwarm",
+  "fr": "Nuée de bestioles",
+  "pt": "Enxame de bichos",
+  "ru": "Рой жуков"
+ },
  "menu.showcase": {
   "en": "Character check (debug)",
   "ko": "캐릭터 확인 (디버그)",
@@ -574,6 +586,30 @@
   "fr": "Tir automatique",
   "pt": "Atira sozinho",
   "ru": "Стреляет сам"
+ },
+ "note.swarm_move": {
+  "en": "←↑↓→: Move",
+  "ko": "←↑↓→: 움직이기",
+  "ja": "←↑↓→: 移動",
+  "zh-Hans": "←↑↓→: 移动",
+  "zh-Hant": "←↑↓→: 移動",
+  "es": "←↑↓→: Moverse",
+  "de": "←↑↓→: Bewegen",
+  "fr": "←↑↓→ : Bouger",
+  "pt": "←↑↓→: Mover",
+  "ru": "←↑↓→: Двигаться"
+ },
+ "note.swarm_auto": {
+  "en": "Gun and sword are automatic",
+  "ko": "총과 칼은 자동이에요",
+  "ja": "銃と剣は自動だよ",
+  "zh-Hans": "枪和剑自动攻击",
+  "zh-Hant": "槍和劍自動攻擊",
+  "es": "Pistola y espada automáticas",
+  "de": "Pistole und Schwert automatisch",
+  "fr": "Pistolet et épée automatiques",
+  "pt": "Arma e espada automáticas",
+  "ru": "Пистолет и меч бьют сами"
  },
  "stage.egg": {
   "en": "Egg",
@@ -1762,6 +1798,30 @@
   "fr": "Record {0} · Lv.{1}",
   "pt": "Recorde {0} · Lv.{1}",
   "ru": "Рекорд {0} · Lv.{1}"
+ },
+ "game.swarm": {
+  "en": "Bug Swarm",
+  "ko": "버그 떼",
+  "ja": "バグの大群",
+  "zh-Hans": "虫群围攻",
+  "zh-Hant": "蟲群圍攻",
+  "es": "Enjambre de bichos",
+  "de": "Käferschwarm",
+  "fr": "Nuée de bestioles",
+  "pt": "Enxame de bichos",
+  "ru": "Рой жуков"
+ },
+ "game.swarm_val": {
+  "en": "Best {0} · {1} bugs",
+  "ko": "최고 {0} · {1}마리",
+  "ja": "ベスト {0} · {1}匹",
+  "zh-Hans": "最高 {0} · {1} 只",
+  "zh-Hant": "最高 {0} · {1} 隻",
+  "es": "Récord {0} · {1} bichos",
+  "de": "Bestzeit {0} · {1} Käfer",
+  "fr": "Record {0} · {1} bestioles",
+  "pt": "Recorde {0} · {1} bichos",
+  "ru": "Рекорд {0} · жуков: {1}"
  },
  "game.run": {
   "en": "Running",
