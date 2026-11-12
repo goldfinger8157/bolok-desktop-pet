@@ -1653,6 +1653,7 @@ static class Sim
         foreach (var check in GameModes.Checks) o.WriteLine(check()); // 게임 모듈은 제 규칙을 스스로 검사한다
         o.WriteLine(PetArt.Check()); // 데이터로 그린 캐릭터
         o.WriteLine(Clover.Check());
+        o.WriteLine(Gestures.Check());
         LangChecks();
         MemoryChecks();
         ClickChecks(k);

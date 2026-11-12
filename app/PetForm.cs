@@ -411,6 +411,7 @@ public sealed class PetForm : Form, IGameHost
         if (leaving) LeaveFrame(dt);
         WatchHatch();
         CloverTick();
+        GestureTick();
         VisitTick();
         PresentTick();
         if (visitor != null) visitor.Update(dt, b.X, b.Y, b.Mode is Mode.Wander or Mode.Anim || b.P.Asleep, b.P.Asleep, b.Area);
@@ -908,6 +909,22 @@ public sealed class PetForm : Form, IGameHost
             (dreamUntil, nextDream) = (now + 4, now + 25 + Random.Shared.NextDouble() * 20);
         }
         return now < dreamUntil ? dreamNow : Array.Empty<string>();
+    }
+
+    // ── 마우스 손짓 (규칙은 Gestures.cs): 누르지 않고 커서만 움직여 쓰다듬기·툭툭·찌르기 (YELL 2026-11-13) ──
+    readonly Gestures gestures = new();
+
+    void GestureTick()
+    {
+        var (name, frame, flip, _) = drawn;
+        if (pressing || name == null || !Visible || InGame || b.P.Stage == "egg") { gestures.Reset(); return; }
+        var p = Control.MousePosition;
+        int k = b.Scale, px = (int)Math.Floor((p.X - Left - 8.0) / k), py = (int)Math.Floor((double)(p.Y - Top) / k);
+        double cx = (p.X - Left - 8.0) / k, cy = (double)(p.Y - Top) / k;
+        if (b.Dir < 0) cx = 40 - cx; // 뒤집혀 있으면 좌우를 되돌린다 (클릭과 같게)
+        bool inside = px is >= 0 and < 40 && py is >= 0 and < 40 && sprites.Get(name, frame, 1, flip).GetPixel(px, py).A > 0;
+        string zone = inside ? Clicks.Zone(b.P.Stage, cx, cy) : "";
+        if (gestures.Feed(Environment.TickCount64 / 1000.0, cx, cy, inside, zone) is { } g) b.Gesture(g);
     }
 
     // ── 네잎클로버 (규칙은 Clover.cs): 돋으면 "!" 하고 주우러 가서 머리에 꽂는다. 던져지면 떨어지고 다시 줍는다 ──

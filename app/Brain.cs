@@ -171,6 +171,22 @@ public sealed class Brain
         Poke(x, y);
     }
 
+    // 마우스 손짓 (PetForm 이 커서 움직임에서 알아낸다, Gestures.cs): 쓰다듬기·툭툭은 쓰다듬기로 쳐 주고, 찌르기는 깜짝
+    public void Gesture(string kind)
+    {
+        if (P.Stage == "egg" || Mode is Mode.Thrown or Mode.Held or Mode.Puppet or Mode.Hiding or Mode.SlipIn or Mode.Emerge or Mode.Run or Mode.Paddle or Mode.Prey) return;
+        Dbg.Log("gesture", ("kind", kind), ("asleep", P.Asleep));
+        if (kind != "poke" && Now >= nextPet) { P.Act(K, "pet"); nextPet = Now + K.PetCooldownSec; }
+        if (P.Asleep) { if (kind != "poke") Emote("heart", 1.2); return; } // 자다가 쓰다듬으면 배시시 (깨지는 않는다)
+        lastPoke = Now;
+        switch (kind)
+        {
+            case "stroke": Play("nuzzle", 1.4); Heart(); break;
+            case "pat": Play("giggle", 1.1); Emote("note"); break;
+            case "poke": Play("squish", .8); Emote("bang", .8); break;
+        }
+    }
+
     void Heart()
     {
         if (Hearts.Count < 3) Hearts.Add(new Heart { X = X + Rand(-30, 30) * S, Y = Y - CellPx * .95 });
