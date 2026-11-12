@@ -401,6 +401,7 @@ public sealed class PetForm : Form, IGameHost
         if (dt > 0) fps = fps * .95 + .05 / dt;
 
         b.Mouse = MousePosition;
+        BossKeyTick();
         if (breakAuto && breakout is { } auto && auto.Balls.Where(x => !x.Stuck).MaxBy(x => x.Vy > 0 ? x.Y : x.Y - 2000) is { } low)
             b.Mouse = new Point((int)low.X, b.Mouse.Y); // 디버그 시험: 가장 낮게 내려오는 공을 받는다
         if (runner != null) RunFrame(dt);
@@ -1055,7 +1056,35 @@ public sealed class PetForm : Form, IGameHost
         lastStage = b.P.Stage;
     }
 
-    bool InGame => game != null || runner != null || breakout != null || worms != null || minigun != null || icbm != null || leaving || modes.Any(m => m.Running);
+    bool InGame => Playing || leaving;
+    bool Playing => game != null || runner != null || breakout != null || worms != null || minigun != null || icbm != null || modes.Any(m => m.Running);
+
+    // ── 보스 키 (YELL 2026-11-13: "게임에서 esc 는 언제나 빠져나가기다!!") ──
+    // 어느 창에 초점이 있든(판을 놓쳐 일하는 창을 눌렀어도) Esc 를 누르는 순간 하던 게임을 결과 화면 없이 곧바로 다 끝내고,
+    // 볼록이도 별·눈물·말풍선 없이 하던 대로 돌아간다. 키는 초점 없이 상태만 본다. 누르고 있던 Esc 로 시작하자마자 끝나지 않게 눌리는 순간만 본다
+    bool escWas = true;
+    void BossKeyTick()
+    {
+        bool esc = Native.KeyDown(Keys.Escape);
+        if (esc && !escWas) BossKey();
+        escWas = esc;
+    }
+
+    public void BossKey(Action? quit = null)
+    {
+        if (!Playing) return;
+        Dbg.Log("boss-key");
+        quit?.Invoke(); // 판이 알려 준 끝내기 (아래와 겹쳐도 게임마다 한 번만 끝난다)
+        foreach (var m in modes) if (m.Running) m.Stop(true);
+        if (runner != null) EndRun(true);
+        if (breakout != null) EndBreak(true);
+        if (worms != null) EndWorms(true);
+        if (minigun != null) EndMinigun(true);
+        if (icbm != null) EndIcbm();
+        if (game is { } gm) { gm.Finish(); gm.Finish(); EndGame(); } // 결과 화면 없이
+        b.Hush();
+        foreach (var o in overlays) o.Invalidate();
+    }
 
     // 게임판: 그 모니터 위에 1% 판을 깔아 클릭·키를 받는다. 다른 창은 안 눌린다
     GameLayer OpenLayer(Rectangle field, MouseEventHandler down, MouseEventHandler up, Action quit)
@@ -1063,7 +1092,7 @@ public sealed class PetForm : Form, IGameHost
         var layer = new GameLayer(field, b.K.GameLayerOpacity);
         layer.MouseDown += down;
         layer.MouseUp += up;
-        layer.KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) quit(); };
+        layer.KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) BossKey(quit); }; // 판에 초점이 있을 때도 보스 키 하나로
         layers.Add(layer);
         layer.Show();
         layer.Bounds = field;
@@ -1449,7 +1478,7 @@ public sealed class PetForm : Form, IGameHost
         var layer = new GameLayer(arena, b.K.GameLayerOpacity);
         layer.MouseDown += (_, e) => GameMouse(e.Button == MouseButtons.Right, layer.Left + e.X, layer.Top + e.Y);
         layer.MouseUp += (_, e) => { if (e.Button == MouseButtons.Left) game?.Release(); };
-        layer.KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) { Dbg.Log("press", ("result", "esc")); game?.Finish(); } };
+        layer.KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) BossKey(); }; // 결과 화면 없이 바로 끝
         layers.Add(layer);
         layer.Show();
         layer.Bounds = arena;

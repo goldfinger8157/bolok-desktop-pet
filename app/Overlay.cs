@@ -437,7 +437,7 @@ public sealed class Overlay : Form
     // 처음 4초는 조작 안내, 레벨이 오르면 잠깐 「Lv.N!」. 글자 말풍선은 이것뿐이다 (YELL 이 달라고 함)
     const double GuideSec = 4;
     static string[]? NoteLines(Runner run) =>
-        run.Clock < GuideSec ? new[] { L.T("note.run_level", run.Level, Bolok.Runner.GoalOf(run.Level)), L.T("note.run_jump"), L.T("note.run_duck"), L.T("note.run_quit") }
+        run.Clock < GuideSec ? new[] { L.T("note.run_level", run.Level, Bolok.Runner.GoalOf(run.Level)), L.T("note.run_jump"), L.T("note.run_duck"), L.T("note.esc") }
         : run.Clock - run.LevelAt < 1.6 ? new[] { $"Lv.{run.Level}!" } : null;
 
     Font? noteFont;

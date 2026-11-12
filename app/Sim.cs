@@ -38,7 +38,7 @@ static class Sim
     static string Row(string name, Result r)
     {
         string first = r.FirstBite is { } f ? (f / 60).ToString("F1") + "시간" : "-";
-        return $"{name.PadRight(8)} {r.P.Stage.PadRight(13)} 실수 {r.P.Miss} 누적 {r.P.BitesTotal}입 남은 {r.P.Bites}입 " +
+        return $"{name.PadRight(8)} {r.P.Stage.PadRight(13)} 실수 {r.P.Miss} 배고팠던 비율 {r.P.HungryShare:P0} 누적 {r.P.BitesTotal}입 남은 {r.P.Bites}입 " +
                $"최저 포만 {r.MinFull:F0} 기분 {r.MinMood:F0} 첫 입 {first}";
     }
 
@@ -1577,15 +1577,19 @@ static class Sim
         var good = Week(k, Three, 2, 3, 1);
         var sweet = Week(k, Three, 2, 8, 1);
         var once = Week(k, new[] { H(9, 30) }, 2, 3, 1);
+        var twice = Week(k, new[] { H(9, 30), H(14) }, 2, 3, 1);
         var none = Week(k, Array.Empty<int>(), 0, 0, 0);
         o.WriteLine(Row("성실", good));
         o.WriteLine(Row("애교", sweet));
+        o.WriteLine(Row("하루 2번", twice));
         o.WriteLine(Row("바쁜 주", once));
         o.WriteLine(Row("방치", none));
 
         Expect(good.P.Miss == 0 && good.P.BitesTotal == 0 && good.P.Stage == "adult_chubby", "하루 3번이면 무탈");
         Expect(sweet.P.Stage == "adult_sweet", "쓰다듬기를 듬뿍 하면 애교쟁이");
         Expect(once.P.BitesTotal > 0, "하루 1번이면 화면을 먹는다");
+        Expect(good.P.HungryShare < k.GrumpyHungry && sweet.P.HungryShare < k.GrumpyHungry && once.P.HungryShare >= k.GrumpyHungry,
+            $"심술이는 횟수가 아니라 배고팠던 비율로: 하루 3번 {good.P.HungryShare:P0}·하루 1번 {once.P.HungryShare:P0} (기준 {k.GrumpyHungry:P0})");
         Expect(none.P.Stage == "adult_grumpy" && none.P.Bites == k.MaxBites, "방치하면 심술이");
 
         var back = none.P; // 밥을 주면 먹은 화면을 전부 뱉는다 (YELL 2026-11-13)

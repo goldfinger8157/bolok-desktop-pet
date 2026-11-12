@@ -119,6 +119,13 @@ public sealed class Brain
 
     void Refuse(string emote) { ShakeUntil = Now + .5; Emote(emote); }
 
+    // 보스 키로 게임을 끝냈을 때: 별·눈물·말풍선·기뻐하기 없이 곧바로 하던 대로 (티 나지 않게)
+    public void Hush()
+    {
+        EmoteUntil = SayUntil = ShakeUntil = 0;
+        if (Mode == Mode.Anim && then == null) { Mode = Mode.Wander; Pose = "idle"; next = Now + 2; }
+    }
+
     public string SpriteName()
     {
         if (P.Stage == "egg") return P.AgeMin >= K.EggMin * .6 ? "egg/hatch" : "egg/idle";

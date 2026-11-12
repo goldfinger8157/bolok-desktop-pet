@@ -117,7 +117,7 @@ t('st.miss', 'Care misses', '돌봄 실수')
 t('st.miss_desc', 'Goes up when it stays hungry or bored for over 15 minutes', '배고프거나 심심한 채로 15분 넘게 두면 하나씩 늘어요')
 t('st.miss_value', '{0}', '{0}번')
 t('st.bites', 'Screen bits in its cheeks', '볼 속 화면 조각')
-t('st.bites_desc', 'When grumpy, it nibbles your screen. Feed it and it spits them back. Total so far: {0}', '기분이 나쁘면 화면을 갉아 먹어요. 밥을 주면 뱉어 내요. 지금까지 {0}입')
+t('st.bites_desc', 'When not full, it nibbles your screen now and then. Feed it or shake it and it spits them back. Total so far: {0}', '배가 덜 차면 가끔 화면을 갉아 먹어요. 밥을 주거나 잡아 흔들면 퉤! 뱉어요. 지금까지 {0}입')
 t('st.bites_value', '{0}', '{0}입')
 t('st.care_foot', '8 care misses, or more than 12 screen bites in total, and it grows up Grumpy. Much more petting than feeding makes a Sweetie; otherwise it becomes Chubby.',
   '돌봄 실수가 8번이 되거나 화면을 모두 12입 넘게 먹으면 심술이로 자라요. 밥보다 쓰다듬기를 훨씬 많이 하면 애교쟁이, 아니면 통통이가 돼요.')

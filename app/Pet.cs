@@ -30,7 +30,8 @@ public sealed class Tuning
     public double EggMin { get; set; } = 5;
     public double BabyMin { get; set; } = 65;
     public double ChildMin { get; set; } = 38 * 60; // 월요일에 부화해서 금요일 오후에 어른 (하루 8시간)
-    public int GrumpyBites { get; set; } = 12;
+    public double GrumpyHungry { get; set; } = .3; // 아기·어린이 때 깨어 있던 시간 중 배고픈 채(부르는 선 아래)로 둔 비율이 이만큼이면 심술이.
+                                                   // 횟수(파먹은 입 수)가 아니라 비율로 본다 (YELL 2026-11-13): 기간이 길든 짧든, 파먹는 간격을 바꾸든 기준이 안 흔들린다
     public int GrumpyMiss { get; set; } = 8;
     public double SweetRatio { get; set; } = 3;
 
@@ -104,12 +105,15 @@ public sealed class Pet
     public int Pets { get; set; }
     public int Plays { get; set; }
     public int BitesTotal { get; set; }
+    public double CareMin { get; set; }     // 아기·어린이 때 깨어 있던 분
+    public double HungryMin { get; set; }   // 그중 배고픈 채로 둔 분
+    public double HungryShare => CareMin > 0 ? HungryMin / CareMin : 0;
 
     static double Clamp(double v) => Math.Clamp(v, 0, 100);
 
     string AdultForm(Tuning k)
     {
-        if (BitesTotal >= k.GrumpyBites || Miss >= k.GrumpyMiss) return "adult_grumpy";
+        if (HungryShare >= k.GrumpyHungry || Miss >= k.GrumpyMiss) return "adult_grumpy";
         return Pets >= Feeds * k.SweetRatio ? "adult_sweet" : "adult_chubby";
     }
 
@@ -136,6 +140,7 @@ public sealed class Pet
         }
 
         AgeMin += m;
+        if (Stage is "baby" or "child") { CareMin += m; if (Full < k.CallAt) HungryMin += m; } // 어른 모습은 비율로 정한다
         Full = Clamp(Full - k.FullPerH * m / 60);
         Mood = Clamp(Mood - k.MoodPerH * m / 60);
         Energy = Clamp(Energy - k.EnergyPerH * m / 60);

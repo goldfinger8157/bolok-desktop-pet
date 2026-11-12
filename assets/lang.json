@@ -1584,16 +1584,16 @@
   "ru": "Кусочки экрана за щеками"
  },
  "st.bites_desc": {
-  "en": "When grumpy, it nibbles your screen. Feed it and it spits them back. Total so far: {0}",
-  "ko": "기분이 나쁘면 화면을 갉아 먹어요. 밥을 주면 뱉어 내요. 지금까지 {0}입",
-  "ja": "ごきげんななめだと画面をかじっちゃうよ。ごはんをあげると吐き出すよ。これまでに{0}口",
-  "zh-Hans": "心情不好时会啃你的屏幕。喂它吃东西就会吐出来。目前共 {0} 口",
-  "zh-Hant": "心情不好時會啃你的螢幕。餵它吃東西就會吐出來。目前共 {0} 口",
-  "es": "Si está de mal humor, mordisquea tu pantalla. Dale de comer y los escupe. Total hasta ahora: {0}",
-  "de": "Wenn es schlechte Laune hat, knabbert es an deinem Bildschirm. Füttere es, dann spuckt es alles aus. Bisher: {0}",
-  "fr": "Quand il est de mauvaise humeur, il grignote ton écran. Nourris-le et il recrache tout. Total à ce jour : {0}",
-  "pt": "Quando está de mau humor, ele mordisca sua tela. Alimente-o e ele devolve. Total até agora: {0}",
-  "ru": "В плохом настроении он грызёт ваш экран. Покормите, и он всё выплюнет. Всего пока: {0}"
+  "en": "When not full, it nibbles your screen now and then. Feed it or shake it and it spits them back. Total so far: {0}",
+  "ko": "배가 덜 차면 가끔 화면을 갉아 먹어요. 밥을 주거나 잡아 흔들면 퉤! 뱉어요. 지금까지 {0}입",
+  "ja": "お腹がいっぱいじゃないと、ときどき画面をかじります。ごはんをあげるか、つかんで振るとペッと返します。これまで {0}口",
+  "zh-Hans": "没吃饱时会时不时啃你的屏幕。喂它或抓起来摇一摇，它就会吐回来。目前共 {0} 口",
+  "zh-Hant": "沒吃飽時會不時啃你的螢幕。餵它或抓起來搖一搖，牠就會吐回來。目前共 {0} 口",
+  "es": "Cuando no está lleno, mordisquea tu pantalla de vez en cuando. Dale de comer o agítalo y la escupe. Total hasta ahora: {0}",
+  "de": "Wenn es nicht satt ist, knabbert es ab und zu an deinem Bildschirm. Füttere oder schüttle es, dann spuckt es alles wieder aus. Bisher: {0}",
+  "fr": "Quand il n'a pas assez mangé, il grignote ton écran de temps en temps. Nourris-le ou secoue-le et il recrache tout. Total : {0}",
+  "pt": "Quando não está satisfeito, ele rói sua tela de vez em quando. Dê comida ou sacuda e ele cospe de volta. Total até agora: {0}",
+  "ru": "Когда он не сыт, иногда грызёт твой экран. Покорми или потряси его — и он всё выплюнет. Всего: {0}"
  },
  "st.bites_value": {
   "en": "{0}",
