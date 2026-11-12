@@ -30,13 +30,6 @@ jobs:
           if ($p.ExitCode -ne 0) { exit 1 }
       - name: Publish single-file exe
         run: dotnet publish app/Bolok.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:Version=${{ env.VERSION }} -p:DebugType=none -o out/publish --nologo
-      - name: Check pet sheets at this tag
-        shell: pwsh
-        run: |
-          # 데이터로 그리는 종(art.json)은 exe 가 그리고, 나머지는 이 태그의 assets/pets 에서 받는다. 다 받아지고 목록(sha256)과 맞아야 내보낸다
-          $p = Start-Process -FilePath out/publish/Bolok.exe -ArgumentList '--pets-check', 'out/pets-check' -Wait -PassThru -NoNewWindow -RedirectStandardOutput pets.txt -RedirectStandardError pets-err.txt
-          Get-Content pets.txt, pets-err.txt -Encoding utf8
-          if ($p.ExitCode -ne 0) { exit 1 }
       - name: Create release
         shell: pwsh
         env:

@@ -153,7 +153,6 @@ public sealed class DevLink
             case "giveback": b.GiveBack(); break;
             case "state": Dbg.Log("state", ("pet", p), ("tuning", b.K)); break;
             case "shot": form.Shot(shotPath); break;
-            case "fetch": form.FetchTest(a[1], Path.Combine(Path.GetDirectoryName(shotPath)!, "pets-cache")); break; // 예: fetch otter
             case "settings-shot": form.SettingsShot(Path.Combine(Path.GetDirectoryName(shotPath)!, "settings-live.png"), a.Length > 1 ? a[1] : "상태"); break; // 화면 밖에서 그려 저장 (화면을 가리지 않는다)
             case "quit": Application.Exit(); break;
             case "set":

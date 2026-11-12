@@ -63,18 +63,6 @@ static class Program
             return 0;
         }
 
-        if (args.Length == 2 && args[0] == "--pets-check") // 이 exe 가 받을 캐릭터 그림이 저장소(자기 태그)에 다 있고 목록과 맞는지 (릴리스 워크플로가 돌린다)
-        {
-            var ps = new PetSheets(args[1], null, PetSheets.RefFor(Updater.Current, Updater.IsDevBuild));
-            int ok = 0, drawn = 0;
-            foreach (var id in ps.Manifest.Keys)
-                if (ps.Art.Can(id)) { ok++; drawn++; } // 데이터로 그리는 종은 받을 일이 없다
-                else if (ps.Fetch(id).GetAwaiter().GetResult() && ps.Read(id) != null) ok++;
-                else Console.WriteLine($"못 받음: {id} ({ps.Url(id + ".png")})");
-            Console.WriteLine($"캐릭터 그림 {ok}/{ps.Manifest.Count}: 데이터로 그림 {drawn}, 받음 {ok - drawn} ({ps.GitRef})");
-            return ok == ps.Manifest.Count ? 0 : 1;
-        }
-
         if (args.Length == 2 && args[0] == "--gun") // 총과 불꽃을 여러 각도로 그려 본다 (화면을 띄우지 않는다)
         {
             var sp = Sprites.Embedded();
@@ -216,11 +204,10 @@ static class Program
         var sprites = assets != null ? Sprites.FromDir(assets) : Sprites.Embedded();
         var tuning = run != null ? DevLink.LoadTuning(run) : new Tuning();
         L.Use(null); // 윈도우 언어로 시작 (저장된 언어가 있으면 PetForm 이 바꾼다)
-        // 받은 캐릭터 그림: 릴리스는 %LOCALAPPDATA%\Bolok\pets, 개발은 assets 를 바로 읽는다
-        var pets = new PetSheets(Path.Combine(run ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Bolok"), run != null ? "pets-cache" : "pets"),
-            assets, PetSheets.RefFor(Updater.Current, Updater.IsDevBuild));
-        pets.Cleanup();
-        Application.Run(new PetForm(sprites, pets, tuning, data, run, assets));
+        if (run == null) // 예전 판(0.1.6 까지)이 받아 둔 캐릭터 그림: 이제 데이터로 그리니 지운다
+            try { Directory.Delete(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Bolok", "pets"), true); }
+            catch (Exception x) when (x is IOException or UnauthorizedAccessException) { }
+        Application.Run(new PetForm(sprites, tuning, data, run, assets));
         return 0;
     }
 }

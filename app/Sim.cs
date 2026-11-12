@@ -420,83 +420,15 @@ static class Sim
         Expect(Visitor.Pick(new List<ReleasedPet>(), seen, "fox", new Random(1)) == null, "떠난 친구가 없으면 아무도 안 온다");
     }
 
-    // 가짜 저장소: 주소별로 바이트를 돌려준다 (없으면 404). 요청한 주소를 적어 둔다
-    sealed class FakeRaw : HttpMessageHandler
-    {
-        public readonly Dictionary<string, byte[]> Files = new();
-        public readonly List<string> Asked = new();
-
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct)
-        {
-            var url = req.RequestUri!.ToString();
-            Asked.Add(url);
-            return Task.FromResult(Files.TryGetValue(url, out var b)
-                ? new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new ByteArrayContent(b) }
-                : new HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
-        }
-    }
-
-    // 캐릭터 그림 받기: exe 에는 햄스터와 목록만, 받은 그림은 목록의 크기·sha256 과 맞아야만 쓴다
+    // 캐릭터 그림: 모든 종을 데이터로 그린다 (그림 파일을 받지 않는다)
     static void PetSheetChecks()
     {
-        var k = new Tuning();
-        var egg = new Pet { HoldHatch = true };
-        egg.Tick(k, k.EggMin + 30);
-        Expect(egg.Stage == "egg", "그림을 못 받았으면 때가 돼도 알로 기다린다");
-        egg.HoldHatch = false;
-        Expect(egg.Tick(k, .1).Contains("hatch") && egg.Stage == "baby", "그림이 오면 바로 깨어난다");
-        Expect(!System.Text.Json.JsonSerializer.Serialize(new Pet { HoldHatch = true }).Contains("HoldHatch"), "기다림은 저장하지 않는다 (다시 켜면 다시 따진다)");
-
-        var manifest = PetSheets.EmbeddedManifest();
+        var art = PetArt.Embedded;
         var names = Sprites.Embedded().SpeciesNames;
-        Expect(names.Keys.All(manifest.ContainsKey) && manifest.Count == names.Count, $"목록에 모든 종이 있다 ({manifest.Count}/{names.Count})");
-        Expect(PetArt.Embedded.Can("hamster") && !PetArt.Embedded.Can("fox"), "햄스터는 exe 안 데이터로 그리고, 여우는 받는다");
-        var home = new PetSheets(Path.Combine(Path.GetTempPath(), "bolok-check-none"), null, "v9.9.9");
-        Expect(home.Ready("hamster") && home.Read("hamster") == null && home.Load("hamster", null)?.Has("baby/0/idle") == true, "햄스터는 받을 것 없이 바로 그린다");
-
-        // 저장소에서 돌릴 때(개발·CI)는 목록이 assets 파일과 맞는지 — 그림만 다시 만들고 목록을 안 고친 채 올리는 걸 막는다
-        for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent)
-        {
-            var dir = Path.Combine(d.FullName, "assets", "pets");
-            if (!File.Exists(Path.Combine(dir, "manifest.json"))) continue;
-            foreach (var (id, e) in manifest)
-                Expect(PetSheets.Ok(File.ReadAllBytes(Path.Combine(dir, id + ".png")), e.Png, e.PngSize) && PetSheets.Ok(File.ReadAllBytes(Path.Combine(dir, id + ".json")), e.Json, e.JsonSize),
-                    $"assets/pets/{id} 가 목록과 맞다 (python3 tools/sprites.py --manifest)");
-            break;
-        }
-
-        byte[] png = { 1, 2, 3, 4, 5, 6, 7, 8 }, json = System.Text.Encoding.UTF8.GetBytes("{\"cell\":40}");
-        string Hash(byte[] b) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(b)).ToLowerInvariant();
-        var list = new Dictionary<string, PetSheets.Entry> { ["fox"] = new(Hash(png), png.Length, Hash(json), json.Length) };
-        var cache = Path.Combine(Path.GetTempPath(), "bolok-check-" + Guid.NewGuid().ToString("N")[..8]);
-        try
-        {
-            var raw = new FakeRaw();
-            var ps = new PetSheets(cache, null, "v1.2.3", list, () => new HttpClient(raw, false));
-            string pu = "https://raw.githubusercontent.com/" + Updater.Repo + "/v1.2.3/assets/pets/fox.png", ju = pu[..^3] + "json";
-            Expect(ps.Url("fox.png") == pu, "그 버전 태그에서 받는다");
-
-            Expect(!ps.Fetch("fox").GetAwaiter().GetResult() && ps.Read("fox") == null, "저장소에 없으면 못 받는다");
-            raw.Files[pu] = png.Concat(new byte[] { 9 }).ToArray();
-            raw.Files[ju] = json;
-            Expect(!ps.Fetch("fox").GetAwaiter().GetResult() && ps.Read("fox") == null, "크기가 다르면 버린다");
-            raw.Files[pu] = png.Reverse().ToArray();
-            Expect(!ps.Fetch("fox").GetAwaiter().GetResult() && ps.Read("fox") == null, "지문(sha256)이 다르면 버린다");
-            raw.Files[pu] = png;
-            Expect(ps.Fetch("fox").GetAwaiter().GetResult() && ps.Read("fox") is { } got && got.Png.SequenceEqual(png), "맞으면 받아 두고 읽는다");
-            int asked = raw.Asked.Count;
-            Expect(ps.Fetch("fox").GetAwaiter().GetResult() && raw.Asked.Count == asked, "받아 둔 건 다시 받지 않는다");
-            Expect(ps.Local(new[] { "hamster", "fox", "cat" }).SequenceEqual(new[] { "hamster", "fox" }), "가진 종: 데이터로 그리는 햄스터 + 받아 둔 것");
-
-            var file = Directory.GetFiles(cache, "fox.*.png").Single();
-            File.WriteAllBytes(file, png.Reverse().ToArray());
-            Expect(ps.Read("fox") == null, "받아 둔 파일이 바뀌었으면 쓰지 않는다");
-            File.WriteAllBytes(Path.Combine(cache, "otter.0123456789ab.png"), png);
-            ps.Cleanup();
-            Expect(!File.Exists(Path.Combine(cache, "otter.0123456789ab.png")) && File.Exists(file), "목록에 없는 옛 파일은 지운다");
-            Expect(!ps.Fetch("dragon").GetAwaiter().GetResult(), "목록에 없는 종은 받지 않는다");
-        }
-        finally { try { Directory.Delete(cache, true); } catch (IOException) { } }
+        Expect(names.Keys.All(art.Can) && art.Species.Count == names.Count, $"도감의 모든 종을 데이터로 그린다 ({art.Species.Count}/{names.Count})");
+        foreach (var id in new[] { "fox", "octopus", "ghost" })
+            Expect(Sprites.Drawn(art, id, null) is { } sp && sp.Species == id && sp.Has("adult_grumpy/3/fix") && sp.Has("thumb/" + id), $"그린 그림에 모든 줄이 있다: {id}");
+        Expect(Sprites.Embedded("no-such-pet").Species == Sprites.DefaultSpecies, "모르는 종이면 햄스터");
     }
 
     static void UpdaterChecks()

@@ -304,7 +304,7 @@ public sealed class Overlay : Form
     Rectangle DreamRect()
     {
         int k = b.Scale;
-        double cx = b.X + DreamSide * 15 * k, cy = b.HeadY - 13 * k; // 작게 (YELL: 좀 크다)
+        double cx = b.X + DreamSide * 16 * k, cy = b.HeadY - 15 * k; // 작게 (YELL: 좀 크다). 머리에서 작은 구름 둘을 거쳐 올라간다
         return Around(cx, cy, 11 * k, 10 * k);
     }
 
@@ -317,27 +317,51 @@ public sealed class Overlay : Form
         var r = Client(DreamRect());
         int side = DreamSide;
         var head = ToClient(b.X + side * 8 * k, b.HeadY);
-        using var line = new SolidBrush(Color.FromArgb(92, 58, 40));
-        using var white = new SolidBrush(Color.White);
-        void Puff(int x, int y, int rad) { g.FillEllipse(line, x - rad - k, y - rad - k, (rad + k) * 2, (rad + k) * 2); g.FillEllipse(white, x - rad, y - rad, rad * 2, rad * 2); }
-        Puff(head.X + side * 3 * k, head.Y - 2 * k, k);
-        Puff(head.X + side * 6 * k, head.Y - 5 * k, 2 * k);
-        var mode = g.SmoothingMode;
-        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None; // 투명색 창: 부드럽게 그리면 분홍 테두리
-        g.FillEllipse(line, r.X + k, r.Y + 3 * k, r.Width - 2 * k, r.Height - 6 * k);
-        g.FillEllipse(white, r.X + 2 * k, r.Y + 4 * k, r.Width - 4 * k, r.Height - 8 * k);
-        g.SmoothingMode = mode;
+        var mode = (g.InterpolationMode, g.PixelOffsetMode);
+        (g.InterpolationMode, g.PixelOffsetMode) = (System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor, System.Drawing.Drawing2D.PixelOffsetMode.Half);
+        void Put(Bitmap blob, int cx, int cy) => g.DrawImage(blob, new Rectangle(cx - blob.Width * k / 2, cy - blob.Height * k / 2, blob.Width * k, blob.Height * k));
+        Put(DreamDot, head.X, head.Y - k);                       // 머리에서 몽글몽글 올라가는 작은 구름 둘
+        Put(DreamPuff, head.X + side * 3 * k, head.Y - 5 * k);
+        g.DrawImage(side > 0 ? DreamCloudFlip : DreamCloud, new Rectangle(r.X, r.Y, 22 * k, 20 * k));
+        (g.InterpolationMode, g.PixelOffsetMode) = mode;
         string pic = dreams[(int)(Environment.TickCount64 / 3000 % dreams.Count)];
         var sp = sprites();
-        if (sp.Has(pic)) // 그려진 부분을 재서 말풍선 안에 맞는 정수배로 (작은 선물은 크게, 큰 그림은 작게)
+        if (sp.Has(pic)) // 그려진 부분을 재서 구름 안에 맞는 정수배로 (작은 선물은 크게, 큰 그림은 작게)
         {
             var one = sp.Get(pic, 0, 1);
             if (!dreamCrops.TryGetValue(pic, out var c)) dreamCrops[pic] = c = Ui.Opaque(one, 0);
-            int innerW = r.Width - 7 * k, innerH = r.Height - 9 * k, z = Math.Max(1, Math.Min(innerW / c.Width, innerH / c.Height));
-            Ui.Pixel(g, one, new Rectangle(r.X + (r.Width - c.Width * z) / 2, r.Y + (r.Height - c.Height * z) / 2, c.Width * z, c.Height * z), c);
+            int innerW = 13 * k, innerH = 9 * k, z = Math.Max(1, Math.Min(innerW / c.Width, innerH / c.Height));
+            int mx = r.X + 11 * k, my = r.Y + 21 * k / 2;
+            Ui.Pixel(g, one, new Rectangle(mx - c.Width * z / 2, my - c.Height * z / 2, c.Width * z, c.Height * z), c);
         }
     }
     readonly Dictionary<string, Rectangle> dreamCrops = new();
+
+    // 꿈 구름 (YELL: 타원 말풍선 대신 살짝 구름 모양): 동그라미 몇 개를 겹친 흰 덩어리에 한 칸 갈색 테두리.
+    // 볼록이 그림처럼 칸 단위로 만들어 배율만큼 키운다. 큰 혹이 볼록이 반대쪽 위로 오게 좌우를 뒤집어 쓴다
+    static readonly (double X, double Y, double R)[] CloudPuffs = { (11, 11.2, 5.6), (6.2, 11.2, 3.9), (15.8, 11.4, 3.7), (8.8, 7.3, 4), (14, 7.2, 3.4), (8.4, 13.9, 2.9), (13.8, 14, 2.9) };
+    static Bitmap? dreamCloud, dreamCloudFlip, dreamDot, dreamPuff;
+    static Bitmap DreamCloud => dreamCloud ??= Blob(22, 20, CloudPuffs);
+    static Bitmap DreamCloudFlip => dreamCloudFlip ??= Flipped(DreamCloud);
+    static Bitmap DreamDot => dreamDot ??= Blob(4, 4, new[] { (2.0, 2.0, 1.0) });
+    static Bitmap DreamPuff => dreamPuff ??= Blob(6, 5, new[] { (2.4, 2.6, 1.5), (3.8, 2.4, 1.3) });
+
+    static Bitmap Flipped(Bitmap src) { var b = (Bitmap)src.Clone(); b.RotateFlip(RotateFlipType.RotateNoneFlipX); return b; }
+
+    // 동그라미들 안은 흰색, 그 바깥 한 칸은 테두리 (칸 가운데로 잰다)
+    static Bitmap Blob(int w, int h, (double X, double Y, double R)[] puffs)
+    {
+        var bmp = new Bitmap(w, h, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                double px = x + .5, py = y + .5;
+                bool In(double grow) => puffs.Any(p => (px - p.X) * (px - p.X) + (py - p.Y) * (py - p.Y) < (p.R + grow) * (p.R + grow));
+                if (In(0)) bmp.SetPixel(x, y, Color.White);
+                else if (In(1)) bmp.SetPixel(x, y, Color.FromArgb(92, 58, 40));
+            }
+        return bmp;
+    }
 
     // ── 놀러 온 친구: 볼록이처럼 발이 (X, Y), 머리 위에 하트·zzz ──
     Rectangle GuestRect(Visitor v)

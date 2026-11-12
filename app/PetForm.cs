@@ -93,10 +93,9 @@ public sealed class PetForm : Form, IGameHost
     (string, int, bool, int) drawn;
     IntPtr returnFocus;
 
-    public PetForm(Sprites sprites, PetSheets pets, Tuning k, string dataDir, string? runDir, string? assetsDir)
+    public PetForm(Sprites sprites, Tuning k, string dataDir, string? runDir, string? assetsDir)
     {
         this.sprites = sprites;
-        this.pets = pets;
         species = sprites.Species;
         this.assetsDir = assetsDir;
         debug = runDir != null;
@@ -222,38 +221,22 @@ public sealed class PetForm : Form, IGameHost
     public void SwapSprites(Sprites s) { sprites = s; drawn = default; Invalidate(); foreach (var o in overlays) o.Invalidate(); }
 
     // 키우는 종. 그림(sprites)은 아직 못 받았으면 다른 종일 수 있다 — 알일 때는 공통 그림만 쓰니 티가 안 난다
-    readonly PetSheets pets;
     string species;
-    long nextFetch, nextKeep;
     public string Species => species;
 
-    // 캐릭터 바꾸기: 그림만 바뀌고 키우던 수치는 그대로. 그림이 없으면 저장소에서 받는다
+    // 캐릭터 그림은 데이터로 그린다 (assets/pets/art.json). 개발은 저장소 것을 읽어 고치면 바로 다시 그린다
+    PetArt Art => assetsDir != null ? PetArt.FromDir(assetsDir) : PetArt.Embedded;
+    Sprites? SpritesFor(string id) => Art.Can(id) ? Sprites.Drawn(Art, id, assetsDir) : null;
+
+    // 캐릭터 바꾸기: 그림만 바뀌고 키우던 수치는 그대로. 모르는 종(없어진 종)이면 햄스터
     public void SetSpecies(string id)
     {
+        if (!Art.Can(id)) { Dbg.Log("species-unknown", ("id", id)); id = Sprites.DefaultSpecies; }
         species = id;
-        if (pets.Load(id, assetsDir) is { } s) { SwapSprites(s); Dbg.Log("species", ("id", id)); return; }
-        Dbg.Log("species-wait", ("id", id));
-        Fetch(id);
+        SwapSprites(SpritesFor(id)!);
+        Dbg.Log("species", ("id", id));
     }
 
-    void Fetch(string id)
-    {
-        nextFetch = Environment.TickCount64 + 60_000; // 못 받으면 1분 뒤 다시
-        Task.Run(() => pets.Fetch(id)).ContinueWith(t =>
-        {
-            bool ok = t.Status == TaskStatus.RanToCompletion && t.Result;
-            if (IsHandleCreated && !IsDisposed) BeginInvoke(() => { Dbg.Log("pet-fetch", ("id", id), ("ok", ok), ("from", pets.GitRef)); KeepSheet(true); });
-        });
-    }
-
-    // 키우는 종의 그림이 없으면: 받아 둔 게 생겼으면 쓰고, 아니면 가끔 다시 받는다 (1초에 한 번만 본다)
-    void KeepSheet(bool now = false)
-    {
-        if (sprites.Species == species || (!now && Environment.TickCount64 < nextKeep)) return;
-        nextKeep = Environment.TickCount64 + 1000;
-        if (pets.Load(species, assetsDir) is { } s) { SwapSprites(s); Dbg.Log("species", ("id", species)); }
-        else if (Environment.TickCount64 > nextFetch) Fetch(species);
-    }
 
     string DebugLine() => $"{b.Mode}/{b.Pose} ({(int)b.X},{(int)b.Y}) x{b.Speed:0.#} {fps:0}fps cpu {dev?.Cpu:0.0}%{(Afk() ? " 자리비움" : "")}";
 
@@ -295,8 +278,6 @@ public sealed class PetForm : Form, IGameHost
         autoUpdate = pendingSave.AutoUpdate;
         if (pendingSave.Species != species)
         {
-            // 예전 판(그림이 다 exe 안에 있던 때)에서 키우던 아이면 그림이 아직 없다. 깨어 있는 아이는 잠깐 기다려 받는다
-            if (b.P.Stage != "egg" && !pets.Ready(pendingSave.Species)) Task.Run(() => pets.Fetch(pendingSave.Species)).Wait(TimeSpan.FromSeconds(8));
             SetSpecies(pendingSave.Species);
         }
         (met, released) = (pendingSave.Met?.ToHashSet() ?? new(), pendingSave.Released ?? new());
@@ -375,7 +356,7 @@ public sealed class PetForm : Form, IGameHost
     void IGameHost.CloseLayer() => CloseLayer();
     void IGameHost.ShowPet(bool show) { if (show) { Show(); Native.Topmost(Handle); } else Hide(); }
     void IGameHost.Save() => Save();
-    Sprites? IGameHost.SpritesOf(string id) => pets.Load(id, assetsDir);
+    Sprites? IGameHost.SpritesOf(string id) => SpritesFor(id);
 
     // 디버그 명령 중 게임 모듈 것 (<게임 id> ...)
     public bool ModeCommand(string[] a) => modes.Any(m => m.Command(a));
@@ -422,8 +403,6 @@ public sealed class PetForm : Form, IGameHost
         foreach (var m in modes) if (m.Running) m.Frame(dt);
         if (leaving) LeaveFrame(dt);
         WatchHatch();
-        KeepSheet();
-        GateHatch();
         VisitTick();
         PresentTick();
         if (visitor != null) visitor.Update(dt, b.X, b.Y, b.Mode is Mode.Wander or Mode.Anim || b.P.Asleep, b.P.Asleep, b.Area);
@@ -735,24 +714,6 @@ public sealed class PetForm : Form, IGameHost
         Save();
     }
 
-    // 깨어날 친구 그림이 확인될 때까지 알은 기다린다. 1시간(활동 시간)이 지나도 못 받으면 그때 가진 친구 중에서 나온다
-    const double HatchWaitMin = 60;
-    bool hatchHeld;
-
-    bool HatchHeld => b.P.Stage == "egg" && sprites.Species != species && b.P.AgeMin < b.K.EggMin + HatchWaitMin;
-
-    void GateHatch()
-    {
-        bool hold = HatchHeld;
-        if (hold && b.P.AgeMin >= b.K.EggMin && !hatchHeld)
-        {
-            hatchHeld = true;
-            b.Say(4, L.T("say.hatching"));
-            Dbg.Log("hatch-hold", ("species", species));
-        }
-        if (!hold) hatchHeld = false;
-        b.P.HoldHatch = hold;
-    }
 
     // ── 떠난 친구가 하루 한 번 놀러 온다 (YELL 2026-11-12): 한 친구, 5분. 같이 다니고 같이 잔다 ──
     Visitor? visitor;
@@ -760,7 +721,7 @@ public sealed class PetForm : Form, IGameHost
     string visitDay = "", lastVisitDay = "";
     int visitMin = -1;
     Dictionary<string, DateTime> visits = new();
-    long nextVisitCheck, nextVisitFetch;
+    long nextVisitCheck;
 
     static string Today => DateTime.Now.ToString("yyyy-MM-dd");
     static int NowMin => DateTime.Now.Hour * 60 + DateTime.Now.Minute;
@@ -796,11 +757,7 @@ public sealed class PetForm : Form, IGameHost
             ? released.LastOrDefault(r => r.Species == only) ?? new ReleasedPet(only, "child", 0, DateTime.Now)
             : Visitor.Pick(released, visits, species, Random.Shared);
         if (pick == null) return;
-        if (pets.Load(pick.Species, assetsDir) is not { } friendSprites) // 그 친구 그림이 없으면(예전 판에서 떠난 아이) 받아 두고 다음에
-        {
-            if (Environment.TickCount64 > nextVisitFetch) { nextVisitFetch = Environment.TickCount64 + 60_000; Task.Run(() => pets.Fetch(pick.Species)); }
-            return;
-        }
+        if (SpritesFor(pick.Species) is not { } friendSprites) return; // 없어진 종
         visitorSprites = friendSprites;
         var area = b.Area;
         double x = b.X < area.Left + area.Width / 2.0 ? area.Left - b.CellPx : area.Right + b.CellPx; // 가까운 화면 옆에서 걸어 들어온다
@@ -836,6 +793,7 @@ public sealed class PetForm : Form, IGameHost
         else if (a.Length > 1 && a[1] == "morning") { b.Emote("sun", 2.5); b.Greet("stretch", 1.6); }
         else if (a.Length > 1 && a[1] == "night") { b.Emote("moon", 2.5); b.Greet("stretch", 1.6); }
         else if (a.Length > 1 && a[1] == "nightcap") { ForceNight = !ForceNight; capSpot.Clear(); Invalidate(); }
+        else if (a.Length > 1 && a[1] == "dream") { nextDream = Environment.TickCount64 / 1000.0; Dbg.Log("dream-now", ("asleep", b.P.Asleep), ("pose", b.Pose), ("game", InGame), ("behind", b.Behind), ("x", (int)b.X), ("y", (int)b.Y)); } // 자는 중이면 꿈 구름을 바로
         else StartVisit(a.Length > 1 ? a[1] : null, counts: false);
     }
 
@@ -895,7 +853,7 @@ public sealed class PetForm : Form, IGameHost
         if (InGame || Afk() || b.Mode != Mode.Wander || b.P.Asleep) return;
         try
         {
-            var friend = pets.Load(from, assetsDir);
+            var friend = SpritesFor(from);
             var file = Path.Combine(memDir, "cards", $"{DateTime.Now:yyyyMMdd-HHmmss}-{from}.png");
             Memories.Card(sprites, friend, from, cardForm, DateTime.Now.DayOfYear * 31 + from.Sum(ch => ch), file);
             cards.Add(new CardRecord(from, DateTime.Now, file));
@@ -975,13 +933,6 @@ public sealed class PetForm : Form, IGameHost
     {
         if (lastStage == "egg" && b.P.Stage != "egg")
         {
-            if (sprites.Species != species) // 깨어날 때까지 그림을 못 받았다 (인터넷이 없었다): 가진 종 중에서 나온다
-            {
-                var local = pets.Local(sprites.SpeciesNames.Keys);
-                string pick = local.Count > 0 ? local[Random.Shared.Next(local.Count)] : Sprites.DefaultSpecies;
-                Dbg.Log("hatch-fallback", ("want", species), ("got", pick));
-                SetSpecies(pick);
-            }
             met.Add(species);
             TakePhoto(b.P.Stage);
             b.Say(4, L.T("say.hatched", L.With(L.Species(species), "가", "이가")));
@@ -1488,18 +1439,6 @@ public sealed class PetForm : Form, IGameHost
     }
 
     // 디버그: 앱이 그리는 것만 회색 바탕에 다시 그린다. 실제 화면을 찍지 않아서 일하던 내용이 안 남는다
-    // 디버그: 저장소 main 에서 그림을 받아 run/pets-cache 에 두고 읽어 본다 (개발 앱은 평소 assets 를 바로 읽어서 받는 길을 안 탄다)
-    public void FetchTest(string id, string dir)
-    {
-        var ps = new PetSheets(dir, null, "main");
-        Task.Run(() => ps.Fetch(id)).ContinueWith(t => BeginInvoke(() =>
-        {
-            bool ok = t.Status == TaskStatus.RanToCompletion && t.Result;
-            var got = ps.Read(id);
-            bool rows = got is { } pet && Sprites.With(id, pet, assetsDir).Has("baby/0/idle");
-            Dbg.Log("fetch-test", ("id", id), ("ok", ok), ("read", got != null), ("png", got?.Png.Length ?? 0), ("rows", rows), ("url", ps.Url(id + ".png")));
-        }));
-    }
 
     // 진짜 상태로 설정 창을 화면 밖에서 그려 본다 (디버그용: 띄워 둔 설정 창은 건드리지 않는다)
     public void SettingsShot(string path, string tab)

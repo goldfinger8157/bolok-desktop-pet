@@ -311,18 +311,6 @@
   "pt": "{0} nasceu!",
   "ru": "{0} вылупился!"
  },
- "say.hatching": {
-  "en": "About to hatch…",
-  "ko": "곧 깨어날 것 같아요…",
-  "ja": "もうすぐ生まれそう…",
-  "zh-Hans": "快要孵化了…",
-  "zh-Hant": "快要孵化了…",
-  "es": "Está a punto de nacer…",
-  "de": "Gleich schlüpft es…",
-  "fr": "Il va bientôt éclore…",
-  "pt": "Está quase nascendo…",
-  "ru": "Скоро вылупится…"
- },
  "say.nowhere": {
   "en": "Nowhere to drop it",
   "ko": "떨어뜨릴 곳이 없어요",

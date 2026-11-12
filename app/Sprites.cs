@@ -7,7 +7,7 @@ namespace Bolok;
 
 // 그림 두 장을 겹쳐 쓴다: 고른 캐릭터 그림(형태·볼·자세)이 먼저, 없는 이름은 공통 그림(assets/sprites.png:
 // 알·아이콘·이모티콘·게임·소품·캐릭터 썸네일)에서. 캐릭터는 고른 하나만 읽는다 (34종을 다 읽으면 메모리가 한참 는다).
-// 캐릭터 그림은 데이터(assets/pets/art.json)로 그릴 수 있는 종이면 PetArt 가 그리고(Drawn), 아니면 PetSheets 가 받아 둔 PNG 를 With 로 읽는다.
+// 캐릭터 그림은 데이터(assets/pets/art.json)로 PetArt 가 그린다 (Drawn). 그림 파일을 받지 않는다.
 // 쓴 프레임은 배율별로 캐시한다
 public sealed class Sprites
 {
@@ -53,14 +53,6 @@ public sealed class Sprites
     // 데이터로 그린 캐릭터 + 공통 그림(개발 폴더 dir 이나 exe 에서)
     public static Sprites Drawn(PetArt art, string species, string? dir) => new(Common(dir), new Sheet(art.Sheet(species)), species);
 
-    // 받은 캐릭터 그림(PNG) + 공통 그림
-    public static Sprites With(string species, (byte[] Png, byte[] Json) pet, string? dir)
-    {
-        using var pp = new MemoryStream(pet.Png);
-        using var pj = new MemoryStream(pet.Json);
-        return new Sprites(Common(dir), new Sheet(pp, pj), species);
-    }
-
     static Sheet Common(string? dir)
     {
         if (dir != null)
@@ -76,14 +68,11 @@ public sealed class Sprites
         return new Sheet(epng, ejson);
     }
 
-    // 개발: 저장소 assets 에서. 데이터로 그릴 수 있으면 그리고, 아니면 생성기가 만든 PNG, 그것도 없으면 햄스터
+    // 개발: 저장소 assets 의 데이터·공통 그림으로 (못 그리는 종이면 햄스터)
     public static Sprites FromDir(string dir, string species = DefaultSpecies)
     {
         var art = PetArt.FromDir(dir);
-        if (art.Can(species)) return Drawn(art, species, dir);
-        string png = Path.Combine(dir, "pets", species + ".png"), json = Path.Combine(dir, "pets", species + ".json");
-        if (!File.Exists(png) || !File.Exists(json)) return Drawn(art, DefaultSpecies, dir);
-        return With(species, (File.ReadAllBytes(png), File.ReadAllBytes(json)), dir);
+        return Drawn(art, art.Can(species) ? species : DefaultSpecies, dir);
     }
 
     public bool Has(string name) => pet.Rows.ContainsKey(name) || common.Rows.ContainsKey(name);
