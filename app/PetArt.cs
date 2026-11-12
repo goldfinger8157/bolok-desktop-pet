@@ -18,8 +18,9 @@ public sealed class PetArt
     {
         "name", "note", "fur", "shade", "cream", "ear", "paw", "blush", "form_colors", "ears", "ear_k", "ear_out", "tail", "back", "spike", "horns", "wings",
         "marks", "cap", "mane", "whisker", "face", "snout", "belly", "nose", "beak", "smile", "teeth", "mouth_in", "no_cover", "body", "wide", "eye_k", "eye_up", "blush_k",
+        "eye", "point", "ear_fill",
     };
-    static readonly string[] ColorKeys = { "fur", "shade", "cream", "ear", "paw", "blush" };
+    static readonly string[] ColorKeys = { "fur", "shade", "cream", "ear", "paw", "blush", "eye" }; // eye: 렉돌 파란 눈
     static readonly string[] FrameKeys =
     {
         "sq", "dy", "lie", "dangle", "turn", "step", "puff", "eye", "mouth", "hold", "belly", "tear", "heart", "z", "blushy", "cover",
@@ -283,7 +284,7 @@ public sealed class PetArt
         double turn = f.N("turn");
         int fx = R(20 + turn * (rx > 9 ? 1 : .7));       // 고개 돌린 쪽으로 얼굴이 옮겨간다
         int gap = R(F.N("eyegap") - Math.Abs(turn) * .4); // 옆을 보면 눈 사이가 좁아 보인다
-        int ey = R(cy - ry * .24) - (int)S.N("eye_up"), my = R(cy + ry * .3);
+        int ey = R(cy - ry * .24) - (int)S.N("eye_up"), my = R(cy + ry * (S.S("face", "") == "flat" ? .14 : .3)); // 엑조틱: 코·입이 눈 사이로 올라붙은 납작 얼굴
 
         // 1) 실루엣 — 꼬리·등(가시·털뭉치)·귀·뿔·날개 → 몸·볼주머니·발
         double ear = F.N("ear") * S.N("ear_k", 1), ex = rx * .62;
@@ -301,12 +302,14 @@ public sealed class PetArt
         else if (ears is "pointy" or "fox" or "tuft")
         {
             double h = ear * (ears == "fox" ? 2.1 : ears == "pointy" ? 1.7 : 1.1);
-            foreach (int s in Sides) g.Poly(EarTri(cx, cy, rx, ry, s, h, fx), c["fur"]);
+            foreach (int s in Sides) g.Poly(EarTri(cx, cy, rx, ry, s, h, fx), S.Has("ear_fill") ? Col(S, "ear_fill") : c["fur"]);
         }
         else if (ears == "side")
             foreach (int s in Sides) g.Ell(cx + s * (rx + .6), cy - ry * .4, ear * 1.1, ear * .55, c["fur"]);
         else if (ears == "long") // 알파카: 길쭉하게 선 귀
             foreach (int s in Sides) g.Ell(cx + s * rx * .48, cy - ry - 1.5, 1.7, ear * 1.3, c["fur"]);
+        else if (ears == "fold") // 스코티시폴드: 앞으로 접혀 머리에 납작하게 붙은 작은 귀
+            foreach (var x in earX) g.Ell(x, cy - ry * .9, ear * 1.05, ear * .62, c["fur"]);
         if (S.Has("ear_out") && roundEars) // 판다: 귀 바깥이 까맣다
             foreach (var x in earX) { double r = ear * RoundK(false); g.Ell(x, cy - ry * .86, r, r, Col(S, "ear_out")); }
         g.Ell(cx, cy, rx, ry, c["shade"]);
@@ -389,6 +392,12 @@ public sealed class PetArt
         // 3) 윤곽선 → 얼굴
         g.Outline(c["line"]);
         Marks(g, S, c, cx, cy, rx, ry, fx, ey, my, gap, false, sk);
+        if (ears == "fold") // 접힌 자리: 귀 아래쪽에 짧은 선
+            foreach (var x in earX)
+            {
+                int y = R(cy - ry * .9 + ear * .2), x0 = R(x);
+                foreach (int dx in new[] { -1, 0, 1 }) g.Put(x0 + dx, y, c["line"], true);
+            }
         if (F.T("tuft") && !HeadMark(S)) // 아기: 정수리에 털 한 가닥 (머리에 갓·갈기·뿔이 있는 종은 빼고)
         {
             int top = (int)Math.Ceiling(cy - ry - .5) - 1; // 윤곽선 줄
@@ -566,6 +575,13 @@ public sealed class PetArt
                     for (int x = R(tx - w) + 1 + (y / 2 % 2); x < R(tx + w); x += 2) g.Put(x, y, scale, true);
                 break;
             }
+            case "plume": // 렉돌: 크고 풍성한 깃털 꼬리 (포인트 색)
+            {
+                uint tc = S.Has("point") ? Col(S, "point") : shade;
+                g.Ell(cx + rx * .92, cy - ry * .05, 4.6 * fk, ry * .85, tc);
+                g.Ell(cx + rx * .92 + .8 * fk, cy - ry * .35, 2.2 * fk, 2 * fk, Mix(tc, c["white"], .22));
+                break;
+            }
             case "taper": // 수달: 굵게 시작해서 가늘어지는 꼬리
                 for (int i = 0; i < 6; i++)
                     g.Ell(cx + rx * .8 + i * 1.3 * fk, cy + ry * .62 - i * .45 * fk, (2.7 - i * .32) * soft, (2.3 - i * .28) * soft, shade);
@@ -705,6 +721,19 @@ public sealed class PetArt
                             (fx + 3 * sk, cy - ry * .75), (fx + 5 * sk, cy - ry - 1 * sk), (fx + 6 * sk, cy - ry * .6) }, Rgb(60, 70, 90));
                         break;
                     case "tuft": g.Pix(c["fur"], (fx, cy - ry - 1), (fx + 1, cy - ry - 2), (fx + 1, cy - ry - 1), (fx + 2, cy - ry - 3)); break; // 오리: 정수리 깃
+                    case "points": // 렉돌: 눈 둘레가 짙은 포인트, 코에서 이마까지는 흰 역V (바이컬러)
+                        g.Ell(fx + .5, ey + .3, gap + 2.6 * sk, 3.6 * sk, Mix(Col(S, "point"), c["fur"], .3), true);
+                        g.Poly(new[] { (fx + .5 - 3 * sk, my + 1.0), (fx + .5 + 3 * sk, my + 1.0), (fx + .5, ey - 1.5 * sk) }, cream, true);
+                        break;
+                    case "ruff": // 렉돌: 가슴 목털이 풍성하다
+                        g.Ell(fx + .5, cy + ry * .42, rx * .74, ry * .42, cream, true);
+                        foreach (int s in Sides) g.Ell(fx + .5 + s * rx * .6, cy + ry * .3, 2.2 * sk, 1.7 * sk, cream, true);
+                        break;
+                    case "calico": // 엑조틱 삼색: 흰 바탕에 주황·검정 얼룩
+                        g.Ell(cx - rx * .5, cy - ry * .6, 3.8 * sk, 2.8 * sk, Rgb(229, 150, 80), true);
+                        g.Ell(cx + rx * .55, cy - ry * .55, 3.2 * sk, 2.6 * sk, Rgb(74, 62, 58), true);
+                        g.Ell(cx + rx * .72, cy + ry * .35, 2.6 * sk, 2.2 * sk, Rgb(229, 150, 80), true);
+                        break;
                 }
             else
                 switch (m)

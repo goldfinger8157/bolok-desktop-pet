@@ -73,6 +73,9 @@
   "species": {
     "hamster": {"name": "햄스터", "form_colors": {"baby": {"fur": "#FFCDAA", "shade": "#F0AA8C"}, "adult_sweet": {"fur": "#FAC48C"}, "adult_grumpy": {"fur": "#C49670", "shade": "#A07454"}}},
     "cat": {"name": "고양이", "fur": "#F0A860", "shade": "#D68646", "ears": "pointy", "tail": "thin", "marks": ["tabby"], "whisker": true, "note": "흰 몸+리본 없이 (헬로키티)"},
+    "ragdoll": {"name": "렉돌", "fur": "#F2E8D8", "shade": "#D6C8B2", "cream": "#FFFBF4", "ear": "#EAB8B0", "point": "#7E6656", "ear_fill": "#8C7262", "eye": "#3460AA", "ears": "pointy", "ear_k": 0.9, "tail": "plume", "marks": ["points", "ruff"], "whisker": true, "wide": 1.05, "note": "크림색 몸에 귀·눈 둘레·꼬리가 짙은 포인트, 파란 눈, 풍성한 목털과 깃털 꼬리"},
+    "scottishfold": {"name": "스코티시폴드", "fur": "#A9B4C2", "shade": "#8B97A8", "cream": "#EEF1F5", "ears": "fold", "ear_k": 0.9, "tail": "thin", "eye_k": 1.12, "whisker": true, "note": "앞으로 접힌 납작한 귀, 동그랗고 큰 눈. 회색 줄무늬 통통 고양이(푸신)와 겹치지 않게 줄무늬 없는 푸른 회색"},
+    "exotic": {"name": "엑조틱숏헤어", "fur": "#F7F2EA", "shade": "#DCD1C2", "cream": "#FFFDF8", "ears": "pointy", "ear_k": 0.6, "face": "flat", "eye_k": 1.15, "marks": ["calico"], "tail": "thin", "wide": 1.1, "whisker": true, "note": "코가 눈 사이로 올라붙은 납작 얼굴, 작은 귀, 통통한 몸. 주황 줄무늬(가필드) 대신 삼색"},
     "shiba": {"name": "시바견", "fur": "#E29652", "shade": "#C4783C", "ears": "pointy", "tail": "curl", "face": "cheeks", "nose": "dark"},
     "fox": {"name": "여우", "fur": "#EA783A", "shade": "#CC5C28", "ears": "fox", "ear_k": 1.25, "tail": "fluffy", "face": "cheeks", "nose": "dark"},
     "moonbear": {"name": "반달가슴곰", "fur": "#5C483C", "shade": "#46362E", "cream": "#ECDEC8", "ear": "#967868", "ears": "small", "belly": false, "marks": ["crescent"], "face": "snout", "snout": "#C8A882", "nose": "dark", "blush_k": 0.6, "note": "곰은 리락쿠마 대신 반달가슴곰"},

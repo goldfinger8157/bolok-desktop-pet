@@ -1,6 +1,6 @@
 namespace Bolok;
 
-// 네잎클로버 (YELL 2026-11-12): 돌아다니다 가끔(하루 한 번까지) 근처 바닥에 네잎클로버가 돋는다.
+// 네잎클로버·새싹 (YELL 2026-11-12): 돌아다니다 가끔(하루 한 번까지) 근처 바닥에 새싹이나(70%) 네잎클로버가(30%, 행운이라 드물게) 돋는다.
 // 볼록이가 보고 "!" 하고 다가가 주워서 머리에 꽂고 다닌다 (머리 왼쪽 — 애교쟁이 꽃은 오른쪽 귀라서 안 겹친다).
 // 던져지면 그 자리에 떨어지고, 내려와서 다시 주워 꽂는다. 날이 바뀌면 시들어 없어진다.
 // 규칙만 여기 (화면과 무관해서 --selfcheck 로 검사한다). 그리기·걷기는 PetForm·Overlay 가 이 상태를 보고 한다
@@ -17,15 +17,18 @@ public sealed class Clover
     public Phase State { get; private set; }
     public double X, Y;     // 바닥에 있을 때 자리 (화면 좌표, 땅 높이)
     public string Day = ""; // 돋은 날 (하루 한 번)
+    public string Kind = "clover"; // clover(네잎클로버) | sprout(새싹). 그림은 item/<Kind>
+    public static readonly string[] Kinds = { "clover", "sprout" };
+    public const double CloverShare = .3;
     double groundAt;
 
-    public sealed record Saved(string State, double X, double Y, string Day);
-    public Saved Snapshot() => new(State.ToString(), X, Y, Day);
+    public sealed record Saved(string State, double X, double Y, string Day, string? Kind = null);
+    public Saved Snapshot() => new(State.ToString(), X, Y, Day, Kind);
 
     public void Load(Saved? s)
     {
         if (s == null) return;
-        (X, Y, Day) = (s.X, s.Y, s.Day);
+        (X, Y, Day, Kind) = (s.X, s.Y, s.Day, s.Kind is { } k && Kinds.Contains(k) ? k : "clover");
         State = Enum.TryParse<Phase>(s.State, out var p) ? p : Phase.None;
         groundAt = double.NegativeInfinity; // 다시 켠 뒤 바닥에 있던 건 곧 주우러 간다 (시간은 새로 센다)
     }
@@ -46,6 +49,7 @@ public sealed class Clover
         if (x < area.Left + cell || x > area.Right - cell) x = petX - dir * cell * 2.5; // 앞이 막혔으면 뒤쪽에
         Put(Math.Clamp(x, area.Left + cell, area.Right - cell), ground, now);
         Day = today;
+        Kind = rng.NextDouble() < CloverShare ? "clover" : "sprout";
         return true;
     }
 
@@ -76,7 +80,7 @@ public sealed class Clover
         return true;
     }
 
-    public void Force(Phase p, double x, double y, string today, double now) { (X, Y, Day, groundAt) = (x, y, today, now); State = p; } // 디버그
+    public void Force(Phase p, double x, double y, string today, double now, string? kind = null) { (X, Y, Day, groundAt) = (x, y, today, now); State = p; if (kind != null && Kinds.Contains(kind)) Kind = kind; } // 디버그
 
     // ── 자가 검사 ──
     public static string Check()
@@ -98,8 +102,18 @@ public sealed class Clover
         Expect(edge.X <= area.Right - 120 && edge.X < 1900, "화면 끝이면 뒤쪽에 돋는다");
         Expect(!edge.Lost(GiveUpSec - 1) && edge.Lost(GiveUpSec + 1) && edge.State == Phase.None, "30분 넘게 못 주우면 없어진다");
         var saved = new Clover();
+        saved.Load(new Saved("Worn", 0, 0, "d", "sprout"));
+        Expect(saved.State == Phase.Worn && saved.Day == "d" && saved.Kind == "sprout", "다시 켜도 머리에 그대로 (새싹은 새싹)");
         saved.Load(new Saved("Worn", 0, 0, "d"));
-        Expect(saved.State == Phase.Worn && saved.Day == "d", "다시 켜도 머리에 그대로");
-        return $"네잎클로버: 돌아다닌 지 {minutes}분에 돋음, 하루 한 번, 떨어지면 다시 줍고, 다음 날 시듦";
+        Expect(saved.Kind == "clover", "예전 기록(종류 없음)은 네잎클로버");
+        int clovers = 0, rngs = 0;
+        var pick = new Random(3);
+        for (int i = 0; i < 1000; i++)
+        {
+            var one = new Clover();
+            if (one.TrySprout("d" + i, 0, 900, 1, 1000, 120, area, pick, 1)) { rngs++; if (one.Kind == "clover") clovers++; }
+        }
+        Expect(rngs == 1000 && clovers > 230 && clovers < 370, $"네잎클로버는 30%쯤, 나머지는 새싹 ({clovers}/1000)");
+        return $"네잎클로버·새싹: 돌아다닌 지 {minutes}분에 돋음, 하루 한 번, 네잎클로버 {clovers / 10}%, 떨어지면 다시 줍고, 다음 날 시듦";
     }
 }

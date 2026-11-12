@@ -659,6 +659,42 @@
   "pt": "Gato",
   "ru": "Кот"
  },
+ "sp.ragdoll": {
+  "en": "Ragdoll",
+  "ko": "렉돌",
+  "ja": "ラグドール",
+  "zh-Hans": "布偶猫",
+  "zh-Hant": "布偶貓",
+  "es": "Ragdoll",
+  "de": "Ragdoll",
+  "fr": "Ragdoll",
+  "pt": "Ragdoll",
+  "ru": "Рэгдолл"
+ },
+ "sp.scottishfold": {
+  "en": "Scottish Fold",
+  "ko": "스코티시폴드",
+  "ja": "スコティッシュフォールド",
+  "zh-Hans": "苏格兰折耳猫",
+  "zh-Hant": "蘇格蘭摺耳貓",
+  "es": "Scottish Fold",
+  "de": "Scottish Fold",
+  "fr": "Scottish Fold",
+  "pt": "Scottish Fold",
+  "ru": "Шотландская вислоухая"
+ },
+ "sp.exotic": {
+  "en": "Exotic Shorthair",
+  "ko": "엑조틱숏헤어",
+  "ja": "エキゾチックショートヘア",
+  "zh-Hans": "异国短毛猫",
+  "zh-Hant": "異國短毛貓",
+  "es": "Exótico de pelo corto",
+  "de": "Exotic Shorthair",
+  "fr": "Exotic Shorthair",
+  "pt": "Exótico de pelo curto",
+  "ru": "Экзотическая короткошёрстная"
+ },
  "sp.shiba": {
   "en": "Shiba",
   "ko": "시바견",

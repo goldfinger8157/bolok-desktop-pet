@@ -68,7 +68,9 @@ t('stage.adult_sweet', 'Sweetie', '애교쟁이')
 t('stage.adult_grumpy', 'Grumpy', '심술이')
 # 종
 for sp, en, ko in [
-    ('hamster', 'Hamster', '햄스터'), ('cat', 'Cat', '고양이'), ('shiba', 'Shiba', '시바견'), ('fox', 'Fox', '여우'),
+    ('hamster', 'Hamster', '햄스터'), ('cat', 'Cat', '고양이'),
+    ('ragdoll', 'Ragdoll', '렉돌'), ('scottishfold', 'Scottish Fold', '스코티시폴드'), ('exotic', 'Exotic Shorthair', '엑조틱숏헤어'),
+    ('shiba', 'Shiba', '시바견'), ('fox', 'Fox', '여우'),
     ('moonbear', 'Moon bear', '반달가슴곰'), ('penguin', 'Penguin', '펭귄'), ('owl', 'Owl', '부엉이'), ('squirrel', 'Squirrel', '다람쥐'),
     ('otter', 'Otter', '수달'), ('duck', 'Duck', '오리'), ('frog', 'Frog', '개구리'), ('hedgehog', 'Hedgehog', '고슴도치'),
     ('raccoon', 'Raccoon dog', '너구리'), ('dragon', 'Baby dragon', '아기 용'), ('sheep', 'Sheep', '양'), ('deer', 'Deer', '사슴'),

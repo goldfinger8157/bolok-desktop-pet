@@ -15,7 +15,7 @@ public sealed class Overlay : Form
     public Func<Visitor?> Guest = () => null;           // 놀러 온 떠난 친구
     public Func<Sprites?> GuestSprites = () => null;
     public Func<(string Kind, string From, double X, double Y, double At)?> Present = () => null; // 친구가 두고 간 선물
-    public Func<(double X, double Y)?> Clover = () => null; // 바닥에 돋은 네잎클로버
+    public Func<(string Kind, double X, double Y)?> Clover = () => null; // 바닥에 돋은 네잎클로버·새싹
     public Func<IReadOnlyList<string>> Dreams = () => Array.Empty<string>();                     // 꿈 말풍선 그림들
     internal Func<IReadOnlyList<IGameMode>> Modes = () => Array.Empty<IGameMode>();               // 게임 모듈 (app/Games)
     public Sprites Art => sprites();
@@ -299,10 +299,10 @@ public sealed class Overlay : Form
             Put(g, sp.Get("item/" + pr.Kind, 0, k), (int)pr.X, (int)pr.Y - 6 * k - hop);
             if (Environment.TickCount64 / 400 % 3 == 0) Put(g, sp.Get("game/spark", 0, Math.Max(1, k - 1)), (int)pr.X + 6 * k, (int)pr.Y - 12 * k);
         }
-        if (Clover() is { } cl) // 네잎클로버: 바닥에서 살랑, 가끔 반짝 (줄기 끝이 땅에)
+        if (Clover() is { } cl) // 네잎클로버·새싹: 바닥에서 살랑, 가끔 반짝 (줄기 끝이 땅에)
         {
             int k = b.Scale, s = Bolok.Clover.Scale(k), sway = Math.Sin(Environment.TickCount64 / 260.0) > .7 ? 1 : 0;
-            Put(g, sp.Get("item/clover", 0, s), (int)cl.X + sway, (int)cl.Y - 3 * s);
+            Put(g, sp.Get("item/" + cl.Kind, 0, s), (int)cl.X + sway, (int)cl.Y - 3 * s);
             if (Environment.TickCount64 / 500 % 4 == 0) Put(g, sp.Get("game/spark", 0, s), (int)cl.X + 5 * s, (int)cl.Y - 12 * s);
         }
         if (Dreams() is { Count: > 0 } dreams) DrawDream(g, dreams);

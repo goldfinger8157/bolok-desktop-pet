@@ -191,7 +191,8 @@ ITEMS = {
     'feather': ('.....u.|....uu.|...uuu.|..uuu..|.uuu...|.uu....|u......', 'b'),
     'pebble': ('.dd.dd.|ddddddd|ddddddd|.ddddd.|..ddd..|...d...', 'b'),
     'berry': ('...v...|..vv...|.rrrrr.|rrrrrrr|rrwrrrr|rrrrrrr|.rrrrr.', 'b'),
-    'clover': ('...vv.vv...|..vvvvvvv..|...vvvvv...|vv..vvv..vv|vvvv.v.vvvv|.vvvveevvv.|vvvv.v.vvvv|vv..vvv..ve|...vvvvve..|..vvvvvv.e.|...vv.vv..e', 'e'),  # 하트 잎 넷이 십자로, 진한 초록 테두리 (YELL: 하트처럼 보였다)
+    'clover': ('...vv.vv.....|..vvvvvvv....|...vvvvv.....|vv..vvv..vv..|vvvv.v.vvvv..|.vvvveevvv...|vvvv.v.vvvv..|vv..vvv..vv..|...vvvvvv....|..vvvvvv.v...|...vv.vv..v..|..........v..|..........v..|..........v..', 'e'),  # 하트 잎 넷이 십자로, 긴 줄기 (YELL: 하트처럼 보였다 → 줄기를 더 길게)
+    'sprout': ('.........vv..|.......vvvvv.|......vvvvevv|......vvvevvv|vvv..vvvevvv.|vvvv.vvevvv..|.veev.vevv...|...vvv.v.....|......v......|......v......|.....v.......|.....v.......|......v......', 'e'),  # 새싹: 왼쪽 작은 잎·오른쪽 둥근 큰 잎을 V로 떼고 잎맥, 휜 줄기 (YELL 이 보낸 그림을 참고)
 }
 def bug(i, boss=False):
     """버그 습격: 편대로 날아드는 「화면 버그」. 동글한 보라 딱정벌레, 다리 꼼지락 두 장 (i).
