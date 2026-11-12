@@ -18,7 +18,7 @@ public sealed class PetArt
     {
         "name", "note", "fur", "shade", "cream", "ear", "paw", "blush", "form_colors", "ears", "ear_k", "ear_out", "tail", "back", "spike", "horns", "wings",
         "marks", "cap", "mane", "whisker", "face", "snout", "belly", "nose", "beak", "smile", "teeth", "mouth_in", "no_cover", "body", "wide", "eye_k", "eye_up", "blush_k",
-        "eye", "point", "ear_fill", "tongue", "sleepy", "munch",
+        "eye", "point", "ear_fill", "tongue", "sleepy", "munch", "stubby",
     };
     static readonly string[] ColorKeys = { "fur", "shade", "cream", "ear", "paw", "blush", "eye" }; // eye: 렉돌 파란 눈
     static readonly string[] FrameKeys =
@@ -321,7 +321,7 @@ public sealed class PetArt
         else if (ears == "long") // 알파카: 길쭉하게 선 귀
             foreach (int s in Sides) g.Ell(cx + s * rx * .48, cy - ry - 1.5, 1.7, ear * 1.3, c["fur"]);
         else if (ears == "fold") // 스코티시폴드: 앞으로 접혀 머리에 납작하게 붙은 작은 귀
-            foreach (var x in earX) g.Ell(x, cy - ry * .9, ear * 1.05, ear * .62, c["fur"]);
+            foreach (var x in earX) g.Ell(x, cy - ry * .9, ear * 1.05, ear * .62, S.Has("ear_fill") ? Col(S, "ear_fill") : c["fur"]); // 퍼그는 까만 귀
         if (S.Has("ear_out") && roundEars) // 판다: 귀 바깥이 까맣다
             foreach (var x in earX) { double r = ear * RoundK(false); g.Ell(x, cy - ry * .86, r, r, Col(S, "ear_out")); }
         if (body == "box") g.Box(cx, cy, rx, ry, c["shade"]); else g.Ell(cx, cy, rx, ry, c["shade"]);
@@ -363,7 +363,8 @@ public sealed class PetArt
                 int s = Sides[i];
                 double lift = step == i + 1 ? 1 : 0;
                 if (dangle != 0) lift = -.6 * (((int)dangle + i) % 2);
-                g.Ell(cx + s * rx * .5, cy + ry + .5 - lift, 2.8 * F.N("paw_k", 1), 1.9 * F.N("paw_k", 1), c["paw"]); // 아기는 발이 짧다
+                bool stubby = S.T("stubby"); // 웰시코기: 짧은 다리 (발이 납작하고 조금 벌어진다)
+                g.Ell(cx + s * rx * (stubby ? .6 : .5), cy + ry + .5 - lift, 2.8 * F.N("paw_k", 1) * (stubby ? 1.1 : 1), 1.9 * F.N("paw_k", 1) * (stubby ? .55 : 1), c["paw"]); // 아기는 발이 짧다
                 if (dangle != 0) g.Ell(cx + s * (rx + .4), cy + 1, 2.2, 1.7, c["paw"]); // 번쩍 들리면 팔이 벌어진다
             }
         }
@@ -777,6 +778,13 @@ public sealed class PetArt
                         g.Ell(fx + .5, ey + .3, gap + 2.6 * sk, 3.6 * sk, Mix(Col(S, "point"), c["fur"], .3), true);
                         g.Poly(new[] { (fx + .5 - 3 * sk, my + 1.0), (fx + .5 + 3 * sk, my + 1.0), (fx + .5, ey - 1.5 * sk) }, cream, true);
                         break;
+                    case "pugmask": // 퍼그: 주둥이와 눈 둘레가 까만 가면
+                    {
+                        uint mask = Rgb(70, 58, 52);
+                        g.Ell(fx + .5, my - .8, rx * .5, ry * .36, mask, true);
+                        foreach (int s in Sides) g.Ell(fx + .5 + s * gap, ey + .6, 3.2 * sk, 3.2 * sk, mask, true);
+                        break;
+                    }
                     case "bib": // 리트리버: 주둥이 아래 가슴에 크림색 털 (주둥이와 섞이지 않게 아래로)
                         g.Ell(fx + .5, cy + ry * .92, rx * .56, ry * .28, cream, true);
                         break;
@@ -801,6 +809,13 @@ public sealed class PetArt
                         g.Pix(c["white"], (cx - rx * .55, cy - ry * .55), (cx - rx * .55 + 1, cy - ry * .55), (cx - rx * .55, cy - ry * .55 + 1), (cx - rx * .3, cy - ry * .72));
                         break;
                     case "beard": g.Pix(c["line"], (fx, my + 3), (fx + 1, my + 3), (fx, my + 4), (fx + 1, my + 4), (fx, my + 5)); break; // 염소 수염
+                    case "wrinkles": // 퍼그: 이마 주름 두 줄
+                    {
+                        uint w = Mix(c["shade"], line, .35);
+                        int top = ey - R(4 * sk) - 1;
+                        foreach (var (x, y) in new[] { (-2, 0), (-1, -1), (0, -1), (1, -1), (2, 0), (-1, -3), (0, -3), (1, -3) }) g.Put(fx + x, top + y, w, true);
+                        break;
+                    }
                 }
         }
         if (!before && S.T("whisker"))
@@ -824,7 +839,7 @@ public sealed class PetArt
                 break;
             case "nostrils": g.Pix(c["line"], (fx - 1, my - 2), (fx + 2, my - 2), (fx - 1, my - 1), (fx + 2, my - 1)); break; // 카피바라
             case "dog": // 강아지: 크고 까만 코에 반짝임
-                g.Ell(fx + .5, my - 1.6, 2.1, 1.5, c["line"]);
+                g.Ell(fx + .5, my - 1.6, 2.1, 1.5, c["eye"]);
                 g.Put(fx - 1, my - 2, Rgb(140, 128, 128));
                 break;
         }

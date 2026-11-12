@@ -743,6 +743,42 @@
   "pt": "Retriever",
   "ru": "Ретривер"
  },
+ "sp.corgi": {
+  "en": "Welsh corgi",
+  "ko": "웰시코기",
+  "ja": "ウェルシュ・コーギー",
+  "zh-Hans": "柯基犬",
+  "zh-Hant": "柯基犬",
+  "es": "Corgi galés",
+  "de": "Welsh Corgi",
+  "fr": "Corgi gallois",
+  "pt": "Corgi galês",
+  "ru": "Вельш-корги"
+ },
+ "sp.pug": {
+  "en": "Pug",
+  "ko": "퍼그",
+  "ja": "パグ",
+  "zh-Hans": "巴哥犬",
+  "zh-Hant": "巴哥犬",
+  "es": "Carlino",
+  "de": "Mops",
+  "fr": "Carlin",
+  "pt": "Pug",
+  "ru": "Мопс"
+ },
+ "sp.pomeranian": {
+  "en": "Pomeranian",
+  "ko": "포메라니안",
+  "ja": "ポメラニアン",
+  "zh-Hans": "博美犬",
+  "zh-Hant": "博美犬",
+  "es": "Pomerania",
+  "de": "Zwergspitz",
+  "fr": "Loulou de Poméranie",
+  "pt": "Lulu da Pomerânia",
+  "ru": "Померанский шпиц"
+ },
  "sp.fox": {
   "en": "Fox",
   "ko": "여우",
