@@ -258,7 +258,16 @@ public sealed class PetForm : Form
 
     void Restore()
     {
-        if (pendingSave == null) return;
+        if (pendingSave == null) // 처음 켰다(또는 저장을 못 읽었다): 첫 알도 무엇이 나올지 모른다 (YELL 2026-11-12)
+        {
+            if (b.P.Stage == "egg")
+            {
+                string first = RandomSpecies();
+                SetSpecies(first); // 햄스터가 아니면 알인 동안 그림을 받는다 (못 받으면 깨어나길 기다린다)
+                Dbg.Log("first-egg", ("species", first));
+            }
+            return;
+        }
         gameBest = pendingSave.GameBest;
         Sfx.On = pendingSave.GameSound;
         autoUpdate = pendingSave.AutoUpdate;
@@ -640,8 +649,7 @@ public sealed class PetForm : Form
         b.X += Math.Clamp(leaveTo - b.X, -step, step);
         if (Math.Abs(leaveTo - b.X) > 1) return;
         leaving = false;
-        var all = sprites.SpeciesNames.Keys.ToList();
-        string next = all[Random.Shared.Next(all.Count)];
+        string next = RandomSpecies();
         b.Reset();
         var area = b.Area;
         (b.X, b.Y) = (area.Left + area.Width / 2.0, area.Bottom - b.K.FloorGap);
@@ -670,6 +678,13 @@ public sealed class PetForm : Form
         }
         if (!hold) hatchHeld = false;
         b.P.HoldHatch = hold;
+    }
+
+    // 새 알의 종: 34종 중 아무나 (처음 알도, 풀어준 뒤 오는 알도)
+    string RandomSpecies()
+    {
+        var all = sprites.SpeciesNames.Keys.ToList();
+        return all[Random.Shared.Next(all.Count)];
     }
 
     // 알이 깨지면 도감에 올리고 알려 준다
