@@ -589,18 +589,19 @@ public sealed class PetArt
     static bool HeadMark(Bag S) => S.List("marks").Any(m => m is "cap" or "topknot" or "moss" or "hair" or "tuft" or "mane") || S.S("horns", "") is "unicorn" or "one"
         || S.S("body", "") is "blob" or "ghost" or "orb";
 
-    // 몽마 꼬리 길: 몸 오른쪽 아래에서 가는 선으로 나와 고리를 한 번 그리고 위로 올라간다 (끝에 뾰족한 세모). 칸 밖으로는 안 나가게
+    // 몽마 꼬리 길: 몸 오른쪽 아래에서 가는 선으로 나와 S자로 살짝 휘며 오른쪽 위로 (YELL 이 보낸 악마 꼬리 그림). 끝에 뾰족한 스페이드. 칸 밖으로는 안 나가게
     static List<(double X, double Y)> WrapTail(double cx, double cy, double rx, double ry, double fk)
     {
-        double r = 1.6 + 1.6 * fk, lx = Math.Min(cx + rx + 1.5 + 2.4 * fk, 37.5 - r), ly = cy + ry * .1;
-        var pts = new List<(double, double)> { (cx + rx * .8, cy + ry * .45), (lx - r * .7, cy + ry * .42) };
-        for (int i = 0; i <= 20; i++) // 왼쪽 아래에서 시작해 시계 방향으로 한 바퀴 (ℓ 모양 고리)
+        double ex = Math.Min(cx + rx + 1.5 + 2.5 * fk, 36.5);
+        (double X, double Y) p0 = (cx + rx * .8, cy + ry * .5), p1 = (Math.Min(cx + rx + 3.5 * fk, 38), cy + ry * .75),
+            p2 = (cx + rx + .5 * fk, cy + ry * .05), p3 = (ex, cy - ry * (.2 + .25 * fk));
+        var pts = new List<(double, double)>();
+        for (int i = 0; i <= 16; i++)
         {
-            double a = Math.PI * .75 + 2 * Math.PI * i / 20;
-            pts.Add((lx + r * Math.Cos(a), ly + r * Math.Sin(a)));
+            double t = i / 16.0, u = 1 - t;
+            pts.Add((u * u * u * p0.X + 3 * u * u * t * p1.X + 3 * u * t * t * p2.X + t * t * t * p3.X,
+                     u * u * u * p0.Y + 3 * u * u * t * p1.Y + 3 * u * t * t * p2.Y + t * t * t * p3.Y));
         }
-        pts.Add((lx - r * .55, ly - r - 1.2 * fk));
-        pts.Add((lx - r * .3, cy - ry * (.25 + .3 * fk)));
         return pts;
     }
 
@@ -655,11 +656,14 @@ public sealed class PetArt
                 g.Ell(cx + rx * .92 + .8 * fk, cy - ry * .35, 2.2 * fk, 2 * fk, Mix(tc, c["white"], .22));
                 break;
             }
-            case "wrap": // 몽마: 꼬리 끝 뾰족한 세모 (꼬리 선은 테두리 뒤에 가늘게)
+            case "wrap": // 몽마: 꼬리 끝 스페이드 (위가 뾰족하고 아래 두 혹 사이로 꼬리 선이 들어간다). 꼬리 선은 테두리 뒤에 가늘게
             {
                 var tip = WrapTail(cx, cy, rx, ry, fk)[^1];
-                double ts = 1.6 + 1.2 * fk;
-                g.Poly(new[] { (tip.X - ts, tip.Y + 1), (tip.X + ts, tip.Y + 1), (tip.X, tip.Y - ts * 1.6) }, S.Has("point") ? Col(S, "point") : shade);
+                string[] spade = fk < .7 ? new[] { ".#.", "###", "#.#" } : new[] { "..#..", ".###.", "#####", "#####", "##.##" };
+                int w = spade[0].Length, x0 = R(tip.X) - w / 2, y0 = R(tip.Y) - spade.Length;
+                uint sc = S.Has("point") ? Col(S, "point") : shade;
+                for (int y = 0; y < spade.Length; y++)
+                    for (int x = 0; x < w; x++) if (spade[y][x] == '#') g.Put(x0 + x, y0 + y, sc);
                 break;
             }
             case "long": // 드래곤: 바닥을 따라 길게 뻗다가 끝이 말려 올라가는 꼬리 (칸 밖으로는 안 나가게)
