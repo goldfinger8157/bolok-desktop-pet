@@ -10,7 +10,8 @@ public sealed class Overlay : Form
     public Func<Sprites?> GuestSprites = () => null;
     public Func<(string Kind, string From, double X, double Y, double At)?> Present = () => null; // 친구가 두고 간 선물
     public Func<(string Kind, double X, double Y, bool Falling, bool Flip)?> Clover = () => null; // 바닥에 돋은 네잎클로버·새싹·해바라기, 내려오는 낙엽
-    public Func<(double X, double Y, int Seed)?> LeafPile = () => null; // 땅에 쌓인 낙엽 더미 (YELL 2026-11-13: 쌓인 낙엽에서 줍는 느낌, 던져서 떨궜을 때도)
+    public Func<(double X, double Y, int Seed)?> LeafPile = () => null;
+    public Func<(PointF Pos, int Stage)?> Snowman = () => null; // 눈 올 때 볼록이 곁 눈사람 (발 자리, 단계 0~2) // 땅에 쌓인 낙엽 더미 (YELL 2026-11-13: 쌓인 낙엽에서 줍는 느낌, 던져서 떨궜을 때도)
     static readonly string[] PileKinds = { "item/fallen", "item/ginkgo", "item/maple", "item/redmaple" };
     static readonly string[] PileTurns = { "", "_r1", "_r2", "_r3", "_45" }; // 0°·90°·180°·270°·45° 회전 + 좌우 뒤집기 — 장마다 제각각 (YELL: 다 같은 방향이면 어색, 기울이기 말고 회전만)
     static readonly (double Dx, double Dy)[] PileAt = { (-1.15, .1), (1.0, 0), (-.5, .35), (.55, .3), (.05, -.05) };
@@ -96,6 +97,7 @@ public sealed class Overlay : Form
         if (Present() is { } pr) r.Add(Client(Around(pr.X, pr.Y - 8 * b.Scale, 14 * b.Scale, 14 * b.Scale)));
         if (Clover() is { } cl) r.Add(Client(Around(cl.X, cl.Y - 10 * b.Scale, 16 * b.Scale, 16 * b.Scale)));
         if (LeafPile() is { } lp) r.Add(Client(Around(lp.X, lp.Y - 4 * b.Scale, b.CellPx * .85, 12 * b.Scale)));
+        if (Snowman() is { } sm) r.Add(Client(Around(sm.Pos.X, sm.Pos.Y - 12 * b.Scale, 12 * b.Scale, 14 * b.Scale)));
         if (b.Now < b.BasketUntil + .1) r.Add(Client(Around(b.BasketX, b.BasketY, 18 * b.Scale, 14 * b.Scale)));
         if (Dreams().Count > 0) r.Add(Client(DreamRect()));
         return r;
@@ -199,6 +201,8 @@ public sealed class Overlay : Form
             Put(g, sp.Get("item/" + pr.Kind, 0, k), (int)pr.X, (int)pr.Y - 6 * k - hop);
             if (Environment.TickCount64 / 400 % 3 == 0) Put(g, sp.Get("game/spark", 0, Math.Max(1, k - 1)), (int)pr.X + 6 * k, (int)pr.Y - 12 * k);
         }
+        if (Snowman() is { } sm && sp.Has("weather/snowman")) // 눈사람: 발 줄(그림의 37)을 볼록이 발에 맞춘다
+            Put(g, sp.Get("weather/snowman", sm.Stage, b.Scale), (int)sm.Pos.X, (int)sm.Pos.Y - 20 * b.Scale);
         if (LeafPile() is { } lp) // 낙엽 더미: 누운 잎 몇 장을 흩어 놓는다 (주울 낙엽보다 먼저 = 밑에)
         {
             int s = Bolok.Clover.Scale(b.Scale);
@@ -236,14 +240,21 @@ public sealed class Overlay : Form
     {
         if (!w.Leaf.IsEmpty && Weather.HasLeaf(sp)) // 우산: 줄기(볼록이 머리 뒤로 들어간다) 위에 잎
         {
-            int k = w.LeafK, x0 = w.StemFrom.X - Left, y0 = w.StemFrom.Y - Top, x1 = w.StemTo.X - Left, y1 = w.StemTo.Y - Top;
-            int steps = Math.Max(1, Math.Max(Math.Abs(x1 - x0), Math.Abs(y1 - y0)) / Math.Max(1, k)); // 몸 옆(손)에서 잎 밑까지 비스듬한 줄기
+            // 줄기: 잎 밑동에서 바깥으로 살짝 휘어 몸 옆(손)까지, 아래 끝은 손잡이처럼 몸 쪽으로 동그랗게 말린다 (YELL 2026-11-13: 손잡이 부분은 휘게)
+            int k = w.LeafK, out1 = w.LeafFlip ? 1 : -1;
+            double x0 = w.StemTo.X - Left, y0 = w.StemTo.Y - Top, x2 = w.StemFrom.X - Left, y2 = w.StemFrom.Y - Top;
+            double x1 = Math.Min(x0, x2) * (out1 < 0 ? 1 : 0) + Math.Max(x0, x2) * (out1 > 0 ? 1 : 0) + out1 * 3 * k, y1 = (y0 + y2) / 2;
+            int steps = Math.Max(2, (int)(Math.Abs(y2 - y0) + Math.Abs(x2 - x0)) / Math.Max(1, k));
             for (int i = 0; i <= steps; i++)
             {
-                int x = x0 + (x1 - x0) * i / steps, y = y0 + (y1 - y0) * i / steps;
+                double t = (double)i / steps, a = (1 - t) * (1 - t), b2 = 2 * (1 - t) * t, c2 = t * t;
+                int x = (int)(a * x0 + b2 * x1 + c2 * x2), y = (int)(a * y0 + b2 * y1 + c2 * y2);
                 g.FillRectangle(stemDark, x, y, 2 * k, 2 * k);
                 g.FillRectangle(stemLight, x + k / 2, y, Math.Max(1, k), Math.Max(1, k));
             }
+            int hx = (int)x2, hy = (int)y2, inw = -out1; // 손잡이 끝: 아래로 한 칸, 몸 쪽으로 말려 올라간다
+            foreach (var (dx, dy) in new[] { (0, 2), (inw, 3), (2 * inw, 3), (3 * inw, 2) })
+                g.FillRectangle(stemDark, hx + dx * k, hy + dy * k, 2 * k, 2 * k);
             g.DrawImageUnscaled(sp.Get(Weather.LeafName, w.LeafFrame, w.LeafK, w.LeafFlip), w.LeafAt.X - Left, w.LeafAt.Y - Top);
         }
         if (w.Drops.Count == 0) return;

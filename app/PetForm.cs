@@ -195,7 +195,7 @@ public sealed class PetForm : Form, IGameHost
         foreach (var sc in Screen.AllScreens)
         {
             var o = new Overlay(b, () => sprites, sc.Bounds) { Sky = () => weather };
-            o.Guest = () => visitor; o.GuestSprites = () => visitorSprites; o.Present = () => present; o.Clover = CloverShown; o.LeafPile = LeafPileShown; o.Dreams = Dreams; o.Modes = () => modes;
+            o.Guest = () => visitor; o.GuestSprites = () => visitorSprites; o.Present = () => present; o.Clover = CloverShown; o.LeafPile = LeafPileShown; o.Snowman = SnowmanShown; o.Dreams = Dreams; o.Modes = () => modes;
             overlays.Add(o);
         }
     }
@@ -1010,8 +1010,34 @@ public sealed class PetForm : Form, IGameHost
         }
         weatherShown = weather.On && !quiet;
         b.Calm = weatherShown && weather.Reaction != Weather.Cover.Shelter; // 눈·비: 많이 안 움직이게 (창 뒤로 피하기는 그대로 간다)
+        SnowmanTick();
         weather.React(b, weatherShown, Random.Shared);
     }
+
+    // 눈사람 (YELL 2026-11-13): 눈이 오면 볼록이 곁 바닥에 볼록이 50% 크기 눈사람을 하나 — 6초마다 한 단계씩 쌓아 올린다
+    // (아래 눈덩이 → 머리 → 얼굴·팔·목도리). 눈이 그치면 1분 뒤 녹아 없어진다
+    double snowmanAt = -1, snowmanGone;
+    PointF snowmanPos;
+    int snowmanStage;
+    void SnowmanTick()
+    {
+        double now = b.Now;
+        bool snowing = weatherShown && weather.Now == Weather.Sky.Snow;
+        if (snowing && snowmanAt < 0 && weather.Density(now) > .5 && b.Mode == Mode.Wander)
+        {
+            float x = (float)Math.Clamp(b.X + b.Dir * b.CellPx * .85, b.Area.Left + b.CellPx, b.Area.Right - b.CellPx);
+            (snowmanAt, snowmanGone, snowmanPos) = (now, 0, new PointF(x, (float)b.Y));
+            b.Greet("dig", 1.6); // 눈을 굴려 쌓는다
+            Dbg.Log("snowman", ("x", (int)x), ("y", (int)b.Y));
+        }
+        if (snowmanAt < 0) return;
+        if (snowing) snowmanGone = 0;
+        else if (snowmanGone == 0) snowmanGone = now + 60;
+        else if (now > snowmanGone) { snowmanAt = -1; foreach (var o in overlays) o.Invalidate(); return; }
+        int stage = Math.Min(2, (int)((now - snowmanAt) / 6));
+        if (stage != snowmanStage) { snowmanStage = stage; if (stage > 0) b.Greet("dig", 1.2); }
+    }
+    (PointF Pos, int Stage)? SnowmanShown() => snowmanAt < 0 ? null : (snowmanPos, snowmanStage);
 
     // 눈·비가 내리는 곳: 화면 전체가 아니라 볼록이 머리 위 좁은 구역만 (YELL 2026-11-13: 화면 전체면 너무 티 난다).
     // 볼록이 크기를 100% 로 보고 가로 300%, 발에서 위로 300% — 볼록이를 따라다닌다

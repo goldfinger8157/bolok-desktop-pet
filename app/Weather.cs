@@ -214,17 +214,17 @@ public sealed class Weather
                                    && b.Pose is not ("fly" or "roll" or "flop" or "sleep");
 
     // ── 알갱이: 시각 t 의 순수 함수 ──
-    public struct Drop { public int X, Y; public byte Art, Frame; } // Art: 0~2 눈송이, 3 빗줄기, 4 튀는 물. (X, Y) 가 그림 가운데
+    public struct Drop { public int X, Y; public byte Art, Frame; } // Art: 0~2 눈송이, 3 가까운 빗줄기, 4 튀는 물, 5 먼 빗줄기. (X, Y) 가 그림 가운데
 
     // 그림 칸 크기 (tools/sprites.py 의 FLAKES·RAIN·SPLASH 와 같아야 한다 — 자가 검사가 본다)
-    static readonly (int W, int H)[] Size = { (7, 7), (7, 7), (7, 7), (2, 7), (5, 2) }; // 빗줄기는 2×7 (YELL: 조금 더 크게)
+    static readonly (int W, int H)[] Size = { (7, 7), (7, 7), (7, 7), (2, 7), (5, 2), (1, 4) }; // 가까운 빗줄기 2×7 (YELL: 조금 더 크게), 먼 빗줄기 1×4
     static readonly string[] FlakeNames = { "weather/flake0", "weather/flake1", "weather/flake2" };
     public const string RainName = "weather/rain", LeafName = "weather/leaf", WetName = "weather/wet";
-    public const int Pics = 8; // 그림 조각 수: 눈송이 셋 × 두 장, 빗줄기, 튀는 물
+    public const int Pics = 9; // 그림 조각 수: 눈송이 셋 × 두 장, 가까운 빗줄기, 튀는 물, 먼 빗줄기
 
     public static (string Name, int Frame, int W, int H) PicArt(int pic) =>
-        pic < 6 ? (FlakeNames[pic / 2], pic % 2, 7, 7) : pic == 6 ? (RainName, 0, 2, 7) : (RainName, 1, 5, 2);
-    public static int Pic(in Drop d) => d.Art < 3 ? d.Art * 2 + d.Frame : d.Art == 3 ? 6 : 7;
+        pic < 6 ? (FlakeNames[pic / 2], pic % 2, 7, 7) : pic == 6 ? (RainName, 0, 2, 7) : pic == 7 ? (RainName, 1, 5, 2) : (RainName, 2, 1, 4);
+    public static int Pic(in Drop d) => d.Art < 3 ? d.Art * 2 + d.Frame : d.Art == 3 ? 6 : d.Art == 4 ? 7 : 8;
     public static Rectangle Src(int pic, int s) { var (_, _, w, h) = PicArt(pic); return new((PetArt.Cell - w) / 2 * s, (PetArt.Cell - h) / 2 * s, w * s, h * s); } // 공통 그림 칸에서 잘라 올 자리
     public static int DropScale(int k) => Math.Max(1, k - 1);
     public static Rectangle Box(in Drop d, int s) { var (w, h) = Size[d.Art]; return new(d.X - w * s / 2, d.Y - h * s / 2, w * s, h * s); }
@@ -261,12 +261,13 @@ public sealed class Weather
         for (int i = 0; i < n; i++)
         {
             if ((i + .5) / n > density) break; // 처음·끝엔 몇 개만
-            double speed = snow ? (30 + 16 * Hash(i, 1)) * u : (370 + 110 * Hash(i, 1)) * u; // 비는 조금 천천히 (YELL 2026-11-13: 520 → 370)
+            double depth = Hash(i, 8); // 비의 거리감 (YELL 2026-11-13: 앞은 빠르고 뒤는 느리게): 가까운 비는 크고 빠르게, 먼 비는 작고 옅고 느리게
+            double speed = snow ? (30 + 16 * Hash(i, 1)) * u : (230 + 310 * depth) * u;
             double run = t * speed + Hash(i, 2) * span;
             double lap = Math.Floor(run / span);
             double y = top + (run - lap * span);
             double x = area.Left + 12 * u + Hash(i, unchecked(3 + (int)(long)lap * 5)) * (area.Width - 24 * u); // 한 바퀴마다 다른 자리
-            byte art = 3, frame = 0;
+            byte art = (byte)(!snow && depth < .45 ? 5 : 3), frame = 0;
             if (snow)
             {
                 x += Math.Sin(t * (.7 + .6 * Hash(i, 4)) + Hash(i, 5) * 6.283) * (8 + 10 * Hash(i, 6)) * u; // 살랑살랑
@@ -274,13 +275,13 @@ public sealed class Weather
                 art = (byte)(i % 3);
                 frame = (byte)((int)Math.Floor(t * 1.5 + Hash(i, 7) * 2) & 1); // 팔랑: 「+」↔「×」
             }
-            if (!roof.IsEmpty && x >= roof.Left && x < roof.Right && y + Size[art].H * s / 2.0 >= RoofY(roof, x))
+            if (art != 5 && !roof.IsEmpty && x >= roof.Left && x < roof.Right && y + Size[art].H * s / 2.0 >= RoofY(roof, x)) // 먼 비는 잎 뒤로 지나간다
             {
                 double ry = RoofY(roof, x);
                 if (snow || y - ry >= splash * .5) continue; // 잎에 닿은 건 그 아래로 안 떨어진다
                 (art, y) = (4, ry - s);
             }
-            else if (!snow && y >= floor) (art, y) = (4, floor - s); // 바닥에 닿아 튄다
+            else if (!snow && y >= floor) { if (art == 5) continue; (art, y) = (4, floor - s); } // 바닥에 닿아 튄다 (먼 비는 튀지 않고 사라진다)
             var d = new Drop { X = (int)x, Y = (int)y, Art = art, Frame = frame };
             var box = Box(d, s);
             if (box.IntersectsWith(avoid) || box.Right <= area.Left || box.Left >= area.Right) continue;
@@ -382,7 +383,7 @@ public sealed class Weather
         int fromY = Math.Min(PetArt.Cell - 5, (h.Surface + 37) / 2 + 2);
         StemFrom = new Point(ox + (ex + sd) * k, oy + fromY * k);
         StemTo = new Point(LeafAt.X + (flip ? PetArt.Cell - 1 - LeafStemX : LeafStemX) * k, oy + stemTop * k);
-        Stem = Rectangle.Inflate(Rectangle.FromLTRB(Math.Min(StemFrom.X, StemTo.X), Math.Min(StemFrom.Y, StemTo.Y), Math.Max(StemFrom.X, StemTo.X) + 2 * k, Math.Max(StemFrom.Y, StemTo.Y) + 2 * k), k, k);
+        Stem = Rectangle.Inflate(Rectangle.FromLTRB(Math.Min(StemFrom.X, StemTo.X), Math.Min(StemFrom.Y, StemTo.Y), Math.Max(StemFrom.X, StemTo.X) + 2 * k, Math.Max(StemFrom.Y, StemTo.Y) + 2 * k), 5 * k, 6 * k); // 휜 줄기·손잡이까지
         (LeafK, LeafFlip, LeafFrame) = (k, flip, (int)(t / .8) % 2);
     }
 
@@ -452,7 +453,7 @@ public sealed class Weather
                     var box = Box(d, DropScale(3));
                     Expect(!box.IntersectsWith(avoid), $"일하는 창 위에 알갱이가 없다 ({box})");
                     Expect(box.Right > area.Left && box.Left < area.Right, "모니터 안에만");
-                    Expect(d.X < roof.Left || d.X >= roof.Right || box.Top < roof.Bottom - 2 || d.Y < roof.Top, "우산 잎 아래로는 안 떨어진다");
+                    Expect(d.Art == 5 || d.X < roof.Left || d.X >= roof.Right || box.Top < roof.Bottom - 2 || d.Y < roof.Top, "우산 잎 아래로는 안 떨어진다 (먼 비는 잎 뒤로 지나간다)");
                     if (d.Art == 4 && d.Y < roof.Bottom) splashes++;
                 }
             }
@@ -626,7 +627,7 @@ public sealed class Weather
             for (int i = 0; i < 300; i++)
             {
                 var (cx, cy) = calm.CalmRoam();
-                Expect(cy >= calm.Y && Math.Abs(cx - calm.X) + Math.Abs(cy - calm.Y) <= 2 * calm.CellPx + 1e-6, $"눈·비엔 위로 안 가고 몸 200% 안 ({cx - calm.X:F0},{cy - calm.Y:F0})");
+                Expect(cy == calm.Y && Math.Abs(cx - calm.X) <= 2 * calm.CellPx + 1e-6, $"눈·비엔 옆으로만, 몸 200% 안 ({cx - calm.X:F0},{cy - calm.Y:F0})");
             }
         }
         return $"날씨: 하루 {perDay:0.0}번(많아야 {most}), 11~2월 눈만 ({snow[11] + snow[12] + snow[1] + snow[2]}번)·3~10월 비만 ({rain.Sum()}번), 일하는 창 위 0알, " +

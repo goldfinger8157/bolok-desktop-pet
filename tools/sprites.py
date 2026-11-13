@@ -815,7 +815,8 @@ FLAKES = [  # 「+」 모양 ↔ 「×」 모양으로 번갈아 팔랑
     ('.......|...s...|..sws..|.swwws.|..sws..|...s...|.......', '.......|.s...s.|..sws..|..www..|..sws..|.s...s.|.......'),
     ('.......|.......|...s...|..sws..|...s...|.......|.......', '.......|.......|..s.s..|...w...|..s.s..|.......|.......'),
 ]
-RAIN = '.s|sr|rr|rr|rr|rd|.d'  # 빗방울 줄기: 폭 2·길이 7 (YELL 2026-11-13: 조금 더 크게)
+RAIN = '.s|sr|rr|rr|rr|rd|.d'  # 빗방울 줄기: 폭 2·길이 7 (YELL 2026-11-13: 조금 더 크게) — 가까운 비
+RAIN_FAR = 's|s|r|s'          # 먼 비: 가늘고 짧고 옅게 (YELL: 앞은 빠르고 뒤는 느리게, 거리감)
 SPLASH = '.r.r.|r...r'       # 바닥·잎에 닿아 튀는 물
 
 
@@ -876,6 +877,26 @@ def weather_leaf(drip):
     return g
 
 
+def snowman(stage):
+    """눈사람 (YELL 2026-11-13: 눈이 오면 볼록이 곁에 볼록이 50% 크기로 하나). 바닥은 37 (펫과 같은 발 줄), 키 20.
+    stage 0: 아래 눈덩이, 1: + 머리, 2: + 숯 눈·당근 코·나뭇가지 팔·빨간 목도리"""
+    g = Canvas()
+    white, shade, line = (250, 252, 255), (206, 220, 238), (132, 150, 180)
+    g.ell(20, 32, 6.2, 5.2, white)
+    g.ell(21.5, 34, 4, 2.6, shade)
+    if stage >= 1:
+        g.ell(20, 23.5, 4.4, 4, white)
+        g.ell(21.3, 25, 2.6, 1.8, shade)
+    g.outline(line)
+    if stage >= 2:
+        g.pix((40, 40, 48), (18, 22), (21, 22))                     # 숯 눈
+        g.pix((240, 140, 50), (19, 24), (20, 24), (21, 24))          # 당근 코 (옆으로)
+        g.pix((232, 72, 92), (16, 27), (17, 27), (18, 27), (19, 27), (20, 27), (21, 27), (22, 27), (23, 27), (22, 28), (22, 29))  # 목도리
+        twig = (110, 76, 50)
+        g.pix(twig, (13, 30), (12, 29), (11, 28), (12, 27), (27, 30), (28, 29), (29, 28), (28, 27))  # 나뭇가지 팔
+    return g
+
+
 def weather_wet(i):
     """비 맞은 볼록이: 머리에 맺힌 물방울과 옆으로 똑 떨어지는 방울. (20, 20) 을 머리 꼭대기 가운데에 맞춘다"""
     g = Canvas()
@@ -925,7 +946,8 @@ def build():
     rows += [(f'run/pit_{k}', [run_pit(k)]) for k in 'lmr']
     rows += [('run/cave_l', [run_cave('l')]), ('run/cave_m', [run_cave('m', i) for i in range(3)]), ('run/cave_r', [run_cave('r')])]
     rows += [(f'weather/flake{i}', [weather_art(f) for f in pair]) for i, pair in enumerate(FLAKES)]
-    rows += [('weather/rain', [weather_art(RAIN), weather_art(SPLASH)]), ('weather/leaf', [weather_leaf(0), weather_leaf(1)]),
+    rows += [('weather/snowman', [snowman(0), snowman(1), snowman(2)])]
+    rows += [('weather/rain', [weather_art(RAIN), weather_art(SPLASH), weather_art(RAIN_FAR)]), ('weather/leaf', [weather_leaf(0), weather_leaf(1)]),
              ('weather/wet', [weather_wet(0), weather_wet(1)])]
     return rows
 
