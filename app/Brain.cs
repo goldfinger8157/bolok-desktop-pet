@@ -376,6 +376,20 @@ public sealed class Brain
 
     // 쉴 때 자세를 잠깐 바꾼다 (Weather: 비 맞으면 시무룩). null 이면 평소대로
     public string? IdlePose;
+    // 눈·비가 올 때 (YELL 2026-11-13): 많이 안 움직이고, 옆이나 아래로만, 한 번에 몸 크기 200% 까지, 천천히.
+    // 위로 가면 머리 위에 내리던 눈·비가 같이 올라가 보였다
+    public bool Calm;
+    public (double X, double Y) CalmRoam()
+    {
+        for (int i = 0; i < 8; i++)
+        {
+            double x = Math.Clamp(X + Rand(-2, 2) * CellPx, MinX, MaxX), y = Math.Clamp(Y + Rand(0, 1) * CellPx, MinY, MaxY);
+            if (Math.Abs(y - Y) + Math.Abs(x - X) > 2 * CellPx) continue;       // 몸 크기 200% 안
+            if (y < Y) continue;                                                // 위로는 안 간다
+            if (!OnActive(x, y)) return (x, y);
+        }
+        return (X, Y);
+    }
 
     public bool TryHide()
     {
@@ -848,7 +862,7 @@ public sealed class Brain
                 SpitBack(h);
                 Play("spit", .7);
             }
-            else if (Holes.Count < P.Bites && Now >= nextBiteTry)
+            else if (Holes.Count < P.Bites && Now >= nextBiteTry && !Calm) // 눈·비 오는 동안엔 파먹으러 멀리 안 간다
             {
                 if (PickSpot() is { } s) { spot = s; Mode = Mode.GoBite; }
                 else nextBiteTry = Now + 20;
@@ -862,7 +876,7 @@ public sealed class Brain
                 if (!fleeing && !Holding && OnActive(X, Y)) Escape(); // 어쩌다 활성 창 위에 있으면 곧장 빠져나간다
                 if (next >= 0 && Now > next)
                 {
-                    if (Now > nextHide && P.Need(K) == null)
+                    if (!Calm && Now > nextHide && P.Need(K) == null)
                     {
                         if (TryHide()) break;
                         nextHide = Now + 30; // 숨을 창이 없으면 조금 있다 다시 본다
@@ -872,16 +886,20 @@ public sealed class Brain
                         nextNap = Now + 60;
                         if (TryNap()) break;
                     }
-                    if (P.Need(K) == null && rng.NextDouble() < K.SoloChance) { Solo(); break; }
-                    PickRoam();
-                    next = -1;
+                    if (Calm) { (tx, ty) = CalmRoam(); next = -1; } // 눈·비: 짧게 옆·아래로만 (숨기·혼자 놀기도 쉰다)
+                    else
+                    {
+                        if (P.Need(K) == null && rng.NextDouble() < K.SoloChance) { Solo(); break; }
+                        PickRoam();
+                        next = -1;
+                    }
                 }
                 if (next < 0)
                 {
                     Pose = "walk";
-                    double speed = K.WalkSpeed * (Now < runUntil ? 4 : 1);
+                    double speed = K.WalkSpeed * (Now < runUntil ? 4 : 1) * (Calm ? .45 : 1); // 눈·비엔 천천히
                     if (fleeing || OnActive(X, Y)) speed = Math.Max(speed, K.EscapeSpeed); // 활성 창 위는 빠르게 지나간다
-                    if (Go(tx, ty, speed, dt)) { next = Now + Rand(2, 7); fleeing = false; }
+                    if (Go(tx, ty, speed, dt)) { next = Now + (Calm ? Rand(8, 16) : Rand(2, 7)); fleeing = false; } // 눈·비엔 오래 가만히
                 }
                 else Pose = IdlePose ?? P.RestPose(K);
                 break;

@@ -621,6 +621,14 @@ public sealed class Weather
         var (bad, frames) = Repaint();
         Expect(bad == 0, $"다시 칠할 자리가 모자라 지나간 알갱이가 남는다 ({bad}번)");
 
+        { // 눈·비엔 얌전히 (YELL 2026-11-13): 옆·아래로만, 몸 크기 200% 안
+            var calm = new Brain(new Pet { Stage = "child", Full = 95, Mood = 95, Energy = 95 }, new Tuning(), new Rectangle(0, 0, 1920, 1040)) { X = 900, Y = 600, Calm = true };
+            for (int i = 0; i < 300; i++)
+            {
+                var (cx, cy) = calm.CalmRoam();
+                Expect(cy >= calm.Y && Math.Abs(cx - calm.X) + Math.Abs(cy - calm.Y) <= 2 * calm.CellPx + 1e-6, $"눈·비엔 위로 안 가고 몸 200% 안 ({cx - calm.X:F0},{cy - calm.Y:F0})");
+            }
+        }
         return $"날씨: 하루 {perDay:0.0}번(많아야 {most}), 11~2월 눈만 ({snow[11] + snow[12] + snow[1] + snow[2]}번)·3~10월 비만 ({rain.Sum()}번), 일하는 창 위 0알, " +
                $"우산·맞기·비 피하기 {string.Join("/", covers.Skip(1))}, 그치면 반응도 끝, 머리 눈 세 단계 → 가만히 → 털기 4분에 {cycles}번 (비·숨기·게임엔 안 쌓임), {frames}프레임 다시 칠하기 맞음";
     }

@@ -979,6 +979,7 @@ public sealed class PetForm : Form, IGameHost
                 Dbg.Log("weather", ("event", ev), ("sky", weather.Now.ToString()), ("pet", weather.Reaction.ToString()), ("sec", (int)(weather.Until - weather.From)));
         }
         weatherShown = weather.On && !quiet;
+        b.Calm = weatherShown && weather.Reaction != Weather.Cover.Shelter; // 눈·비: 많이 안 움직이게 (창 뒤로 피하기는 그대로 간다)
         weather.React(b, weatherShown, Random.Shared);
     }
 
