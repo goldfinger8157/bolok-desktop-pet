@@ -1,6 +1,6 @@
 namespace Bolok;
 
-public enum Mode { Wander, Anim, GoBite, Chase, Held, Thrown, GoHide, SlipIn, Hiding, Emerge, GoNap, Perch, Prey, Run, Puppet }
+public enum Mode { Wander, Anim, GoBite, Chase, Held, Thrown, GoHide, SlipIn, Hiding, Emerge, GoNap, Perch, Prey, Puppet }
 
 public sealed class Hole { public int Cx, Cy; public readonly List<Point> Cells = new(); }
 public sealed class Bit { public double X, Y, Vx, Vy, G, Life; public Color C; }
@@ -112,7 +112,7 @@ public sealed class Brain
 
     void Play(string pose, double sec, Action? after = null)
     {
-        if (Mode is Mode.Prey or Mode.Run or Mode.Puppet) return; // 게임 중에는 다른 동작이 끼어들지 않는다
+        if (Mode is Mode.Prey or Mode.Puppet) return; // 게임 중에는 다른 동작이 끼어들지 않는다
         Mode = Mode.Anim; Pose = pose; until = Now + sec; then = after;
         solo = false; tailSpin = false; fleeing = false;
     }
@@ -190,7 +190,7 @@ public sealed class Brain
     // 마우스 손짓 (PetForm 이 커서 움직임에서 알아낸다, Gestures.cs): 쓰다듬기·툭툭은 쓰다듬기로 쳐 주고, 찌르기는 깜짝
     public void Gesture(string kind)
     {
-        if (P.Stage == "egg" || Mode is Mode.Thrown or Mode.Held or Mode.Puppet or Mode.Hiding or Mode.SlipIn or Mode.Emerge or Mode.Run or Mode.Prey) return;
+        if (P.Stage == "egg" || Mode is Mode.Thrown or Mode.Held or Mode.Puppet or Mode.Hiding or Mode.SlipIn or Mode.Emerge or Mode.Prey) return;
         Dbg.Log("gesture", ("kind", kind), ("asleep", P.Asleep));
         if (kind != "poke" && Now >= nextPet) { P.Act(K, "pet"); nextPet = Now + K.PetCooldownSec; }
         if (kind == "poke") P.Act(K, "annoy");
@@ -459,7 +459,7 @@ public sealed class Brain
 
     void OnActivated(Win w)
     {
-        if (P.Stage == "egg" || Mode is Mode.Held or Mode.Thrown or Mode.Chase or Mode.GoBite or Mode.Prey or Mode.Run or Mode.Puppet) return;
+        if (P.Stage == "egg" || Mode is Mode.Held or Mode.Thrown or Mode.Chase or Mode.GoBite or Mode.Prey or Mode.Puppet) return;
         if (Mode == Mode.Anim && !solo) return;
         if (Mode == Mode.Perch && w.H == perch.H) return; // 누워 있는 창을 누른 것뿐이다
         bool hiding = Mode is Mode.GoHide or Mode.SlipIn or Mode.Hiding or Mode.Emerge;
@@ -489,7 +489,7 @@ public sealed class Brain
         Active = Foreground();
         if (Active is not { } w) return;
         if (was is not { } old || old.H != w.H) { OnActivated(w); return; }
-        if (old.R == w.R || Mode is Mode.Held or Mode.Thrown or Mode.Prey or Mode.Run or Mode.Puppet) return;
+        if (old.R == w.R || Mode is Mode.Held or Mode.Thrown or Mode.Prey or Mode.Puppet) return;
         if (HideSpots.HitBy(old.R, w.R, Body(X, Y)) is { } hit) Knock(hit.Dx, hit.Dy, hit.Moved / Math.Max(gap, .01));
     }
 
@@ -639,43 +639,7 @@ public sealed class Brain
         Dir = dashX > X ? 1 : -1;
     }
 
-    // ── 쿠키런 모드 ──
-    public Runner? Run;
-    public bool Blink => Run is { } r && r.Clock < r.InvUntil && (int)(r.Clock * 12) % 2 == 0 || Mode == Mode.Puppet && PuppetBlink?.Invoke() == true; // 다친 뒤 1초는 깜빡
-
-    public void StartRun(Runner r)
-    {
-        Run = r;
-        Behind = false;
-        fleeing = false;
-        Foods.Clear();
-        P.Asleep = false;
-        Mode = Mode.Run;
-        Dir = 1;
-        Dbg.Log("run-start", ("track", r.Track.ToString()));
-    }
-
-    public void EndRun()
-    {
-        if (Run is not { } r) return;
-        Run = null;
-        Mode = Mode.Wander;
-        next = Now + 2;
-        P.Act(K, "play"); // 한 판은 놀아주기 한 번
-        Play(r.Over ? "dizzy" : "happy", 1.6);
-        Emote("star", 1.6);
-        Dbg.Log("run-end", ("score", r.Score), ("seeds", r.Seeds), ("over", r.Over));
-    }
-
-    void Running()
-    {
-        var r = Run!;
-        P.Asleep = false;
-        X = r.PetX;
-        Y = r.Ground - r.Lift;
-        Dir = 1;
-        Pose = r.Clock < r.HurtUntil ? "hurt" : r.Lift > 0 ? (r.Jumps >= 2 ? "roll" : "happy") : r.Sliding ? "land" : "walk";
-    }
+    public bool Blink => Mode == Mode.Puppet && PuppetBlink?.Invoke() == true; // 게임이 정한 깜빡임 (다친 뒤 잠깐)
 
     // ── 포트리스: 게임이 볼록이 자리와 자세를 정한다 ──
     public int PuppetMs;              // 게임이 정하는 값 둘 (게임 모듈): 그림 한 장을 보이는 시간(ms, 0 이면 자세마다 평소대로)과
@@ -1159,10 +1123,6 @@ public sealed class Brain
 
             case Mode.Prey:
                 Prey(dt);
-                break;
-
-            case Mode.Run:
-                Running();
                 break;
 
             case Mode.Puppet: // 포트리스: 자리와 자세는 게임이 정한다
