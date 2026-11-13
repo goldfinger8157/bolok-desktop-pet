@@ -95,7 +95,7 @@ static class Sim
         for (int i = 0; i < 1200 && b.Mode != Mode.Hiding; i++) b.Update(1 / 60.0, false);
         Expect(b.Mode == Mode.Hiding && b.Behind && b.HideWnd == a, "창 뒤로 들어간다");
         var near = Math.Min(Math.Abs(b.X - rect.Left), Math.Abs(b.X - rect.Right));
-        Expect(near < 8 || Math.Abs(b.Y - (rect.Top + cell * .36)) < 8, "가장자리에서 내다본다");
+        Expect(near < 8 || Math.Abs(b.Y - (rect.Top + cell * (1 - Brain.TopPeek(b.SpeciesKey(), "child").Shown))) < 8, "가장자리에서 내다본다"); // 위 가장자리는 눈 높이로 (Brain.TopPeek)
         rect.Offset(300, 200);
         for (int i = 0; i < 60 && b.Behind; i++) b.Update(1 / 60.0, false);
         Expect(!b.Behind && b.Mode != Mode.Hiding, "창을 치우면 앞으로 나온다");
