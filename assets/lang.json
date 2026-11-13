@@ -528,16 +528,16 @@
   "ru": "←→: идти  ↑: прыжок"
  },
  "note.worms_wind": {
-  "en": "Top box: Wind",
-  "ko": "위쪽 상자: 바람",
-  "ja": "上のボックス: 風",
-  "zh-Hans": "上方的框:风",
-  "zh-Hant": "上方的框:風",
-  "es": "Cuadro de arriba: Viento",
-  "de": "Kasten oben: Wind",
-  "fr": "Cadre du haut : Vent",
-  "pt": "Caixa de cima: Vento",
-  "ru": "Рамка сверху: ветер"
+  "en": "Cloud box: Wind",
+  "ko": "구름 상자: 바람",
+  "ja": "雲のボックス: 風",
+  "zh-Hans": "云朵框:风",
+  "zh-Hant": "雲朵框:風",
+  "es": "Cuadro de la nube: Viento",
+  "de": "Wolkenkasten: Wind",
+  "fr": "Cadre au nuage : Vent",
+  "pt": "Caixa da nuvem: Vento",
+  "ru": "Рамка с облаком: ветер"
  },
  "note.raid_move": {
   "en": "←→ / Mouse: Move",

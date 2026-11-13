@@ -6,6 +6,7 @@ namespace Bolok;
 sealed partial class FortressGame
 {
     // ── 그려 보기: 시작(안내·차례 화살표·조준경), 힘 모으기, 날아가는 포탄, 불덩이와 새 구멍, 여러 번 터진 뒤 ──
+    // 덧붙이는 값: top = 섬이 화면 위쪽에 붙어 있을 때 (바람 상자가 발 아래로 간다) · edge = 그 섬이 판 왼쪽 끝에 있을 때 (조준경 둘레 아래로)
     public static void Scene(string path, int k)
     {
         var host = new SceneHost(scale: k);
@@ -15,7 +16,8 @@ sealed partial class FortressGame
         Rectangle Land(double x, double y, double w, double h) => new((int)(fw * x), (int)(fh * y), (int)(fw * w), (int)(fh * h));
         var was = L.Code;
         L.Use("ko");
-        var w = new Fortress(field, new[] { Land(.06, .52, .36, .38), Land(.58, .46, .36, .44) }, k, new Random(9), "giant", "multi") { Wind = .6 };
+        double up = GameModes.SceneArg is "top" or "edge" ? .34 : 0, right = GameModes.SceneArg == "top" ? .12 : 0;
+        var w = new Fortress(field, new[] { Land(.06 + right, .52 - up, .36 - right, .38), Land(.58, .46 - up + .1 * Math.Sign(up), .36, .44) }, k, new Random(9), "giant", "multi") { Wind = .6 };
         game.Open(w, Session.Fake(field), events: false);
         L.Use(was);
         using var ov = host.Overlay(game);
@@ -317,8 +319,100 @@ sealed partial class FortressGame
         Expect(duel.Booms >= 8 && mostBlasts <= 9, $"터진 자리 목록은 쌓이지 않는다: {duel.Booms}번 터지는 동안 가장 많을 때 {mostBlasts}개");
 
         string play = ModuleChecks(field, a.R, bwin.R);
+        string hud = HudChecks();
         return $"포트리스 라이벌: 계산만 하면 6번 중 {near}번 70px 안, 실제 첫 발은 12번 중 {firstNear}번, 시험 대결 {duel.Clock:F0}초에 {(duel.Stage == Fortress.Phase.Won ? "볼록이" : "라이벌")} 승, " +
-               $"깎인 넓이는 원과 {worstArea:P0} 안, {play}";
+               $"깎인 넓이는 원과 {worstArea:P0} 안, {play}, {hud}";
+    }
+
+    // 바람 상자 자리: 어느 모습·배율·언어에서도, 볼록이가 왼쪽 섬이든 오른쪽 섬이든, 섬이 낮든 높든 판 끝에 붙었든
+    // 볼록이 가까이에 있고 볼록이·체력 막대(힘 막대·차례 화살표 자리까지)·조준경·안내 말풍선·판 끝과 겹치지 않는다. 걷고 뛰는 동안에는 제자리에 있다가 멈추면 한 번 옮겨 간다
+    static string HudChecks()
+    {
+        var field = TestField;
+        var cases = new (string Name, bool High, int Left, int Mode)[] { ("낮은 섬", false, 400, 0), ("높은 섬", true, 400, 1), ("판 끝의 높은 섬", true, 0, 2) };
+        string was = L.Code;
+        int looked = 0, strolls = 0;
+        try
+        {
+            foreach (string form in Showcase.Forms)
+                for (int k = 2; k <= 6; k++)
+                    foreach (var c in cases)
+                        for (int side = 0; side < 2; side++)
+                            foreach (var (code, _) in L.Languages)
+                            {
+                                if (code != "ko" && (form != Showcase.Forms[0] || side != 0)) continue; // 말풍선 크기만 언어를 탄다: 다른 언어는 첫 모습으로만
+                                L.Use(code);
+                                int top = c.High ? 40 * k + 4 : 620; // 높은 섬: 창 위에 볼록이 한 칸만 남는다 (WindowPick 이 섬으로 받아 주는 가장 높은 창)
+                                var lands = new[] { new Rectangle(c.Left, top, 700, 1000 - top), new Rectangle(field.Right - c.Left - 700, top, 700, 1000 - top) };
+                                var host = new SceneHost(form, k);
+                                var game = new FortressGame(host);
+                                var w = new Fortress(field, lands, k, new Random(3), "normal", "normal") { Wind = 0 };
+                                if (side == 1) (w.Me.X, w.Me.Y, w.Cpu.X, w.Cpu.Y) = (w.Cpu.X, w.Cpu.Y, w.Me.X, w.Me.Y); // 볼록이가 오른쪽 섬에
+                                game.Open(w, Session.Fake(field), events: false);
+                                using var ov = host.Overlay(game);
+                                string what = $"{c.Name}, {form} ×{k}, {(side == 0 ? "왼쪽" : "오른쪽")}, {code}";
+                                Expect(game.hudMode == c.Mode, $"바람 상자 자리 고르기 ({what}): {game.hudMode}");
+                                LookHud(game, ov, w, what);
+                                looked++;
+                                if (code != "ko" || k is not (2 or 3 or 6)) { game.DropTiles(); game.DropGuide(); continue; }
+                                // 걷는 동안·뛰어 있는 동안에는 제자리, 멈춰 서면 한 번 스르륵 옮겨 가서 다시 가만히 있는다
+                                void Step() { w.Update(1 / 60.0); game.Sync(); game.Track(); }
+                                var (r0, x0, dir) = (game.HudRect(w), w.Me.X, side == 0 ? 1 : -1);
+                                for (int i = 0; i < 90; i++)
+                                {
+                                    w.Walk(w.Me, dir, 1 / 60.0);
+                                    Step();
+                                    Expect(game.HudRect(w) == r0, $"걷는 동안 바람 상자는 제자리 ({what})");
+                                }
+                                w.Jump(w.Me);
+                                for (int i = 0; i < 240 && w.Me.Air; i++) { Step(); Expect(game.HudRect(w) == r0, $"뛰어 있는 동안 바람 상자는 제자리 ({what})"); }
+                                int moves = 0, turns = 0, way = 0, still = 0;
+                                var prev = r0;
+                                for (int i = 0; i < 150; i++)
+                                {
+                                    Step();
+                                    var r = game.HudRect(w);
+                                    int dx = Math.Sign(r.X - prev.X);
+                                    if (r != prev) { moves++; still = 0; } else still++;
+                                    if (dx != 0 && way != 0 && dx != way) turns++;
+                                    if (dx != 0) way = dx;
+                                    prev = r;
+                                }
+                                Expect(Math.Abs(w.Me.X - x0) > 20 * k && moves is >= 3 and <= 45 && turns == 0 && still >= 60 && way == dir,
+                                    $"멈춰 서면 바람 상자가 한 번 옮겨 간다 ({what}): {moves}프레임 동안, 되돌아간 적 {turns}번, 그 뒤 {still}프레임 가만히");
+                                Expect(prev == game.HudAt(w, game.hudMode) && game.hudMode == c.Mode, $"옮겨 간 자리도 같은 쪽 ({what}): {game.hudMode}");
+                                LookHud(game, ov, w, what + ", 걸은 뒤");
+                                strolls++;
+                                game.DropTiles();
+                                game.DropGuide();
+                            }
+        }
+        finally { L.Use(was); }
+        return $"바람 상자 자리 {looked}가지(모습 {Showcase.Forms.Length} × 배율 2~6 × 섬 {cases.Length} × 좌우, 언어 {L.Languages.Length})에서 안 겹침, 걷고 뛰는 {strolls}판 동안 제자리";
+    }
+
+    static void LookHud(FortressGame game, Overlay ov, Fortress w, string what)
+    {
+        int k = w.K, back = Back(w);
+        var (me, r) = (w.Me, game.HudRect(w));
+        var pet = Fx.PetRect(me.X, me.Y, 40 * k);
+        Expect(Rectangle.Inflate(w.Field, -k, -k).Contains(r), $"바람 상자는 판 안에 있다 ({what}): {r}");
+        Expect(!r.IntersectsWith(pet), $"바람 상자가 볼록이를 가리지 않는다 ({what}): {r} · {pet}");
+        Expect(!r.IntersectsWith(game.LabelRect(w, me)), $"바람 상자가 체력 막대·힘 막대와 안 겹친다 ({what}): {r} · {game.LabelRect(w, me)}");
+        Expect(!r.IntersectsWith(game.GuideRect(ov, w)), $"바람 상자가 안내 말풍선과 안 겹친다 ({what}): {r} · {game.GuideRect(ov, w)}");
+        int gap = Math.Max(Math.Max(pet.Left - r.Right, r.Left - pet.Right), Math.Max(pet.Top - r.Bottom, r.Top - pet.Bottom));
+        Expect(gap <= 40 * k, $"바람 상자는 볼록이 가까이에 있다 ({what}): {gap}px");
+        double keep = w.Aim;
+        for (int deg = 0; deg < 360; deg += 2) // 조준경이 도는 둘레 (0° 오른쪽, 90° 아래)
+        {
+            double a = deg * Math.PI / 180;
+            // 발 아래 뒤쪽으로 뻗은 상자: 뒤쪽 아래나 제 발밑(60° 넘게 아래)을 겨눌 때만 조준경이 그 위를 지난다 (조준경이 위에 그려진다)
+            if (game.hudMode == 1 && Math.Sin(a) > 0 && (Math.Cos(a) * back > 0 || deg is > 60 and < 120)) continue;
+            w.Aim = a;
+            var (ax, ay) = AimAt(w);
+            Expect(!r.IntersectsWith(Rectangle.Inflate(game.aim.Box(ax, ay), 1, 1)), $"바람 상자가 조준경과 안 겹친다 ({what}, {deg}°): {r}");
+        }
+        w.Aim = keep;
     }
 
     // 모듈: 조작(마우스·방향키만, 판이 앞 창일 때만), 시작·끝내기, 기록, 하위 메뉴, 디버그 명령, 다시 칠할 자리
