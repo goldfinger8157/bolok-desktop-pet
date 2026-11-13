@@ -13,12 +13,12 @@ sealed class SwarmGame : IGameMode
     Session? ses;
     int bestSec, bestKills;
     bool auto;
-    Watch hud;
+    Watch hud, magHud;
 
     static readonly Dictionary<string, Sound> Sounds = new()
     {
         ["fire"] = Sound.Shot, ["kill"] = Sound.Hit, ["bigkill"] = Sound.Boom, ["hurt"] = Sound.Hurt, ["over"] = Sound.Hurt,
-        ["level"] = Sound.Pick, ["heart"] = Sound.Pick, ["win"] = Sound.Pick,
+        ["level"] = Sound.Pick, ["heart"] = Sound.Pick, ["magnet"] = Sound.Pick, ["win"] = Sound.Pick,
     };
 
     public SwarmGame(IGameHost host) => this.host = host;
@@ -38,9 +38,9 @@ sealed class SwarmGame : IGameMode
         s.OnEvent = e =>
         {
             Snd.Play(Sounds, e);
-            if (e is "level" or "hurt" or "big" or "over" or "win") Dbg.Log("swarm", ("event", e), ("sec", (int)s.Time), ("level", s.Level), ("kills", s.Kills), ("lives", s.Lives), ("foes", s.Foes.Count));
+            if (e is "level" or "hurt" or "big" or "magnet" or "over" or "win") Dbg.Log("swarm", ("event", e), ("sec", (int)s.Time), ("level", s.Level), ("kills", s.Kills), ("lives", s.Lives), ("foes", s.Foes.Count));
         };
-        hud = default;
+        hud = magHud = default;
         gemRects.Clear();
         ses = Session.Open(host, field, () => Stop(true));
         ses.Guide("note.swarm_move", "note.swarm_auto", "note.esc");
@@ -75,7 +75,7 @@ sealed class SwarmGame : IGameMode
         host.Save();
     }
 
-    // ── 그리기: 판 모서리, 보석, 벌레, 총알, 칼 자국, 터짐, 작은 볼록이, 남은 시간·레벨·하트 (글자 없이 숫자·그림만) ──
+    // ── 그리기: 판 모서리, 보석·자석, 벌레, 총알, 칼 자국, 터짐, 작은 볼록이, 남은 시간·레벨·하트·자석 남은 시간 (글자 없이 숫자·그림만) ──
     static bool Ended(Swarm s) => s.State is Swarm.Phase.Win or Swarm.Phase.Over;
     static int SecLeft(Swarm s) => (int)Math.Ceiling(Swarm.WinSec - s.Time);
 
@@ -83,7 +83,7 @@ sealed class SwarmGame : IGameMode
     Sprites? artOf;
     int artK;
     readonly Stamp[][] foe = new Stamp[4][];   // Swarm.Kind 순서
-    Stamp gem = null!, bigGem = null!, heart = null!, flash = null!, plus = null!;
+    Stamp gem = null!, bigGem = null!, heart = null!, magnet = null!, flash = null!, plus = null!;
     readonly Stamp[] pistol = new Stamp[2];    // 오른쪽·왼쪽
     readonly Stamp[] upIcon = new Stamp[4];    // Swarm.Up 순서
 
@@ -96,7 +96,7 @@ sealed class SwarmGame : IGameMode
         (foe[(int)Swarm.Kind.Bug], foe[(int)Swarm.Kind.Wasp]) = (st.Row("game/bug", small), st.Row("game/wasp", small));
         (foe[(int)Swarm.Kind.Beetle], foe[(int)Swarm.Kind.Boss]) = (st.Row("game/beetle", small), st.Row("game/bugboss", small));
         (gem, bigGem, heart, flash) = (st.Get("game/gem", 0, small), st.Get("game/gem", 0, k), st.Get("icon/heart", 0, hs), st.Get("game/flash", 0, small));
-        (pistol[0], pistol[1], plus) = (st.Get("game/pistol", 0, small), st.Get("game/pistol", 0, small, true), st.Get("num/+", 0, k));
+        (pistol[0], pistol[1], plus, magnet) = (st.Get("game/pistol", 0, small), st.Get("game/pistol", 0, small, true), st.Get("num/+", 0, k), st.Get("game/magnet", 0, small));
         (upIcon[(int)Swarm.Up.Rate], upIcon[(int)Swarm.Up.Multi], upIcon[(int)Swarm.Up.Arc], upIcon[(int)Swarm.Up.Heart]) =
             (st.Get("game/pistol", 0, k), st.Get("game/bullet", 0, k), st.Get("game/sword", 0, k), heart);
     }
@@ -107,11 +107,43 @@ sealed class SwarmGame : IGameMode
         return row[((int)(s.Clock * (f.Kind == Swarm.Kind.Wasp ? 12 : 5)) + (int)f.Speed) % row.Length];
     }
 
-    Stamp GemArt(Swarm.Gem m) => m.Heart ? heart : m.Xp > 1 ? bigGem : gem;
+    Stamp GemArt(Swarm.Gem m) => m.Magnet ? magnet : m.Heart ? heart : m.Xp > 1 ? bigGem : gem;
+
+    // 떨어져 있는 자석은 눈에 띄게 한 칸씩 까딱인다 (그려지는 높이)
+    static double ShowY(Swarm s, Swarm.Gem m) => m.Magnet && ((int)(s.Clock * 2.5) & 1) == 1 ? m.Y - GameHud.Small(s.K) : m.Y;
+
+    // 자석이 끄는 동안 보석은 볼록이 반대쪽으로 점 둘짜리 꼬리를 단다 (날아오는 게 보이게). 꼬리까지 덮는 자리는 그림 둘레로 네모나게
+    static int TrailReach(Stamp art, int small) => Math.Max(art.Bmp.Width, art.Bmp.Height) / 2 + 6 * small + 2;
+
+    static Rectangle GemRect(Stamp art, double x, double y, bool trail, int small)
+    {
+        if (!trail) return Rectangle.Inflate(art.Box((int)x, (int)y), 1, 1);
+        int r = TrailReach(art, small);
+        return new Rectangle((int)x - r, (int)y - r, 2 * r, 2 * r);
+    }
+
+    static void DrawTrail(Overlay o, Graphics g, Swarm s, Swarm.Gem m, Stamp art, int small)
+    {
+        double dx = m.X - s.X, dy = m.Y - s.Y, d = Math.Sqrt(dx * dx + dy * dy);
+        if (d < 1) return;
+        int half = Math.Max(art.Bmp.Width, art.Bmp.Height) / 2;
+        for (int i = 0; i < 2; i++)
+        {
+            double at = half + (2 + 3 * i) * small;
+            var p = o.ToClient(m.X + dx / d * at, m.Y + dy / d * at);
+            int sz = Math.Max(1, i == 0 ? small : small / 2);
+            g.FillRectangle(Pal.Line, p.X - sz - 1, p.Y - sz - 1, 2 * sz + 2, 2 * sz + 2);
+            g.FillRectangle(m.Heart ? Pal.Red : Pal.Cyan, p.X - sz, p.Y - sz, 2 * sz, 2 * sz);
+        }
+    }
 
     // 레벨(별 + 숫자)과 그 아래 보석 막대: 위쪽 가운데
     static (int X, int Y) LevelAt(Rectangle f, int k) => (f.Left + f.Width / 2 - 8 * k, f.Top + 7 * k);
     static Rectangle XpBar(Rectangle f, int k) => new(f.Left + f.Width / 2 - 13 * k, f.Top + 13 * k, 26 * k, 2 * k);
+
+    // 자석이 끄는 동안: 보석 막대 바로 아래에 자석 그림과 줄어드는 막대
+    static (int X, int Y) MagnetAt(Rectangle f, int k) => (f.Left + f.Width / 2 - 9 * k, f.Top + 21 * k);
+    static Rectangle MagnetBar(Rectangle f, int k) => new(f.Left + f.Width / 2 - 4 * k, f.Top + 20 * k, 17 * k, 2 * k);
 
     // 프레임마다 한 번: 표시 값이 바뀌었는지, 보석이 움직이거나 사라졌는지 (가만히 있는 것은 다시 칠하지 않는다)
     readonly List<Rectangle> gemRects = new();
@@ -120,16 +152,20 @@ sealed class SwarmGame : IGameMode
     {
         var s = swarm!;
         hud.Set(HashCode.Combine(SecLeft(s), s.Lives, s.Level, s.Xp, (int)s.State));
+        magHud.Set(s.MagnetOn ? 1 + (int)(MagnetBar(s.Field, s.K).Width * s.MagnetLeft) : 0); // 막대가 한 픽셀 줄 때만
         gemRects.Clear();
         if (artOf == null) return; // 아직 한 번도 안 그렸다: 첫 프레임에 판을 통째로 칠한다
-        foreach (var m in s.Gone) if (!double.IsNaN(m.ShownX)) gemRects.Add(Rectangle.Inflate(GemArt(m).Box((int)m.ShownX, (int)m.ShownY), 1, 1));
+        int small = GameHud.Small(s.K);
+        bool trail = s.MagnetOn;
+        foreach (var m in s.Gone) if (!double.IsNaN(m.ShownX)) gemRects.Add(GemRect(GemArt(m), m.ShownX, m.ShownY, m.ShownTrail, small));
         foreach (var m in s.Gems)
         {
-            if (m.ShownX == m.X && m.ShownY == m.Y) continue;
+            double y = ShowY(s, m);
+            if (m.ShownX == m.X && m.ShownY == y && m.ShownTrail == trail) continue;
             var art = GemArt(m);
-            if (!double.IsNaN(m.ShownX)) gemRects.Add(Rectangle.Inflate(art.Box((int)m.ShownX, (int)m.ShownY), 1, 1));
-            gemRects.Add(Rectangle.Inflate(art.Box((int)m.X, (int)m.Y), 1, 1));
-            (m.ShownX, m.ShownY) = (m.X, m.Y);
+            if (!double.IsNaN(m.ShownX)) gemRects.Add(GemRect(art, m.ShownX, m.ShownY, m.ShownTrail, small));
+            gemRects.Add(GemRect(art, m.X, y, trail, small));
+            (m.ShownX, m.ShownY, m.ShownTrail) = (m.X, y, trail);
         }
     }
 
@@ -155,6 +191,11 @@ sealed class SwarmGame : IGameMode
             rs.Add(o.Client(GameHud.BarRect(XpBar(f0, k), k)));
             if (Ended(s)) rs.Add(o.Client(GameHud.CenterRect(f0, k)));                    // 끝: 잡은 수·왕관
         }
+        if (magHud.Changed)
+        {
+            var (mx, my) = MagnetAt(f0, k);
+            rs.Add(o.Client(Rectangle.Union(Rectangle.Inflate(magnet.Box(mx, my), 1, 1), GameHud.BarRect(MagnetBar(f0, k), k)))); // 자석 남은 시간
+        }
         ses?.DirtyGuide(o, rs, s.Clock, s.X, s.Feet);
     }
 
@@ -169,7 +210,13 @@ sealed class SwarmGame : IGameMode
         Art(o, k);
         GameHud.Corners(o, g, fl, k);
 
-        foreach (var m in s.Gems) GemArt(m).Put(o, g, (int)m.X, (int)m.Y);
+        bool trail = s.MagnetOn;
+        foreach (var m in s.Gems)
+        {
+            var art = GemArt(m);
+            if (trail) DrawTrail(o, g, s, m, art, small);
+            art.Put(o, g, (int)m.X, (int)ShowY(s, m));
+        }
         order.Clear();
         order.AddRange(s.Foes);
         for (int i = 1; i < order.Count; i++) // 끼워 넣기 정렬: 같은 높이면 먼저 온 벌레가 아래 (차례가 바뀌어 깜빡이지 않는다)
@@ -217,6 +264,12 @@ sealed class SwarmGame : IGameMode
         var (lx, ly) = LevelAt(fl, k);
         GameHud.Star(o, g, lx, ly, small, s.Level);                                          // 레벨: 별 + 숫자, 아래에 보석 막대
         GameHud.Bar(o, g, XpBar(fl, k), k, Math.Min(s.Xp, s.Need) / (double)s.Need, Pal.Cyan);
+        if (s.MagnetOn)                                                                      // 자석: 그림 + 줄어드는 막대
+        {
+            var (mx, my) = MagnetAt(fl, k);
+            magnet.Put(o, g, mx, my);
+            GameHud.Bar(o, g, MagnetBar(fl, k), k, s.MagnetLeft, Pal.Gold);
+        }
         if (Ended(s)) GameHud.Result(o, g, fl, k, s.Kills, bestKills, s.Kills > bestKills, "game/bug"); // 끝: 벌레 × 잡은 수, 새 기록이면 큰 왕관
         ses?.DrawGuide(o, g, s.Clock, s.X, s.Feet);
     }
@@ -265,7 +318,7 @@ sealed class SwarmGame : IGameMode
         catch (JsonException) { /* 깨진 기록은 버린다 */ }
     }
 
-    // ── 화면 없이 그려 보기: 자동 조종으로 돌리며 세 장면 (첫 레벨 업, 한창 칼을 휘두를 때, 끝) ──
+    // ── 화면 없이 그려 보기: 자동 조종으로 돌리며 다섯 장면 (첫 레벨 업, 자석이 떨어져 있을 때, 자석이 보석을 끌어올 때, 한창 칼을 휘두를 때, 끝) ──
     static readonly Rectangle TestField = FieldAt(3);
     static Rectangle FieldAt(int k) => new(960 - 110 * k, 540 - 75 * k, 220 * k, 150 * k); // 1920×1080 모니터 한가운데
 
@@ -275,13 +328,22 @@ sealed class SwarmGame : IGameMode
         var game = new SwarmGame(host);
         var s = game.swarm = new Swarm(FieldAt(k), k, new Random(5));
         using var ov = host.Overlay(game);
-        SceneKit.Shots(path, ov, Rectangle.Inflate(s.Field, 20, 20), 3, shot =>
+        double outAt = -1;
+        SceneKit.Shots(path, ov, Rectangle.Inflate(s.Field, 20, 20), 5, shot =>
         {
             var (dx, dy) = s.BotSteer();
             s.Steer(dx, dy);
             s.Update(1 / 60.0);
             double swing = (s.Clock - s.SwingAt) / Swarm.SwingSec;
-            return shot switch { 0 => s.Level > 1 && s.Clock - s.UpAt > .4, 1 => s.Clock >= 100 && swing is > .4 and < .6 || Ended(s), _ => Ended(s) && s.Clock - s.Time > 1 };
+            if (outAt < 0 && s.Gems.Any(m => m.Magnet)) outAt = s.Clock;
+            return shot switch
+            {
+                0 => s.Level > 1 && s.Clock - s.UpAt > .4,
+                1 => outAt >= 0 && s.Clock - outAt > .3 || s.MagnetOn || Ended(s),
+                2 => s.MagnetOn && s.Clock - (s.MagnetUntil - Swarm.MagnetSec) > .2 || Ended(s),
+                3 => s.Clock >= 100 && swing is > .4 and < .6 || Ended(s),
+                _ => Ended(s) && s.Clock - s.Time > 1,
+            };
         });
     }
 
@@ -365,6 +427,54 @@ sealed class SwarmGame : IGameMode
         Expect(seen.Count == 4 && grow.Level == 42, $"네 가지가 다 나온다: {seen.Count}가지, 레벨 {grow.Level}");
         Expect(grow.Bullets == Swarm.MaxBullets && grow.Lives == Swarm.MaxLives && grow.ArcHalf <= Math.PI + 1e-9 && grow.GunSec > .25, "세지는 데는 끝이 있다");
 
+        // 자석: 주우면 줍는 소리가 나고, MagnetSec 동안 판 위의 보석·하트가 (그사이 떨어진 것도) 다 날아와 주워진다. 끝나면 다시 가까이 가야 줍는다
+        var mag = Empty(8);
+        string heard = "";
+        double gotAt = -1;
+        mag.OnEvent = e => { heard += e + " "; if (e == "magnet") gotAt = mag.Clock; };
+        mag.Lives = 2;
+        var f8 = TestField;
+        foreach (var (gx, gy) in new[] { (f8.Left + 5, f8.Top + 5), (f8.Right - 5, f8.Top + 5), (f8.Left + 5, f8.Bottom - 5), (f8.Right - 5, f8.Bottom - 5) })
+            mag.Gems.Add(new Swarm.Gem { X = gx, Y = gy, Xp = 1 });
+        mag.Gems.Add(new Swarm.Gem { X = f8.Left + 40, Y = mag.Y, Heart = true });
+        mag.Gems.Add(new Swarm.Gem { X = mag.X + 30, Y = mag.Y, Magnet = true });
+        Run(mag, .5);
+        Expect(mag.MagnetOn && mag.Magnets == 1 && heard == "magnet " && Sounds["magnet"] == Sound.Pick, $"자석을 주우면 줍는 소리와 함께 끌기 시작한다: {heard}");
+        Expect(mag.Gems.Count == 5 && mag.Gems.All(m => Math.Abs(m.X - mag.X) < f8.Width / 2 - 100), "보석은 한 번에 사라지지 않고 날아온다");
+        Run(mag, 1.5);
+        Expect(mag.Gems.Count == 0 && mag.Xp == 4 && mag.Lives == 3 && mag.MagnetOn, $"자석이 끄는 동안 판 위의 보석·하트를 다 줍는다: 남은 {mag.Gems.Count}, 보석 {mag.Xp}, 하트 {mag.Lives}");
+        mag.MagnetChance = 1;
+        mag.Add(Swarm.Kind.Bug, mag.X + 200, mag.Y - 60);
+        Run(mag, 2);
+        Expect(mag.Kills == 1 && mag.Gems.Count == 0 && mag.Xp == 5 && mag.MagnetOn, $"끄는 동안 떨어진 보석도 날아온다 (자석은 또 나오지 않는다): 잡은 {mag.Kills}, 남은 {mag.Gems.Count}, 보석 {mag.Xp}");
+        while (mag.MagnetOn) mag.Update(tick);
+        Expect(mag.Clock - gotAt >= Swarm.MagnetSec && mag.Clock - gotAt < Swarm.MagnetSec + 2 * tick && mag.MagnetLeft == 0, $"자석은 제때 끝난다: {mag.Clock - gotAt:0.000}초");
+        mag.Gems.Add(new Swarm.Gem { X = mag.X + 150, Y = mag.Y, Xp = 1 });
+        Run(mag, 1);
+        Expect(mag.Gems.Count == 1 && mag.Gems[0].X == mag.X + 150 && mag.Xp == 5, "자석이 끝나면 먼 보석은 그대로 있다");
+
+        // 자석은 보통 벌레를 잡을 때 가끔: 처음 20초·판 위에 있을 때·끄는 동안·끝난 뒤 90초는 나오지 않는다
+        var drop = Empty(9);
+        drop.MagnetChance = 1;
+        int MagnetsOut() => drop.Gems.Count(m => m.Magnet);
+        void Kill() { drop.Add(Swarm.Kind.Bug, drop.X + 200, drop.Y); Run(drop, 1.5); }
+        Kill();
+        Expect(drop.Kills == 1 && MagnetsOut() == 0, "처음에는 자석이 나오지 않는다");
+        drop.Clock = Swarm.MagnetFirst;
+        Kill();
+        Kill();
+        Expect(drop.Kills == 3 && MagnetsOut() == 1 && !drop.MagnetOn, $"자석은 판 위에 하나만 떨어진다: {MagnetsOut()}");
+        drop.Steer(1, 0);
+        Run(drop, 1.5);
+        drop.Steer(0, 0);
+        Expect(drop.MagnetOn && MagnetsOut() == 0 && drop.Gems.Count == 0, "자석도 가까이 가면 주워지고, 흘린 보석을 다 끌어온다");
+        drop.Clock = drop.MagnetUntil + Swarm.MagnetGap - 3;
+        Kill();
+        Expect(drop.Kills == 4 && MagnetsOut() == 0, "자석이 끝나고 한동안은 또 나오지 않는다");
+        Run(drop, 1.5);
+        Kill();
+        Expect(drop.Kills == 5 && MagnetsOut() == 1, "쉬는 시간이 지나면 다시 나온다");
+
         // 닿으면 하트 하나, 잠깐은 안 맞는다. 하트가 다 떨어지면 끝난다
         var hurt = Empty(5);
         hurt.Add(Swarm.Kind.Boss, hurt.X + 5, hurt.Y).Hp = 99;
@@ -390,7 +500,7 @@ sealed class SwarmGame : IGameMode
         Expect(win.Done, "이긴 뒤에도 닫힌다");
 
         // 자동 조종: 한동안 버티고, 끝은 반드시 온다
-        int wins = 0, maxLevel = 0, held60 = 0;
+        int wins = 0, maxLevel = 0, held60 = 0, magnets = 0;
         double total = 0;
         const int seeds = 5;
         for (int seed = 0; seed < seeds; seed++)
@@ -406,9 +516,10 @@ sealed class SwarmGame : IGameMode
             Expect(bot.Done, $"판은 끝난다 (seed {seed})");
             if (bot.State == Swarm.Phase.Done && bot.Time >= Swarm.WinSec) wins++;
             if (bot.Time >= 60) held60++;
-            (total, maxLevel) = (total + bot.Time, Math.Max(maxLevel, bot.Level));
+            (total, maxLevel, magnets) = (total + bot.Time, Math.Max(maxLevel, bot.Level), magnets + bot.Magnets);
         }
         Expect(held60 >= seeds - 1, $"자동 조종이 1분은 버틴다: {held60}/{seeds}");
+        Expect(magnets >= seeds && magnets <= 3 * seeds, $"자석은 한 판에 한두 번 나온다: {seeds}판에 {magnets}개");
 
         // 조작: 판이 앞 창일 때만 방향키로 움직인다. 글자 키(WASD)나 다른 창에서 누른 키로는 안 움직인다. 보스 키로 끝내면 티가 나지 않는다
         var keys = new HashSet<Keys> { Keys.W, Keys.A, Keys.S, Keys.D, Keys.Space };
@@ -431,11 +542,14 @@ sealed class SwarmGame : IGameMode
         Expect(!game.Running && host.Pet.Mode == Mode.Wander && !host.Pet.Emoting, "보스 키로 끝내면 결과 화면·표정 없이 바로 끝난다");
 
         // 다시 칠할 자리: 벌레가 가장 많은 마지막 30초를 자동 조종으로 끝 화면까지. 바뀐 자리만 다시 그려도 화면에 지나간 그림이 남지 않는다
+        // 자석도 본다: 조금 떨어진 자리에 하나 놓아 두면 까딱이다가 주워지고, 보석이 꼬리를 달고 날아오고, 남은 시간 막대가 줄다 사라진다
         var paint = game.swarm = new Swarm(TestField, 3, new Random(5)) { Clock = Swarm.WinSec - 30 };
+        paint.Gems.Add(new Swarm.Gem { X = paint.X + 110, Y = paint.Y + 40, Magnet = true });
+        for (int i = 0; i < 12; i++) paint.Gems.Add(new Swarm.Gem { X = TestField.Left + 30 + i * 54, Y = TestField.Top + 60 + i % 3 * 150, Xp = 1 + i % 2 * 2, Heart = i == 5 });
         game.ses = Session.Fake(TestField);
         game.ses.Guide("note.swarm_move", "note.swarm_auto", "note.esc");
         game.ses.GuideUntil = paint.Clock + 2;
-        game.hud = default;
+        game.hud = game.magHud = default;
         using var ov = host.Overlay(game);
         var (bad, first) = SceneKit.Repaint(ov, game, TestField, () =>
         {
@@ -447,7 +561,8 @@ sealed class SwarmGame : IGameMode
             return true;
         }, 60 * 60);
         Expect(paint.Done && bad == 0, $"바뀐 자리만 다시 칠해도 화면이 맞다: {bad}번 다름 (처음 {first}프레임), 끝남 {paint.Done}");
+        Expect(paint.Magnets >= 1, $"다시 칠할 자리 검사에 자석이 들어 있다: {paint.Magnets}개");
         game.swarm = null;
-        return $"버그 떼: 자동 조종 평균 {total / seeds:0}초 버팀, {wins}/{seeds} 끝까지, 가장 높은 레벨 {maxLevel}";
+        return $"버그 떼: 자동 조종 평균 {total / seeds:0}초 버팀, {wins}/{seeds} 끝까지, 가장 높은 레벨 {maxLevel}, 자석 {seeds}판에 {magnets}개 ({Swarm.MagnetSec:0}초 동안 보석을 다 끌어온다)";
     }
 }
