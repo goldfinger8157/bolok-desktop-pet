@@ -145,8 +145,7 @@ public sealed class Brain
                 if (P.Food <= 0) // 바구니가 비었다: 빈 바구니를 흔들어 보이고 시무룩
                 {
                     (BasketX, BasketY, BasketUntil, BasketEmpty) = (X + Dir * 160 * S, Y - CellPx * .9, Now + 1.6, true);
-                    Refuse("tear");
-                    Say(2.5, L.T("say.no_food"));
+                    Refuse("tear"); // 펫은 말하지 않는다 (YELL 2026-11-13): 빈 바구니와 시무룩한 얼굴로만
                     return;
                 }
                 if (Full() >= 100) { TossSeed(true); return; } // 배불러도 던지기는 보이고, 닿으면 고개를 젓는다 (먹이는 안 쓴다)
@@ -194,6 +193,7 @@ public sealed class Brain
         if (P.Stage == "egg" || Mode is Mode.Thrown or Mode.Held or Mode.Puppet or Mode.Hiding or Mode.SlipIn or Mode.Emerge or Mode.Run or Mode.Paddle or Mode.Prey) return;
         Dbg.Log("gesture", ("kind", kind), ("asleep", P.Asleep));
         if (kind != "poke" && Now >= nextPet) { P.Act(K, "pet"); nextPet = Now + K.PetCooldownSec; }
+        if (kind == "poke") P.Act(K, "annoy");
         if (P.Asleep) { if (kind != "poke") Emote("heart", 1.2); return; } // 자다가 쓰다듬으면 배시시 (깨지는 않는다)
         lastPoke = Now;
         switch (kind)
@@ -218,6 +218,7 @@ public sealed class Brain
         bool annoyed = kind is "pout" or "nope" or "nip";
 
         if (!annoyed && Now >= nextPet) { P.Act(K, "pet"); nextPet = Now + K.PetCooldownSec; }
+        if (annoyed) P.Act(K, "annoy");
         // 빠르게 누르면 지금 동작을 조금은 보여 준 뒤에 바꾼다. 안 그러면 파닥거리기만 한다
         if (Mode == Mode.Anim && !solo && Now < pokeShown && !annoyed) { if (kind != "squish") Heart(); return; }
 
@@ -1033,7 +1034,6 @@ public sealed class Brain
                 HolesVersion++;
                 SpitBack(h);
                 Play("spit", .7);
-                Say(1, L.T("say.spit"));
             }
             else if (Holes.Count < P.Bites && Now >= nextBiteTry)
             {
@@ -1114,7 +1114,7 @@ public sealed class Brain
                 bool shaking = Reversals(shakeTrail, (int)(14 * S)) >= K.ShakeReversals;
                 if (shaking)
                 {
-                    if (!spinning) { Dbg.Log("shake"); }
+                    if (!spinning) { Dbg.Log("shake"); P.Act(K, "shake"); } // 흔들기 한 번 (심술이 쪽 점수)
                     shakenFor += dt;
                     if (Holes.Count > 0 && Now >= nextShakeSpit) // 잡고 흔들면 볼 속 화면을 퉤! (YELL 2026-11-13)
                     {
@@ -1123,7 +1123,7 @@ public sealed class Brain
                         P.Bites = Math.Min(P.Bites, Holes.Count);
                         HolesVersion++;
                         SpitBack(h);
-                        Say(1, L.T("say.spit"));
+                        Emote("bang", .6);
                         nextShakeSpit = Now + .5;
                     }
                 }

@@ -168,6 +168,7 @@ public sealed class DevLink
                     case "bites": p.Bites = (int)v; break;
                     case "age": p.AgeMin = v; break;
                     case "miss": p.Miss = (int)v; break;
+                    case "food": p.Food = (int)v; break; // 먹이 바구니
                     case "stage": p.Stage = a[2]; break;
                     default: throw new ArgumentException("모르는 값: " + a[1]);
                 }

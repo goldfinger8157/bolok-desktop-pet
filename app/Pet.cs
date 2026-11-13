@@ -30,10 +30,15 @@ public sealed class Tuning
     public double EggMin { get; set; } = 5;
     public double BabyMin { get; set; } = 65;
     public double ChildMin { get; set; } = 38 * 60; // 월요일에 부화해서 금요일 오후에 어른 (하루 8시간)
-    public double GrumpyHungry { get; set; } = .3; // 아기·어린이 때 깨어 있던 시간 중 배고픈 채(부르는 선 아래)로 둔 비율이 이만큼이면 심술이.
-                                                   // 횟수(파먹은 입 수)가 아니라 비율로 본다 (YELL 2026-11-13): 기간이 길든 짧든, 파먹는 간격을 바꾸든 기준이 안 흔들린다
-    public int GrumpyMiss { get; set; } = 8;
-    public double SweetRatio { get; set; } = 3;
+    // 어른 모습은 아기·어린이 때 받은 돌봄의 비율로 정한다 (YELL 2026-11-13: "12번 넘으면 심술이" 같은 횟수 기준이 아니라
+    // 밥·쓰다듬기·던지기·놀아주기를 모두 놓고 비율로). 돌봄마다 점수를 매겨 가장 큰 쪽으로 자란다 (Growth):
+    //   통통이 ← 밥 1번 1점
+    //   애교쟁이 ← 쓰다듬기 3번 1점 (연타는 1.5초에 한 번만 센다), 놀아주기·살살 던지기 2번 1점
+    //   심술이 ← 세게 던지기·흔들기 1번 1점, 귀찮게 찌르기 3번 1점, 배고픈 채로 둔 1시간 1점
+    public double PetPoint { get; set; } = 1 / 3.0;
+    public double PlayPoint { get; set; } = .5;
+    public double AnnoyPoint { get; set; } = 1 / 3.0;
+    public double HungryHourPoint { get; set; } = 1;
 
     // 화면 쪽
     public int Scale { get; set; } = 0;             // 스프라이트 배율. 0 이면 DPI 에 맞춘다
@@ -108,13 +113,20 @@ public sealed class Pet
     public double CareMin { get; set; }     // 아기·어린이 때 깨어 있던 분
     public double HungryMin { get; set; }   // 그중 배고픈 채로 둔 분
     public double HungryShare => CareMin > 0 ? HungryMin / CareMin : 0;
+    public int Tosses { get; set; }         // 살살 던지기 (즐거워한다)
+    public int Rough { get; set; }          // 세게 던지기·흔들기
+    public int Annoys { get; set; }         // 귀찮게 찌르기 (연타로 삐치게 하기·찌르기 손짓)
+
+    // 어른이 될 쪽 점수: 통통이·애교쟁이·심술이 (위 「어른 모습」 참고). 셋을 더한 것 중 비율이 가장 큰 쪽으로 자란다
+    public (double Chubby, double Sweet, double Grumpy) Growth(Tuning k) =>
+        (Feeds, Pets * k.PetPoint + (Plays + Tosses) * k.PlayPoint, Rough + Annoys * k.AnnoyPoint + HungryMin / 60 * k.HungryHourPoint);
 
     static double Clamp(double v) => Math.Clamp(v, 0, 100);
 
     string AdultForm(Tuning k)
     {
-        if (HungryShare >= k.GrumpyHungry || Miss >= k.GrumpyMiss) return "adult_grumpy";
-        return Pets >= Feeds * k.SweetRatio ? "adult_sweet" : "adult_chubby";
+        var (c, s, g) = Growth(k);
+        return g > c && g > s ? "adult_grumpy" : s > c ? "adult_sweet" : "adult_chubby"; // 비기면 통통이
     }
 
     // m 활동 분이 지났다. afk 면 자리 비움. 일어난 일을 돌려준다
@@ -192,10 +204,16 @@ public sealed class Pet
                 Mood = Clamp(Mood + k.FoundMood);
                 return true;
             case "toss":
-                Mood = Clamp(Mood + k.TossMood);
+                Mood = Clamp(Mood + k.TossMood); Tosses++;
                 return true;
             case "crash":
-                Mood = Clamp(Mood + k.CrashMood);
+                Mood = Clamp(Mood + k.CrashMood); Rough++;
+                return true;
+            case "shake": // 잡고 흔들기 (한 번 흔들 때마다)
+                Rough++;
+                return true;
+            case "annoy": // 귀찮게 찌르기
+                Annoys++;
                 return true;
             case "sleep":
                 if (Energy > 80) return false;

@@ -347,30 +347,6 @@
   "pt": "{0} nasceu!",
   "ru": "{0} вылупился!"
  },
- "say.spit": {
-  "en": "Ptui!",
-  "ko": "퉤!",
-  "ja": "ペッ!",
-  "zh-Hans": "呸!",
-  "zh-Hant": "呸!",
-  "es": "¡Ptuí!",
-  "de": "Ptü!",
-  "fr": "Ptou !",
-  "pt": "Ptuí!",
-  "ru": "Тьфу!"
- },
- "say.no_food": {
-  "en": "The basket is empty… more food will come soon.",
-  "ko": "바구니가 비었어요… 조금 있으면 또 생겨요.",
-  "ja": "かごが空っぽ… もうすぐまたできるよ。",
-  "zh-Hans": "篮子空了…… 很快又会有的。",
-  "zh-Hant": "籃子空了…… 很快又會有的。",
-  "es": "La cesta está vacía… pronto habrá más comida.",
-  "de": "Der Korb ist leer… bald gibt es neues Futter.",
-  "fr": "Le panier est vide… il y aura bientôt à manger.",
-  "pt": "A cesta está vazia… logo vai ter mais comida.",
-  "ru": "Корзинка пуста… скоро снова появится еда."
- },
  "say.nowhere": {
   "en": "Nowhere to drop it",
   "ko": "떨어뜨릴 곳이 없어요",

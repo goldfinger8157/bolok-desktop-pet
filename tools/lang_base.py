@@ -40,8 +40,6 @@ t('gun.giant', 'Giant cannon', '왕대포')
 t('gun.normal', 'Cannon', '일반대포')
 # 말풍선
 t('say.hatched', '{0} hatched!', '{0} 태어났어요!')
-t('say.spit', 'Ptui!', '퉤!')
-t('say.no_food', 'The basket is empty… more food will come soon.', '바구니가 비었어요… 조금 있으면 또 생겨요.')
 t('say.nowhere', 'Nowhere to drop it', '떨어뜨릴 곳이 없어요')
 t('say.no_break', 'No window to make bricks from', '벽돌로 만들 창이 없어요')
 t('say.no_gun', 'No window to smash', '부술 창이 없어요')

@@ -38,7 +38,9 @@ static class Sim
     static string Row(string name, Result r)
     {
         string first = r.FirstBite is { } f ? (f / 60).ToString("F1") + "시간" : "-";
-        return $"{name.PadRight(8)} {r.P.Stage.PadRight(13)} 실수 {r.P.Miss} 배고팠던 비율 {r.P.HungryShare:P0} 누적 {r.P.BitesTotal}입 남은 {r.P.Bites}입 " +
+        var (c, s, g) = r.P.Growth(new Tuning());
+        double sum = Math.Max(1e-9, c + s + g);
+        return $"{name.PadRight(8)} {r.P.Stage.PadRight(13)} 통통 {c / sum:P0} 애교 {s / sum:P0} 심술 {g / sum:P0} 실수 {r.P.Miss} 누적 {r.P.BitesTotal}입 남은 {r.P.Bites}입 " +
                $"최저 포만 {r.MinFull:F0} 기분 {r.MinMood:F0} 첫 입 {first}";
     }
 
@@ -1588,8 +1590,20 @@ static class Sim
         Expect(good.P.Miss == 0 && good.P.BitesTotal == 0 && good.P.Stage == "adult_chubby", "하루 3번이면 무탈");
         Expect(sweet.P.Stage == "adult_sweet", "쓰다듬기를 듬뿍 하면 애교쟁이");
         Expect(once.P.BitesTotal > 0, "하루 1번이면 화면을 먹는다");
-        Expect(good.P.HungryShare < k.GrumpyHungry && sweet.P.HungryShare < k.GrumpyHungry && once.P.HungryShare >= k.GrumpyHungry,
-            $"심술이는 횟수가 아니라 배고팠던 비율로: 하루 3번 {good.P.HungryShare:P0}·하루 1번 {once.P.HungryShare:P0} (기준 {k.GrumpyHungry:P0})");
+        Expect(once.P.Stage == "adult_grumpy", "하루 1번이면 배고픈 시간이 길어 심술이");
+        Expect(twice.P.Stage != "adult_grumpy", "하루 2번이면 심술이는 아니다");
+        string Grow(Action<Pet> care) // 어른 모습은 돌봄의 비율로 (YELL 2026-11-13)
+        {
+            var g = new Pet { Stage = "child", AgeMin = k.ChildMin - .5, Full = 100, Mood = 100, Energy = 100 }; // 어른이 되기 30초 전
+            care(g);
+            g.Tick(k, 1);
+            return g.Stage;
+        }
+        Expect(Grow(g => g.Feeds = 20) == "adult_chubby", "밥을 많이 주면 통통이");
+        Expect(Grow(g => (g.Feeds, g.Pets) = (20, 90)) == "adult_sweet", "밥보다 쓰다듬기가 많으면 애교쟁이");
+        Expect(Grow(g => (g.Feeds, g.Plays, g.Tosses) = (20, 30, 20)) == "adult_sweet", "놀아 주고 살살 던져 주면 애교쟁이");
+        Expect(Grow(g => (g.Feeds, g.Pets, g.Rough) = (20, 30, 25)) == "adult_grumpy", "세게 던지고 흔드는 게 가장 많으면 심술이");
+        Expect(Grow(g => (g.Feeds, g.Pets, g.Rough) = (20, 30, 5)) == "adult_chubby", "가끔 세게 던져도 비율이 작으면 괜찮다");
         Expect(none.P.Stage == "adult_grumpy" && none.P.Bites == k.MaxBites, "방치하면 심술이");
 
         var back = none.P; // 밥을 주면 먹은 화면을 전부 뱉는다 (YELL 2026-11-13)
