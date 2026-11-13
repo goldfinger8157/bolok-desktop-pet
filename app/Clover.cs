@@ -18,8 +18,8 @@ public sealed class Clover
     public double X, Y;     // 바닥에 있을 때 자리 (화면 좌표, 땅 높이)
     public string Day = ""; // 돋은 날 (하루 한 번)
     public string Kind = "clover"; // clover(네잎클로버) | sprout(새싹) | sunflower(해바라기) | fallen·ginkgo·maple(낙엽: 잎맥 잎·은행잎·단풍잎). 그림은 item/<Kind>
-    public static readonly string[] Kinds = { "clover", "sprout", "sunflower", "fallen", "ginkgo", "maple" };
-    public static bool Falls(string kind) => kind is "fallen" or "ginkgo" or "maple"; // 낙엽: 땅에 안 돋고 하늘에서 내려와 머리에 얹힌다 (선물의 초록 잎 item/leaf 와는 다른 그림)
+    public static readonly string[] Kinds = { "clover", "sprout", "sunflower", "fallen", "ginkgo", "maple", "redmaple" };
+    public static bool Falls(string kind) => kind is "fallen" or "ginkgo" or "maple" or "redmaple"; // 낙엽: 땅에 안 돋고 하늘에서 내려와 머리에 얹힌다 (선물의 초록 잎 item/leaf 와는 다른 그림)
     public const double FallSec = 3.2; // 낙엽이 머리까지 내려오는 시간
     public int Look; // 머리에 누운 낙엽의 모양 0~5 (누움·비스듬히 둘 × 좌우) — 내려앉거나 주울 때마다 무작위 (YELL 2026-11-13)
     void NewLook() => Look = Random.Shared.Next(6);
@@ -28,9 +28,9 @@ public sealed class Clover
     // 무엇이 돋을지 — 계절마다 다르게 (YELL 2026-11-13: 해바라기·낙엽 추가). 가을엔 낙엽, 여름엔 해바라기가 잦다
     public static string PickKind(int month, double roll)
     {
-        var w = month is >= 9 and <= 11 ? new[] { ("sprout", .30), ("clover", .15), ("sunflower", .15), ("fallen", .14), ("ginkgo", .13), ("maple", .13) }
-              : month is >= 6 and <= 8 ? new[] { ("sprout", .35), ("clover", .20), ("sunflower", .35), ("fallen", .04), ("ginkgo", .03), ("maple", .03) }
-              : new[] { ("sprout", .45), ("clover", .25), ("sunflower", .15), ("fallen", .05), ("ginkgo", .05), ("maple", .05) }; // 낙엽 세 가지는 같은 몫 (YELL 이 보낸 세 그림)
+        var w = month is >= 9 and <= 11 ? new[] { ("sprout", .30), ("clover", .15), ("sunflower", .15), ("fallen", .10), ("ginkgo", .10), ("maple", .10), ("redmaple", .10) }
+              : month is >= 6 and <= 8 ? new[] { ("sprout", .35), ("clover", .20), ("sunflower", .35), ("fallen", .03), ("ginkgo", .03), ("maple", .02), ("redmaple", .02) }
+              : new[] { ("sprout", .45), ("clover", .25), ("sunflower", .15), ("fallen", .04), ("ginkgo", .04), ("maple", .04), ("redmaple", .03) }; // 낙엽 네 가지는 거의 같은 몫
         foreach (var (k, p) in w) { if (roll < p) return k; roll -= p; }
         return "sprout";
     }
@@ -157,9 +157,9 @@ public sealed class Clover
             for (int i = 0; i < 2000; i++) { var one = new Clover(); one.TrySprout($"2026-{month}-{i % 28 + 1:00}x{i}", 0, 900, 1, 1000, 120, area, pick, 1); if (one.Kind == kind) n++; }
             return n;
         }
-        int clovers = Count("03", "clover"), summerSun = Count("07", "sunflower"), ginkgo = Count("10", "ginkgo"), maple = Count("10", "maple");
-        int autumnLeaf = Count("10", "fallen") + ginkgo + maple, springLeaf = Count("04", "fallen") + Count("04", "ginkgo") + Count("04", "maple");
-        Expect(ginkgo is > 180 and < 340 && maple is > 180 and < 340, $"가을 낙엽은 잎맥 잎·은행잎·단풍잎이 고루 ({autumnLeaf - ginkgo - maple}·{ginkgo}·{maple})");
+        int clovers = Count("03", "clover"), summerSun = Count("07", "sunflower"), ginkgo = Count("10", "ginkgo"), maple = Count("10", "maple"), red = Count("10", "redmaple");
+        int autumnLeaf = Count("10", "fallen") + ginkgo + maple + red, springLeaf = Count("04", "fallen") + Count("04", "ginkgo") + Count("04", "maple") + Count("04", "redmaple");
+        Expect(new[] { ginkgo, maple, red }.All(n => n is > 130 and < 270), $"가을 낙엽은 잎맥 잎·은행잎·단풍잎·빨간 단풍잎이 고루 ({autumnLeaf - ginkgo - maple - red}·{ginkgo}·{maple}·{red})");
         Expect(clovers is > 400 and < 600 && autumnLeaf is > 700 and < 900 && summerSun is > 600 and < 800 && springLeaf is > 200 and < 400,
             $"계절마다 다르게: 봄 네잎클로버 {clovers}·낙엽 {springLeaf}, 가을 낙엽 {autumnLeaf}, 여름 해바라기 {summerSun} (2000번 중)");
         // 낙엽: 하늘에서 팔랑팔랑 내려와 머리에 얹힌다. 날아가는 중이면 바닥에 떨어지고 다시 주워 얹는다

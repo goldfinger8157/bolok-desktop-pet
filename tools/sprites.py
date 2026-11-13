@@ -144,7 +144,7 @@ EMOTES = {
 # 총쏘기 게임 그림. 글자는 #=주색, k=검정, g=진회색, l=연회색, w=흰색, r=빨강, y=금색, o=황동, b=갈색 선
 PAL = {'k': (18, 18, 22), 'g': (80, 80, 88), 'l': (200, 200, 206), 'w': (255, 255, 255), 'r': (232, 72, 92),
        'y': (250, 185, 40), 'o': (190, 130, 40), 'b': (92, 58, 40), 'd': (150, 150, 160),
-       'u': (96, 150, 230), 'v': (110, 190, 110), 'p': (240, 140, 170), 'n': (240, 150, 60), 'm': (170, 110, 220), 'e': (58, 126, 70), 'c': (80, 214, 226)}
+       'u': (96, 150, 230), 'v': (110, 190, 110), 'p': (240, 140, 170), 'n': (240, 150, 60), 'm': (170, 110, 220), 'e': (58, 126, 70), 'c': (80, 214, 226), 'R': (176, 34, 52)}  # R: 빨간 단풍잎의 짙은 잎맥
 GAME = {
     'aim': ('....rrr....|..rr...rr..|.r.......r.|.r...r...r.|r....r....r|r..rr.rr..r|r....r....r|.r...r...r.|.r.......r.|..rr...rr..|....rrr....', 'w'),
     'hole0': ('.....l.....|.....l.....|...ggg.....|..gkkkg.l..|lgkkkkkg...|..gkkkkgll.|...gkkg....|....ggl....|......l....', None),
@@ -204,39 +204,31 @@ ITEMS = {
     'sprout': ('.........vv..|.......vvvvv.|......vvvvevv|......vvvevvv|vvv..vvvevvv.|vvvv.vvevvv..|.veev.vevv...|...vvv.v.....|......v......|......v......|.....v.......|.....v.......|......v......', 'e'),  # 새싹: 왼쪽 작은 잎·오른쪽 둥근 큰 잎을 V로 떼고 잎맥, 휜 줄기 (YELL 이 보낸 그림을 참고)
     'sunflower': ('...y.y.y.....|..yyyyyyy....|.yyyobobyy...|yyyobobobyy..|.yybobobyy...|yyyobobobyy..|.yyyobobyy...|..yyyyyyy....|...y.y.y.....|.....v.......|.....v.vv....|......vve....|......v......|......v......', 'b'),  # 해바라기: 노란 꽃잎 고리에 갈색 씨 가운데, 잎 달린 줄기 (YELL 2026-11-13)
     'fallen': ('.....yyyyy.|....yyyyby.|...yoyybyy.|..ooyobyy..|..ooobyyy..|..oobooy...|..obooo....|..boo......|.b.........|b..........', 'b'),  # 낙엽 ①: 잎맥 보이는 둥근 잎, 비스듬히, 아래는 갈색·위는 금색 (YELL 이 보낸 그림). 선물의 초록 'leaf' 와 다른 이름
-    'ginkgo': ('...yyy.yyy...|..yyyy.yyyy..|yyyyyy.yyyyyy|yyyyyyyyyyyyy|.yyyyyyyyyyy.|..yyyyyyyyy..|...yyyoyyy...|.....ooo.....|......o......|......o......|......o......|.....o.......', 'o'),  # 낙엽 ②: 은행잎 — 넓고 평평한 부채꼴, 윗변 가운데 좁은 V 홈, 아래로 좁아져 가늘고 긴 꼭지 (YELL 이 보낸 은행잎 그림 참고)
+    'ginkgo': ('...yyy.yyy...|..yyyy.yyyy..|yyyyyy.yyyyyy|yyyyyyoyyyyyy|.yyyyyoyyyyy.|..yyyyoyyyy..|...yyyoyyy...|.....ooo.....|......o......|......o......|......o......|.....o.......', 'o'),  # 낙엽 ②: 은행잎 — 넓고 평평한 부채꼴, 윗변 가운데 좁은 V 홈에서 꼭지까지 얇은 선으로 두 쪽을 나눈다, 가늘고 긴 꼭지 (YELL 이 보낸 은행잎 그림 참고)
     'maple': ('....n....|...nnn...|.n.nrn.n.|nnnnrnnnn|.nnnrnnn.|..nrrrn..|...nrn...|....r....|....b....', 'b'),  # 낙엽 ③: 단풍잎 — 다섯 갈래, 주황에 빨간 잎맥
+    'redmaple': ('....r....|...rrr...|.r.rRr.r.|rrrrRrrrr|.rrrRrrr.|..rRRRr..|...rRr...|....R....|....b....', 'b'),  # 낙엽 ④: 빨간 단풍잎 — 같은 모양, 빨강에 짙은 빨강 잎맥 (YELL 2026-11-13)
     'basket': ('...nnn...|..n...n..|.n.....n.|ooooooooo|onononono|ooooooooo|.ononono.|..ooooo..', 'b'),  # 먹이 바구니 (밥을 줄 때 잠깐 나와 씨앗을 던진다)
 }
 
 
-# 머리에 내려앉은 낙엽: 꼭지가 머리에 꽂힌 느낌보다 누워 내려앉은 느낌 (YELL 2026-11-13). 누운 그림 + 비스듬히 누운 그림 둘,
-# 땅의 낙엽 더미는 세운 그림을 90°씩 돌린 것까지 섞어 제각각 흩어 놓는다 (YELL: 다 같은 방향이면 어색, 무작위로)
+# 낙엽 회전 그림 (YELL 2026-11-13: 기울이기(밀기)는 쓰지 말고 회전만). 땅의 낙엽 더미는 0°·45°·90°·180°·270° 와 좌우 뒤집기를 섞는다
 def _rot_cw(rows):  # 오른쪽으로 90°
     r = rows.split('|')
     h, w = len(r), len(r[0])
     return '|'.join(''.join(r[h - 1 - y][x] for y in range(h)) for x in range(w))
 
 
-def _shear(rows, k):  # 줄마다 옆으로 밀어 비스듬히 (돌리면 도트가 뭉개져서 기울이기만)
-    r = rows.split('|')
-    h, w = len(r), len(r[0])
-    shifts = [round((y - (h - 1) / 2) * k) for y in range(h)]
-    lo = -min(shifts)
-    width = w + max(shifts) - min(shifts)
-    return '|'.join(('.' * (lo + s) + row).ljust(width, '.') for row, s in zip(r, shifts))
-
-
-ITEMS['ginkgo_lie'] = ('yyyyy.......|yyyyyyyy....|.yyyyyyyoooo|yyyyyyyy....|yyyyy.......', 'o')  # 누운 은행잎: 부채가 왼쪽, 가운데 홈, 꼭지는 오른쪽으로 납작하게
-ITEMS['maple_lie'] = ('.n..n..n...|nnnnnnnnn..|.nrrrrrrnnb|nnnnnnnnn..|.n..n..n...', 'b')  # 누운 단풍잎: 갈래가 위아래로 보이게 납작하게, 꼭지는 오른쪽
-ITEMS['fallen_lie'] = ('....yyyyyy...|b.yyyyyyyyyy.|.byoooooooyyy|..yyyyyyyyyy.|....oooooo...', 'b')  # 누운 잎맥 잎: 가로로 길게, 꼭지는 왼쪽
-for _n in ('fallen', 'ginkgo', 'maple'):
+for _n in ('fallen', 'ginkgo', 'maple', 'redmaple'):
     _art, _line = ITEMS[_n]
     ITEMS[_n + '_r1'] = (_rot_cw(_art), _line)
     ITEMS[_n + '_r2'] = (_rot_cw(_rot_cw(_art)), _line)
     ITEMS[_n + '_r3'] = (_rot_cw(_rot_cw(_rot_cw(_art))), _line)
-    ITEMS[_n + '_lie2'] = (_shear(ITEMS[_n + '_lie'][0], .6), _line)
-    ITEMS[_n + '_lie3'] = (_shear(ITEMS[_n + '_lie'][0], -.6), _line)
+# 머리에 꽂는 낙엽: 세운 것을 0° 로 치고 45° 돌려 꼭지부터 꽂는다 (YELL 2026-11-13: 꽂힌 게 제일 귀엽다, 잎맥 잎 그림이 딱 적당).
+# 잎맥 잎은 원래 그림이 45°, 은행잎·단풍잎은 모양(다각형·부채)을 45° 돌린 자리에서 다시 칸을 채웠다
+ITEMS['fallen_45'] = ITEMS['fallen']
+ITEMS['ginkgo_45'] = ('.yyy.......|.yyyyyy....|.yyyyyy....|.yyyyyy....|..yyyyoyyy.|..yyyoyyyy.|..oyoyyyyy.|..ooyyyyyyy|..oooyyyyyy|.o.....yyyy|o..........', ITEMS['ginkgo'][1])  # 은행잎은 밀면 찌그러진다 (YELL) → 모양(부채·V 홈·꼭지)을 45° 돌린 자리에서 다시 그려 칸을 채웠다
+ITEMS['maple_45'] = ('.n...n...|.nnnnnnr.|.nrnnnrn.|.nrnnrnnn|..nrrnnn.|..nrrnnn.|..nnnrrn.|.b...nnrn|b........', 'b')  # 단풍잎 테두리를 다각형으로 잡아 45° 돌린 뒤 칸을 채웠다 (밀어 기울이지 않고 회전만, YELL)
+ITEMS['redmaple_45'] = ('.r...r...|.rrrrrrR.|.rRrrrRr.|.rRrrRrrr|..rRRrrr.|..rRRrrr.|..rrrRRr.|.b...rrRr|b........', 'b')
 def bug(i, boss=False):
     """버그 습격: 편대로 날아드는 「화면 버그」. 동글한 보라 딱정벌레, 다리 꼼지락 두 장 (i).
     보스는 칸을 꽉 채우고 눈썹이 성났다. 머리가 아래(볼록이 쪽)를 본다"""
