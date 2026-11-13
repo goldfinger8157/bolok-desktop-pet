@@ -131,7 +131,7 @@ public sealed class PetForm : Form, IGameHost
         hud.SpeciesName = () => b.P.Stage == "egg" ? "" : L.Species(species);
         if (!debug) // 새 버전을 받아 바꿔 두면 메뉴에 알린다. 그냥 둬도 다음에 켤 때 새 버전이다
             Updater.Start(() => autoUpdate, tag => BeginInvoke(() => { updateTag = tag; updateItem.Text = L.T("menu.update", tag); updateItem.Visible = true; settings?.ShowReady(); }));
-        foreach (var o in overlays) { o.Runner = () => runner; o.Break = () => breakout; o.WormsGame = () => worms; o.MinigunGame = () => minigun; o.IcbmGame = () => icbm; o.Guest = () => visitor; o.GuestSprites = () => visitorSprites; o.Present = () => present; o.Clover = () => clover.State == Clover.Phase.Ground ? (clover.Kind, clover.X, clover.Y) : null; o.Dreams = Dreams; o.Modes = () => modes; }
+        foreach (var o in overlays) { o.Runner = () => runner; o.Break = () => breakout; o.MinigunGame = () => minigun; o.IcbmGame = () => icbm; o.Guest = () => visitor; o.GuestSprites = () => visitorSprites; o.Present = () => present; o.Clover = () => clover.State == Clover.Phase.Ground ? (clover.Kind, clover.X, clover.Y) : null; o.Dreams = Dreams; o.Modes = () => modes; }
         hud.PlaceAt(area);
         if (runDir != null) dev = new DevLink(runDir, assetsDir!, b, this);
 
@@ -288,7 +288,7 @@ public sealed class PetForm : Form, IGameHost
         if (pendingSave.Species != species || pendingSave.Variant != variant) SetSpecies(pendingSave.Species, pendingSave.Variant);
         (met, released) = (pendingSave.Met?.ToHashSet() ?? new(), pendingSave.Released ?? new());
         if (b.P.Stage != "egg") met.Add(species); // 도감 전부터 키우던 아이도 도감에
-        (breakBest, wormsWins) = (pendingSave.BreakBest, pendingSave.WormsWins);
+        breakBest = pendingSave.BreakBest;
         (visitDay, visitMin, lastVisitDay, visits) = (pendingSave.VisitDay ?? "", pendingSave.VisitMin, pendingSave.LastVisitDay ?? "", pendingSave.Visits ?? new());
         language = pendingSave.Language;
         L.Use(language);
@@ -305,7 +305,7 @@ public sealed class PetForm : Form, IGameHost
 
     void Save()
     {
-        var data = new SaveData { Pet = b.P, X = b.X, Y = b.Y, Holes = b.Holes.Select(h => new[] { h.Cx, h.Cy }).ToList(), GameBest = gameBest, GameSound = Sfx.On, AutoUpdate = autoUpdate, Species = species, Met = met.ToList(), Released = released, RunBest = runBest, RunLast = runLast, RunLevel = runLevel, RunScores = runScores, BreakBest = breakBest, WormsWins = wormsWins, VisitDay = visitDay, VisitMin = visitMin, LastVisitDay = lastVisitDay, Visits = visits, Language = language, Clover = clover.Snapshot(), Variant = variant, CardVariant = cardVariant,
+        var data = new SaveData { Pet = b.P, X = b.X, Y = b.Y, Holes = b.Holes.Select(h => new[] { h.Cx, h.Cy }).ToList(), GameBest = gameBest, GameSound = Sfx.On, AutoUpdate = autoUpdate, Species = species, Met = met.ToList(), Released = released, RunBest = runBest, RunLast = runLast, RunLevel = runLevel, RunScores = runScores, BreakBest = breakBest, VisitDay = visitDay, VisitMin = visitMin, LastVisitDay = lastVisitDay, Visits = visits, Language = language, Clover = clover.Snapshot(), Variant = variant, CardVariant = cardVariant,
             GameData = modes.Select(m => (m.Id, Json: m.SaveState())).Where(x => x.Json != null).ToDictionary(x => x.Id, x => x.Json!),
             Gifts = gifts, Album = album, Cards = cards, VisitCounts = visitCounts, CardFrom = cardFrom, CardForm = cardForm, CardDay = cardDay, MorningDay = morningDay, NightDay = nightDay };
         var tmp = savePath + ".tmp";
@@ -339,14 +339,6 @@ public sealed class PetForm : Form, IGameHost
             foreach (var c in choices) menuTexts.Add((parent.DropDownItems.Add("", null, (_, _) => Go(c.Start)), c.Text));
             menu.Items.Add(parent);
         }
-        var cannon = new ToolStripMenuItem(); // 대포를 고르면 체력이 정해진다
-        menuTexts.Add((cannon, () => L.T("menu.fortress")));
-        foreach (var gun in Worms.Guns)
-        {
-            var item = cannon.DropDownItems.Add("", null, (_, _) => BeginInvoke(() => StartWorms(gun.Name)));
-            menuTexts.Add((item, () => gun.Shells > 1 ? L.T("menu.gun_shells", gun.Label, gun.Hp, gun.Shells) : L.T("menu.gun", gun.Label, gun.Hp)));
-        }
-        menu.Items.Add(cannon);
         if (showcase != null) { menu.Items.Add(new ToolStripSeparator()); menu.Items.Add(showcase.Menu(menuTexts, () => InGame, a => BeginInvoke(a))); }
         menu.Items.Add(new ToolStripSeparator());
         Add("menu.settings", () => ShowSettings());
@@ -426,7 +418,6 @@ public sealed class PetForm : Form, IGameHost
         if (runner != null) RunFrame(dt);
         b.Update(dt, !InGame && Afk());
         if (breakout != null) BreakFrame(dt);
-        if (worms != null) WormsFrame(dt);
         if (minigun != null) MinigunFrame(dt);
         foreach (var m in modes) if (m.Running) m.Frame(dt);
         if (leaving) LeaveFrame(dt);
@@ -724,7 +715,6 @@ public sealed class PetForm : Form, IGameHost
             {
                 new(L.T("game.run"), runLast > 0 ? L.T("game.run_val", runLevel, runBest.ToString("N0", L.Culture)) : never, runLast > 0),
                 new(L.T("game.breakout"), breakBest > 0 ? L.T("game.breakout_val", breakBest.ToString("N0", L.Culture)) : never, breakBest > 0),
-                new(L.T("game.fortress"), wormsWins > 0 ? L.T("game.fortress_val", wormsWins) : L.T("game.fortress_none"), wormsWins > 0),
                 new(L.T("game.shoot"), gameBest > 0 ? L.T("game.shoot_val", gameBest) : never, gameBest > 0),
             }.Concat(modes.SelectMany(m => m.Stats())).ToList()); // 게임 모듈 기록도
     }
@@ -1098,7 +1088,7 @@ public sealed class PetForm : Form, IGameHost
 
     // 게임에 쓸 창(최대화 안 한 창)이 없다: 말 대신 「X 표 창」 그림을 머리 위에 띄우고 고개를 젓는다 (YELL 2026-11-13: 알림 말풍선도 그림으로)
     void NoWindow() { b.Emote("nowin", 3); b.ShakeUntil = b.Now + .5; }
-    bool Playing => game != null || runner != null || breakout != null || worms != null || minigun != null || icbm != null || modes.Any(m => m.Running);
+    bool Playing => game != null || runner != null || breakout != null || minigun != null || icbm != null || modes.Any(m => m.Running);
 
     // ── 보스 키 (YELL 2026-11-13: "게임에서 esc 는 언제나 빠져나가기다!!") ──
     // 어느 창에 초점이 있든(판을 놓쳐 일하는 창을 눌렀어도) Esc 를 누르는 순간 하던 게임을 결과 화면 없이 곧바로 다 끝내고,
@@ -1119,7 +1109,6 @@ public sealed class PetForm : Form, IGameHost
         foreach (var m in modes) if (m.Running) m.Stop(true);
         if (runner != null) EndRun(true);
         if (breakout != null) EndBreak(true);
-        if (worms != null) EndWorms(true);
         if (minigun != null) EndMinigun(true);
         if (icbm != null) EndIcbm();
         if (game is { } gm) { gm.Finish(); gm.Finish(); EndGame(); } // 결과 화면 없이
@@ -1155,9 +1144,6 @@ public sealed class PetForm : Form, IGameHost
         foreach (var o in overlays) o.Invalidate();
         Native.Topmost(Handle);
     }
-
-    (Rectangle Field, List<Rectangle> Wins) PickIslands() =>
-        WindowPick.Islands(Native.Foreground(), Native.ListWindows(), b.Area, Screen.AllScreens.Select(s => s.WorkingArea).ToList(), b.CellPx, 4);
 
     // ── ICBM: 볼록이가 버튼을 누르면 미사일이 날아갔다가 아무 데나(활성 창은 빼고) 떨어지고, 볼록이가 달려가 고친다 ──
     Icbm? icbm;
@@ -1298,86 +1284,6 @@ public sealed class PetForm : Form, IGameHost
         minigun = null;
         CloseLayer();
         b.EndPuppet(true, "gun", ("shots", mg.Shots), ("gone", mg.GoneCount()), ("esc", quit)); // 이기고 지는 건 없다. 실컷 쏘면 즐겁다
-    }
-
-    // ── 포트리스: 창모드 창들이 섬, 볼록이와 라이벌이 번갈아 쏜다 ──
-    Worms? worms;
-    int wormsWins;
-    bool spaceWas;
-
-    public void StartWorms(string? gun = null)
-    {
-        if (InGame || b.P.Stage == "egg") return;
-        gameFocus = Native.GetForegroundWindow();
-        var (field, wins) = PickIslands();
-        if (wins.Count == 0)
-        {
-            NoWindow();
-            Dbg.Log("worms-none");
-            return;
-        }
-        var w = worms = new Worms(field, wins, b.Scale, new Random(), gun);
-        w.OnEvent = e =>
-        {
-            switch (e)
-            {
-                case "fire": Sfx.Play(w.Active.Gun.Shells > 1 ? "mg" : "shotgun"); break;
-                case "boom": Sfx.Play("boom"); break;
-                case "splash": Sfx.Play("reload"); break;
-                case "hurt:me": b.Emote("bang", .6); break;
-            }
-            if (e is "won" or "lost" or "splash" or "boom") Dbg.Log("worms", ("event", e), ("me", w.Me.Hp), ("cpu", w.Cpu.Hp));
-        };
-        OpenLayer(field, (_, e) =>
-        {
-            if (e.Button == MouseButtons.Left) worms?.StartCharge();
-        }, (_, e) => { if (e.Button == MouseButtons.Left) worms?.ReleaseCharge(); }, () => EndWorms(true));
-        spaceWas = Native.KeyDown(Keys.Space);
-        b.StartPuppet();
-        Dbg.Log("worms-start", ("field", field.ToString()), ("me", w.Me.Gun.Name), ("cpu", w.Cpu.Gun.Name), ("lands", string.Join(" ", w.Lands.Select(r => $"{r.X},{r.Y},{r.Width}x{r.Height}"))));
-    }
-
-    void WormsFrame(double dt)
-    {
-        var w = worms!;
-        var me = w.Me;
-        if (w.MyTurn && w.Stage == Worms.Phase.Turn && !me.Dead)
-        {
-            var m = MousePosition;
-            w.Aim = Math.Atan2(m.Y - w.CenterY(me), m.X - me.X);
-            if (w.ChargeFrom < 0)
-            {
-                if (Native.KeyDown(Keys.Left) || Native.KeyDown(Keys.A)) w.Walk(me, -1, dt);
-                else if (Native.KeyDown(Keys.Right) || Native.KeyDown(Keys.D)) w.Walk(me, 1, dt);
-                else me.Dir = m.X >= me.X ? 1 : -1;
-                bool space = Native.KeyDown(Keys.Space);
-                if (space && !spaceWas) w.Jump(me);
-                spaceWas = space;
-            }
-        }
-        w.Update(dt);
-        (b.X, b.Y, b.Dir, b.Pose) = (me.X, me.Y, me.Dir, w.PoseOf(me));
-        if (w.Done) EndWorms(false);
-    }
-
-    // 디버그: worms [multi|giant|normal] / worms fire <각도°> <힘 0~1> / worms stop
-    public void WormsCommand(string[] a)
-    {
-        if (a.Length > 1 && a[1] == "stop") EndWorms(true);
-        else if (a.Length > 3 && a[1] == "fire" && worms is { } w && w.MyTurn) w.Fire(w.Me, double.Parse(a[2]) * Math.PI / 180, double.Parse(a[3]));
-        else StartWorms(a.Length > 1 ? a[1] : null);
-    }
-
-    void EndWorms(bool quit)
-    {
-        if (worms is not { } w) return;
-        worms = null;
-        CloseLayer();
-        bool won = w.Stage == Worms.Phase.Won;
-        if (won) wormsWins++;
-        if (w.Me.Out) b.Y = w.Field.Bottom - b.K.FloorGap; // 물에 빠졌으면 바닥으로 돌아온다
-        b.EndPuppet(won, "worms", ("me", w.Me.Hp), ("cpu", w.Cpu.Hp), ("esc", quit));
-        Save();
     }
 
     // ── 벽돌깨기: 창모드 창 하나를 조각내고, 볼록이가 쟁반으로 쇠공을 튕긴다 ──
