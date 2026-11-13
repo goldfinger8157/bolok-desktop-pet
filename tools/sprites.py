@@ -204,7 +204,7 @@ ITEMS = {
     'sprout': ('.........vv..|.......vvvvv.|......vvvvevv|......vvvevvv|vvv..vvvevvv.|vvvv.vvevvv..|.veev.vevv...|...vvv.v.....|......v......|......v......|.....v.......|.....v.......|......v......', 'e'),  # 새싹: 왼쪽 작은 잎·오른쪽 둥근 큰 잎을 V로 떼고 잎맥, 휜 줄기 (YELL 이 보낸 그림을 참고)
     'sunflower': ('...y.y.y.....|..yyyyyyy....|.yyyobobyy...|yyyobobobyy..|.yybobobyy...|yyyobobobyy..|.yyyobobyy...|..yyyyyyy....|...y.y.y.....|.....v.......|.....v.vv....|......vve....|......v......|......v......', 'b'),  # 해바라기: 노란 꽃잎 고리에 갈색 씨 가운데, 잎 달린 줄기 (YELL 2026-11-13)
     'fallen': ('.....yyyyy.|....yyyyby.|...yoyybyy.|..ooyobyy..|..ooobyyy..|..oobooy...|..obooo....|..boo......|.b.........|b..........', 'b'),  # 낙엽 ①: 잎맥 보이는 둥근 잎, 비스듬히, 아래는 갈색·위는 금색 (YELL 이 보낸 그림). 선물의 초록 'leaf' 와 다른 이름
-    'ginkgo': ('...yyy.yyy...|..yyyy.yyyy..|yyyyyy.yyyyyy|yyyyyyoyyyyyy|.yyyyyoyyyyy.|..yyyyoyyyy..|...yyyoyyy...|.....ooo.....|......o......|......o......|......o......|.....o.......', 'o'),  # 낙엽 ②: 은행잎 — 넓고 평평한 부채꼴, 윗변 가운데 좁은 V 홈에서 꼭지까지 얇은 선으로 두 쪽을 나눈다, 가늘고 긴 꼭지 (YELL 이 보낸 은행잎 그림 참고)
+    'ginkgo': ('...yyy.yyy...|..yyyy.yyyy..|yyyyyy.yyyyyy|yyyyyyoyyyyyy|.yyyyyoyyyyy.|..yyyyyyyyy..|...yyyyyyy...|.....ooo.....|......o......|......o......|......o......|.....o.......', 'o'),  # 낙엽 ②: 은행잎 — 넓고 평평한 부채꼴, 윗변 가운데 좁은 V 홈에서 꼭지 쪽으로 70% 까지만 얇은 선 (다 나누지 않는다, YELL), 가늘고 긴 꼭지 (YELL 이 보낸 은행잎 그림 참고)
     'maple': ('....n....|...nnn...|.n.nrn.n.|nnnnrnnnn|.nnnrnnn.|..nrrrn..|...nrn...|....r....|....b....', 'b'),  # 낙엽 ③: 단풍잎 — 다섯 갈래, 주황에 빨간 잎맥
     'redmaple': ('....r....|...rrr...|.r.rRr.r.|rrrrRrrrr|.rrrRrrr.|..rRRRr..|...rRr...|....R....|....b....', 'b'),  # 낙엽 ④: 빨간 단풍잎 — 같은 모양, 빨강에 짙은 빨강 잎맥 (YELL 2026-11-13)
     'basket': ('...nnn...|..n...n..|.n.....n.|ooooooooo|onononono|ooooooooo|.ononono.|..ooooo..', 'b'),  # 먹이 바구니 (밥을 줄 때 잠깐 나와 씨앗을 던진다)
@@ -226,7 +226,7 @@ for _n in ('fallen', 'ginkgo', 'maple', 'redmaple'):
 # 머리에 꽂는 낙엽: 세운 것을 0° 로 치고 45° 돌려 꼭지부터 꽂는다 (YELL 2026-11-13: 꽂힌 게 제일 귀엽다, 잎맥 잎 그림이 딱 적당).
 # 잎맥 잎은 원래 그림이 45°, 은행잎·단풍잎은 모양(다각형·부채)을 45° 돌린 자리에서 다시 칸을 채웠다
 ITEMS['fallen_45'] = ITEMS['fallen']
-ITEMS['ginkgo_45'] = ('.yyy.......|.yyyyyy....|.yyyyyy....|.yyyyyy....|..yyyyoyyy.|..yyyoyyyy.|..oyoyyyyy.|..ooyyyyyyy|..oooyyyyyy|.o.....yyyy|o..........', ITEMS['ginkgo'][1])  # 은행잎은 밀면 찌그러진다 (YELL) → 모양(부채·V 홈·꼭지)을 45° 돌린 자리에서 다시 그려 칸을 채웠다
+ITEMS['ginkgo_45'] = ('.yyy.......|.yyyyyy....|.yyyyyy....|.yyyyyy....|..yyyyoyyy.|..yyyoyyyy.|..oyyyyyyy.|..ooyyyyyyy|..oooyyyyyy|.o.....yyyy|o..........', ITEMS['ginkgo'][1])  # 은행잎은 밀면 찌그러진다 (YELL) → 모양(부채·V 홈·꼭지)을 45° 돌린 자리에서 다시 그려 칸을 채웠다
 ITEMS['maple_45'] = ('.n...n...|.nnnnnnr.|.nrnnnrn.|.nrnnrnnn|..nrrnnn.|..nrrnnn.|..nnnrrn.|.b...nnrn|b........', 'b')  # 단풍잎 테두리를 다각형으로 잡아 45° 돌린 뒤 칸을 채웠다 (밀어 기울이지 않고 회전만, YELL)
 ITEMS['redmaple_45'] = ('.r...r...|.rrrrrrR.|.rRrrrRr.|.rRrrRrrr|..rRRrrr.|..rRRrrr.|..rrrRRr.|.b...rrRr|b........', 'b')
 def bug(i, boss=False):
