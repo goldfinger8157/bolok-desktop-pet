@@ -25,13 +25,13 @@ public sealed class Fortress
     //   (처음엔 반지름 60·세기 1.8배였는데 라이벌이 첫두 발에 볼록이를 빠뜨리는 판이 열에 여섯이라 줄였다)
     public static readonly Gun[] Guns =
     {
-        new("multi", "멀티캐논", 200, 9, 3, 28, 22) { Look = 2 },   // 체력은 처음 정한 것의 두 배 (YELL: 판이 너무 빨리 끝났다)
-        new("giant", "왕대포", 300, 1, 0, 85, 90) { Look = 1 },
+        new("multi", "멀티캐논", 200, 9, 4, 28, 22) { Look = 2 },   // 9발 (YELL 2026-11-13) — 사이 4°로 벌려 아홉 발이 다 보이게   // 체력은 처음 정한 것의 두 배 (YELL: 판이 너무 빨리 끝났다)
+        new("giant", "왕대포", 300, 1, 0, 128, 90) { Look = 1 },   // 몸이 약한 대신 터지는 범위 1.5배 (YELL 2026-11-13: 85 → 128)
         new("normal", "일반대포", 400, 1, 0, 50, 60),
         new("bounce", "튕김탄", 350, 1, 0, 45, 55) { Bounces = 2, Look = 3 },
-        new("cluster", "집속탄", 250, 1, 0, 32, 26) { Split = 4 },
+        new("cluster", "집속탄", 250, 1, 0, 26, 14) { Split = 9 },   // 아홉으로 갈라진다 (YELL 2026-11-13). 새끼 탄 하나는 작게: 다 맞아도 126
         new("drill", "드릴탄", 350, 1, 0, 65, 70) { Drill = 45 },
-        new("push", "밀치기탄", 300, 1, 0, 50, 20) { Crater = .45, Knock = 1.5, Look = 3 },
+        new("push", "밀치기탄", 300, 1, 0, 40, 20) { Crater = .45, Knock = 1.6, Look = 3 },   // 사기였다 (YELL: 앞에 대충 떨궈도 밀려 떨어진다) → 범위 50→40 으로 좁혀 가까이 맞혀야만 세게 민다 (25px 옆: 일반대포보다 셈, 40px 옆: 거의 안 밀림)
     };
     public static Gun GunOf(string? name)
     {
@@ -68,6 +68,7 @@ public sealed class Fortress
     // 파워업 폭풍 (YELL 2026-11-13): 가끔 둘 사이 하늘에 노란 폭풍이 뜨고, 그 안을 지난 포탄은 세진다 (누가 쏜 것이든)
     //  · 양쪽 첫 발이 끝난 뒤부터, 폭풍이 없는 차례가 시작될 때 25% 로 뜬다. 두 차례(양쪽 한 번씩) 떠 있다가 사라지고, 한 발이라도 세지게 했으면 그 발이 끝날 때 사라진다
     //  · 세진 포탄: 폭발 반지름·피해 1.5배, 드릴탄은 파고드는 길이도 1.5배, 밀치는 세기 1.3배. 집속탄은 새끼 탄이 물려받고, 멀티캐논은 지나간 발마다 세진다
+    public const double Push = 420; // 맞으면 밀려 나는 빠르기 (YELL 2026-11-13: 520 → 420, 조금 덜 밀리게)
     public const double StormChance = .25, StormSize = 55, BoostBlast = 1.5, BoostKnock = 1.3;
     public const int StormTurns = 2;
     public const double BlastSec = .6;  // 폭발은 이만큼 지나면 목록에서 지운다 (불덩이 그림은 BlastArt.Sec 동안. 깎인 땅은 칸에 남는다)
@@ -106,7 +107,7 @@ public sealed class Fortress
     (double A, double P) cpuPlan;
 
     // 내 대포를 고르면 라이벌은 나머지 둘 중 아무거나: 둘이 같은 대포를 쓰지 않는다 (YELL 2026-11-13). cpuGun 으로 정하면 그대로 (같은 것도 된다)
-    public Fortress(Rectangle field, IReadOnlyList<Rectangle> lands, int k, Random rng, string? myGun = null, string? cpuGun = null)
+    public Fortress(Rectangle field, IReadOnlyList<Rectangle> lands, int k, Random rng, string? myGun = null, string? cpuGun = null, double start = .3)
     {
         (Field, K, this.rng) = (field, k, rng);
         (fx, fy) = (field.Left, field.Top);
@@ -124,8 +125,8 @@ public sealed class Fortress
         // 볼록이는 왼쪽 섬, 라이벌은 오른쪽 섬 (섬이 하나면 양 끝)
         var a = Lands[0];
         var b = Lands[^1];
-        Place(Me, a.Left + a.Width * .2);
-        Place(Cpu, b.Left + b.Width * .8);
+        Place(Me, a.Left + a.Width * start);   // 섬 끝에서 30% (YELL 2026-11-13: 20% 자리에선 너무 쉽게 물에 빠졌다 → 약간 가운데 쪽)
+        Place(Cpu, b.Left + b.Width * (1 - start));
         NewTurn(true);
     }
 
@@ -249,7 +250,7 @@ public sealed class Fortress
     void Bomblet(Shell from, int i, int of, Shell into)
     {
         (into.Kind, into.X, into.Y, into.R, into.Damage, into.Crater, into.Knock) = (from.Kind, from.X, from.Y, from.R, from.Damage, from.Crater, from.Knock);
-        (into.Vx, into.Vy) = (from.Vx + (i - (of - 1) / 2.0) * SplitSpread * sf, from.Vy - 40 * sf);
+        (into.Vx, into.Vy) = (from.Vx + (i - (of - 1) / 2.0) * SplitSpread * 3.5 / Math.Max(1, of - 1) * sf, from.Vy - 40 * sf); // 몇 개로 갈라지든 퍼지는 폭은 비슷하게
         (into.Look, into.Bounces, into.Split, into.Drill) = (2, 0, 0, 0);
         (into.Age, into.Fuse, into.DrillLeft, into.Dug, into.Bounced, into.Boost, into.Powered) = (from.Age, -1, -1, 0, false, from.Boost, false); // 세진 것은 물려받는다 (R·Damage 에 이미 들어 있다)
     }
@@ -409,7 +410,7 @@ public sealed class Fortress
         double near = 1 - d / reach;
         h.Hp = Math.Max(0, h.Hp - (int)Math.Round(damage * near));
         (double nx, double ny) = d < 1 ? (0, -1) : (dx / d, dy / d);
-        (h.Air, h.Vx, h.Vy, h.HurtUntil) = (true, nx * 520 * sf * near * knock, ny * 520 * sf * near * knock - 180 * sf, Clock + .6); // 날아간다
+        (h.Air, h.Vx, h.Vy, h.HurtUntil) = (true, nx * Push * sf * near * knock, ny * Push * sf * near * knock - 180 * sf, Clock + .6); // 날아간다
         h.Y -= 1;
         OnEvent?.Invoke(h == Me ? "hurt:me" : "hurt:cpu");
     }
