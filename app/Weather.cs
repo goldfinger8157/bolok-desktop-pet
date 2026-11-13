@@ -7,7 +7,7 @@ namespace Bolok;
 // 진짜 날씨는 묻지 않는다 (네트워크 없음). 일을 방해하지 않게 조금만:
 //   언제: 한가한 1분마다 1/120 — 하루(9시간) 평균 세 번쯤, 많아야 네 번. 한 번에 2.5~5.5분, 끝나고 40분은 맑다. 처음·끝 15초는 차츰 늘고 준다.
 //   무엇: 11~2월엔 눈만, 3~10월엔 비만 (YELL 2026-11-13).
-//   어디: 볼록이가 있는 모니터에만 (볼록이 곁의 날씨). 1920 폭에 눈 14송이·비 24줄기쯤, 볼록이보다 한 단계 작은 그림.
+//   어디: 볼록이 머리 위 좁은 구역만 (가로 3칸 × 위로 3칸, 볼록이를 따라다닌다 — YELL 2026-11-13: 화면 전체면 너무 티 난다). 눈 6송이·비 10줄기쯤, 볼록이보다 한 단계 작은 그림.
 //         일하는 창(활성 창) 위에는 한 알도 안 그린다. 우산 잎에 닿은 비는 잎 위에서 튀고 그 아래로는 안 떨어진다.
 //   멈춤: 게임 중·잠·알·자리 비움에는 시작하지 않고, 오던 것도 그동안 안 보이고 반응도 거둔다 (시간은 그대로 흐른다).
 // 볼록이: 눈이 오면 좋아한다 (처음에 방긋·음표, 가끔 깡충(눈송이 잡기)·하트). 밖에서 눈을 맞으면 머리에 눈이 세 단계로 쌓이고,
@@ -228,7 +228,7 @@ public sealed class Weather
     public static Rectangle Src(int pic, int s) { var (_, _, w, h) = PicArt(pic); return new((PetArt.Cell - w) / 2 * s, (PetArt.Cell - h) / 2 * s, w * s, h * s); } // 공통 그림 칸에서 잘라 올 자리
     public static int DropScale(int k) => Math.Max(1, k - 1);
     public static Rectangle Box(in Drop d, int s) { var (w, h) = Size[d.Art]; return new(d.X - w * s / 2, d.Y - h * s / 2, w * s, h * s); }
-    public static int Count(Sky sky, int width) => sky == Sky.Snow ? Math.Max(4, width / 140) : Math.Max(6, width / 80);
+    public static int Count(Sky sky, int width) => sky == Sky.Snow ? Math.Max(6, width / 140) : Math.Max(10, width / 80); // 볼록이 머리 위 좁은 구역(가로 3칸)이면 눈 6·비 10
 
     // 0~1 무작위 같은 값 (알갱이 i 의 salt 번째). 같은 값을 넣으면 늘 같다
     static double Hash(int i, int salt)

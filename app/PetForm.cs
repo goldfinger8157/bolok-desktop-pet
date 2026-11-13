@@ -982,12 +982,21 @@ public sealed class PetForm : Form, IGameHost
         weather.React(b, weatherShown, Random.Shared);
     }
 
+    // 눈·비가 내리는 곳: 화면 전체가 아니라 볼록이 머리 위 좁은 구역만 (YELL 2026-11-13: 화면 전체면 너무 티 난다).
+    // 볼록이 크기를 100% 로 보고 가로 300%, 발에서 위로 300% — 볼록이를 따라다닌다
+    Rectangle WeatherZone()
+    {
+        int c = b.CellPx;
+        var zone = new Rectangle((int)b.X - c * 3 / 2, (int)b.Y - c * 3, c * 3, c * 3);
+        return Rectangle.Intersect(zone, b.Area);
+    }
+
     // 그림 자리가 정해진 뒤 (본체 창 자리·그림): 우산 잎 자리와 알갱이
     void WeatherLayout()
     {
         var (name, frame, flip, shake) = drawn;
         weather.PlaceLeaf(sprites, name, frame, flip, b.Scale, Left + 8 + shake, Top, b.Now);
-        weather.Layout(weatherShown, b.Now, b.Area, b.Scale, b.Active is { } w ? w.R : Rectangle.Empty);
+        weather.Layout(weatherShown, b.Now, WeatherZone(), b.Scale, b.Active is { } w ? w.R : Rectangle.Empty);
         int look = (weather.Soaked ? 1 + Weather.WetFrame(b.Now) : 0) + (weather.UmbrellaUp ? 4 : 0) + weather.PileShown * 8;
         if (look != weatherLook) { weatherLook = look; Invalidate(); }
     }
