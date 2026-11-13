@@ -522,6 +522,28 @@ def prop_cookie():
 PROPS = {n[5:]: f for n, f in globals().items() if n.startswith('prop_')}
 
 
+def ledge(part):
+    """달리기 2층 발판: 풀이 덮인 나무 판, 두께 7. 'l' 왼쪽 끝 · 'm' 가운데 · 'r' 오른쪽 끝을 옆으로 이어 붙인다.
+    가운데는 칸 폭(40)을 꽉 채워야 이음매가 안 보인다. 윗줄이 발 닿는 선이라 위로 튀어나온 것은 그리지 않는다"""
+    g = Canvas()
+    top, n = 16, 3  # 끝 조각 폭
+    light, wood, dark = mix(P['green'], P['white'], .35), P['brown'], P['dbrown']
+
+    def col(x, u, cut=0):  # x: 칸 안 자리, u: 무늬 자리, cut: 모서리를 둥글게 깎는 줄 수
+        drip = u % 10 in (3, 4)  # 풀이 군데군데 한 줄 더 늘어진다
+        rows = [C['line'], light, P['green'], P['dgreen'], P['dgreen'] if drip else wood, dark if u % 20 != 19 else C['line'], C['line']]
+        for i in range(cut, 7 - cut):
+            g.put(x, top + i, C['line'] if i in (cut, 6 - cut) or cut == n - 1 else rows[i])
+
+    if part == 'm':
+        for x in range(CELL):
+            col(x, x)
+    else:
+        for i in range(n):  # 끝은 바깥으로 갈수록 한 줄씩 깎는다
+            col(CELL - n + i if part == 'l' else n - 1 - i, 37 + i if part == 'l' else n - 1 - i, n - 1 - i)
+    return g
+
+
 def gun(rows, pivot=(10, 21)):
     """총: 손잡이(pivot) 가 칸의 (10, 21) 에 오게 놓는다. 앱은 이 점을 축으로 돌린다"""
     g = Canvas()
@@ -630,6 +652,7 @@ def build():
     rows += [(f'item/{k}', [art(*v)]) for k, v in ITEMS.items()]
     rows += [('game/flash', [art('..y..|.yyy.|yywyy|.yyy.|..y..', 'r')])]
     rows += [('game/muzzle', [muzzle(a) for a in MUZZLE])]
+    rows += [(f'prop/ledge_{k}', [ledge(k)]) for k in 'lmr']
     return rows
 
 
