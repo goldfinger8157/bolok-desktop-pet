@@ -125,10 +125,10 @@ static class Program
             return 0;
         }
 
-        if (args.Length is >= 2 and <= 4 && args[0] == "--run-scene") // 달리기 장면: 형태마다 몸 크기와 판정 (화면을 띄우지 않는다). 뒤에 배율, 형태 하나
+        if (args.Length is >= 2 and <= 4 && args[0] == "--run-scene") // 옛 이름: --mode-scene run@<배율> <그림> 과 같다. 뒤에 배율, 형태 하나(그 형태만 자세히)
         {
-            Sim.RunScene(args[1], args.Length > 2 ? int.Parse(args[2]) : 3, args.Length > 3 ? args[3] : null);
-            return 0;
+            GameModes.SceneArg = args.Length > 3 ? args[3] : null;
+            args = new[] { "--mode-scene", "run@" + (args.Length > 2 ? args[2] : "3"), args[1] };
         }
 
         if (args.Length == 3 && args[0] == "--mode-scene") // 게임 모듈 장면 그려 보기 (화면을 띄우지 않는다)

@@ -7,10 +7,8 @@ public sealed class Overlay : Form
     readonly Brain b;
     readonly Func<Sprites> sprites;
     readonly Func<Game?> game;
-    public Func<Runner?> Runner = () => null;
     public Func<Breakout?> Break = () => null;
     public Func<Worms?> WormsGame = () => null;
-    public Func<Minigun?> MinigunGame = () => null;
     public Func<Visitor?> Guest = () => null;           // 놀러 온 떠난 친구
     public Func<Sprites?> GuestSprites = () => null;
     public Func<(string Kind, string From, double X, double Y, double At)?> Present = () => null; // 친구가 두고 간 선물
@@ -18,9 +16,6 @@ public sealed class Overlay : Form
     public Func<IReadOnlyList<string>> Dreams = () => Array.Empty<string>();                     // 꿈 말풍선 그림들
     internal Func<IReadOnlyList<IGameMode>> Modes = () => Array.Empty<IGameMode>();               // 게임 모듈 (app/Games)
     public Sprites Art => sprites();
-    Minigun? gunSeen;
-    int carvedSeen;
-    Bitmap? gunHoles;   // 파인 칸 그림 (칸 하나가 한 점, 그릴 때 4배로 늘린다)
     Worms? wormsSeen;
     int blastsSeen;
     Breakout? breakSeen;
@@ -90,18 +85,6 @@ public sealed class Overlay : Form
         foreach (var seed in b.Foods) { var p = ToClient(seed.X, seed.Y); r.Add(new Rectangle(p.X - s, p.Y - s, s * 2, s * 2)); }
         if (b.Emoting) r.Add(EmoteRect());
         if (b.Saying) r.Add(Client(NoteRect(b.X, b.Y, b.Area, b.SayLines!)));
-        if (Runner() is { } run) RunDirty(run, r);
-        else RunIdle(r);
-        if (MinigunGame() is { } mg)
-        {
-            int k = b.Scale;
-            foreach (var (pv, _) in mg.Guns()) r.Add(Client(Rectangle.Inflate(new Rectangle((int)pv.X, (int)pv.Y, 0, 0), 36 * mg.GunK, 36 * mg.GunK)));
-            foreach (var bl in mg.Bullets) r.Add(Client(Rectangle.FromLTRB((int)Math.Min(bl.X, bl.X - bl.Vx * .012) - 3, (int)Math.Min(bl.Y, bl.Y - bl.Vy * .012) - 3, (int)Math.Max(bl.X, bl.X - bl.Vx * .012) + 3, (int)Math.Max(bl.Y, bl.Y - bl.Vy * .012) + 3)));
-            foreach (var bit in mg.Bits) r.Add(Client(new Rectangle((int)bit.X - bit.Size, (int)bit.Y - bit.Size, bit.Size * 2, bit.Size * 2)));
-            foreach (var n in mg.Nades) r.Add(Client(new Rectangle((int)n.X - 8 * k, (int)n.Y - 8 * k, 16 * k, 16 * k)));
-            foreach (var bl in mg.Blasts) r.Add(Client(Rectangle.Inflate(new Rectangle((int)bl.X, (int)bl.Y, 0, 0), (int)(bl.R * 1.3), (int)(bl.R * 1.3))));
-            if (GunNote(mg) is { } note) r.Add(Client(NoteRect(b.X, b.Y, mg.Field, note)));
-        }
         if (WormsGame() is { } wm)
         {
             int k = b.Scale, cell = b.CellPx;
@@ -121,7 +104,7 @@ public sealed class Overlay : Form
             foreach (var sh in bo.Shards) r.Add(Client(new Rectangle((int)sh.X - sh.Size * 2, (int)sh.Y - sh.Size * 2, sh.Size * 4, sh.Size * 4)));
             if (BreakNote(bo) is { } note) r.Add(Client(NoteRect(b.X, b.Y, bo.Field, note)));
         }
-        foreach (var m in Modes()) if (m.Running) m.Dirty(this, r);
+        for (var (ms, i) = (Modes(), 0); i < ms.Count; i++) if (ms[i].Running) ms[i].Dirty(this, r); // 번호로 돈다: 목록 약속(IReadOnlyList)을 foreach 로 돌면 프레임마다 메모리를 잡는다
         if (Guest() is { } gv) r.Add(Client(GuestRect(gv)));
         if (Present() is { } pr) r.Add(Client(Around(pr.X, pr.Y - 8 * b.Scale, 14 * b.Scale, 14 * b.Scale)));
         if (Clover() is { } cl) r.Add(Client(Around(cl.X, cl.Y - 10 * b.Scale, 16 * b.Scale, 16 * b.Scale)));
@@ -160,22 +143,6 @@ public sealed class Overlay : Form
             if (bo != breakSeen) { (breakSeen, brokenSeen) = (bo, 0); once.AddRange(bo.Boards.Select(r => Client(Rectangle.Inflate(r, 2, 2)))); }
             for (; brokenSeen < bo.BrokenOrder.Count; brokenSeen++) once.Add(Client(Rectangle.Inflate(bo.BrokenOrder[brokenSeen].R, 2, 2)));
         }
-        if (MinigunGame() is { } mg) // 새 판이면 그림을 새로, 파인 자리는 그 자리만 칠하고 한 번 다시 그린다
-        {
-            if (mg != gunSeen)
-            {
-                (gunSeen, carvedSeen) = (mg, 0);
-                gunHoles?.Dispose();
-                gunHoles = Bounds.IntersectsWith(mg.Field) ? new Bitmap(mg.Gw, mg.Gh, System.Drawing.Imaging.PixelFormat.Format32bppArgb) : null;
-                once.Add(Client(mg.Field));
-            }
-            for (; carvedSeen < mg.Carved.Count; carvedSeen++)
-            {
-                PaintHoles(mg, mg.Carved[carvedSeen]);
-                once.Add(Client(Rectangle.Inflate(mg.Carved[carvedSeen], 2, 2)));
-            }
-        }
-        else if (gunSeen != null) { gunSeen = null; gunHoles?.Dispose(); gunHoles = null; }
         if (WormsGame() is { } wm)
         {
             if (wm != wormsSeen) { (wormsSeen, blastsSeen) = (wm, 0); once.Add(Client(wm.Field)); }
@@ -279,12 +246,9 @@ public sealed class Overlay : Form
         }
         if (b.Saying) DrawNoteAt(g, b.X, b.Y, b.Area, b.SayLines!);
         if (game() is { } gm) DrawGame(g, gm);
-        if (Runner() is { } run) DrawRun(g, run);
-        else if (b.Now < runScoreUntil) DrawRunScore(g);
         if (Break() is { } bo) DrawBreak(g, bo);
         if (WormsGame() is { } wm) DrawWorms(g, wm);
-        if (MinigunGame() is { } mg) DrawMinigun(g, mg);
-        foreach (var m in Modes()) if (m.Running) m.Draw(this, g);
+        for (var (ms, i) = (Modes(), 0); i < ms.Count; i++) if (ms[i].Running) ms[i].Draw(this, g);
         if (Guest() is { } gv && GuestSprites() is { } gs) DrawGuest(g, gv, gs);
         if (Present() is { } pr) // 선물: 바닥에서 통통, 가끔 반짝
         {
@@ -394,174 +358,6 @@ public sealed class Overlay : Form
             double head = v.Y - cell * PetArt.Embedded.HeadRatio(v.Form);
             var e = ToClient(v.X - cell / 2.0, head - 27 * v.K);
             g.DrawImageUnscaled(sprites().Get("emo/" + v.Emote, 0, v.K), e.X, e.Y);
-        }
-    }
-
-    // ── 쿠키런 모드: 점수판 없이 길 위의 것과 발밑의 가는 체력 막대만 ──
-    // 그림에는 글자를 쓰지 않는다: 레벨은 별 + 숫자, 끝난 점수는 숫자만 (새 기록이면 왕관). 글자는 처음 4초 안내 말풍선뿐 (YELL 이 달라고 함)
-    const double GuideSec = 4, LevelSec = 1.6;
-    static readonly string[] NumNames = { "num/0", "num/1", "num/2", "num/3", "num/4", "num/5", "num/6", "num/7", "num/8", "num/9" };
-    Runner? runSeen;
-    Sprites? runPicsFrom;
-    Bitmap?[] runPics = Array.Empty<Bitmap?>();     // 길 위 그림 (Runner.Arts 순서): 그려진 부분만 잘라 둔 것. 프레임마다 이름으로 찾지 않고, 빈 칸까지 칠하지 않는다
-    Bitmap? runGuide;                               // 안내 말풍선: 4초 동안 안 바뀌니 한 번만 그려 둔다
-    Rectangle runGuideRect;
-    bool runGuideOn;
-    int runBar = -1;
-    readonly Dictionary<string, Rectangle> runCrops = new();
-    int runScore;
-    bool runScoreBest;
-    double runScoreUntil;
-
-    // 판이 끝났다: 볼록이 머리 위에 점수를 잠깐 (새 기록이면 왕관과 함께)
-    public void ShowRunScore(int score, bool best, double sec = 2.5) => (runScore, runScoreBest, runScoreUntil) = (score, best, b.Now + sec);
-    public void HideAfterGame() { if (b.Now < runScoreUntil) { runScoreUntil = 0; Invalidate(); } } // 보스 키: 게임이 끝난 뒤 남은 점수도 바로 지운다
-
-    void RunSee(Runner? run)
-    {
-        if (run == runSeen) return;
-        runSeen = run;
-        runGuide?.Dispose();
-        (runGuide, runGuideOn, runBar) = (null, false, -1);
-        RunPicsFor(null, 0);
-    }
-
-    void RunPicsFor(Sprites? sp, int count)
-    {
-        foreach (var pic in runPics) pic?.Dispose();
-        (runPicsFrom, runPics) = (sp, count == 0 ? Array.Empty<Bitmap?>() : new Bitmap?[count]);
-    }
-
-    // 칸 그림에서 그려진 부분만 (미리 곱한 알파라 칠하기도 빠르다)
-    static Bitmap RunPic(Sprites sp, Thing t)
-    {
-        var pic = new Bitmap(t.W, t.H, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
-        using var g = Graphics.FromImage(pic);
-        g.DrawImage(sp.Get(t.Sprite, 0, t.Scale), new Rectangle(0, 0, t.W, t.H), new Rectangle(t.Ox, t.Oy - t.H, t.W, t.H), GraphicsUnit.Pixel);
-        return pic;
-    }
-
-    // 달리는 모니터의 창만 그린다 (옆 모니터 창에는 들어오기 전·나간 뒤의 것이 보이면 안 된다)
-    bool RunHere(Runner run) => Bounds.IntersectsWith(run.Track);
-
-    Rectangle EnergyRect(Runner run)
-    {
-        int w = 20 * run.PetScale;
-        return new Rectangle((int)run.PetX - w / 2, (int)run.Ground + 4, w, 2 * run.PetScale);
-    }
-
-    static int EnergyFill(Runner run, int width) => (int)(width * run.Energy / 100);
-
-    (Bitmap Pic, Rectangle Rect) RunGuide(Runner run)
-    {
-        if (runGuide == null)
-        {
-            var lines = new[] { L.T("note.run_level", run.Level, Bolok.Runner.GoalOf(run.Level)), L.T("note.run_jump"), L.T("note.run_duck"), L.T("note.esc") };
-            runGuideRect = NoteRect(run.PetX, run.Ground, run.Track, lines);
-            runGuide = new Bitmap(runGuideRect.Width, runGuideRect.Height, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
-            using var g = Graphics.FromImage(runGuide);
-            DrawNote(g, new Rectangle(0, 0, runGuideRect.Width, runGuideRect.Height), lines, runGuideRect.X < run.PetX);
-        }
-        return (runGuide, runGuideRect);
-    }
-
-    // 그림 하나(없어도 된다) + 숫자 한 줄. (cx, cy) 는 가운데 (화면 좌표)
-    Rectangle BadgeRect(string? icon, int n, double cx, double cy, int k)
-    {
-        int w = BadgeWidth(icon, n, k, out _, out var crop);
-        int h = Math.Max(crop.Height, 7) * k;
-        return new Rectangle((int)cx - w / 2 - k, (int)cy - h / 2 - k, w + 2 * k, h + 2 * k);
-    }
-
-    int BadgeWidth(string? icon, int n, int k, out int digits, out Rectangle crop)
-    {
-        digits = 1;
-        for (int v = n; v >= 10; v /= 10) digits++;
-        crop = default;
-        if (icon != null && !runCrops.TryGetValue(icon, out crop)) runCrops[icon] = crop = Ui.Opaque(sprites().Get(icon, 0, 1), 0);
-        return (icon == null ? 0 : (crop.Width + 1) * k) + digits * 5 * k;
-    }
-
-    void DrawBadge(Graphics g, string? icon, int n, double cx, double cy, int k)
-    {
-        var sp = sprites();
-        int w = BadgeWidth(icon, n, k, out int digits, out var crop);
-        var at = ToClient(cx - w / 2, cy);
-        int x = at.X;
-        if (icon != null)
-        {
-            g.DrawImageUnscaled(sp.Get(icon, 0, k), x - crop.X * k, at.Y - (crop.Y * 2 + crop.Height) * k / 2);
-            x += (crop.Width + 1) * k;
-        }
-        int cell = sp.Cell * k;
-        for (int i = digits - 1, v = n; i >= 0; i--, v /= 10) // 숫자 칸은 5칸px 간격, 그림은 칸 가운데에 있다
-            g.DrawImageUnscaled(sp.Get(NumNames[v % 10], 0, k), x + i * 5 * k + (5 * k - cell) / 2, at.Y - cell / 2);
-    }
-
-    // 레벨이 오르면 머리 위에 별 + 레벨 숫자 (뛰면 같이 올라간다)
-    (double X, double Y) LevelAt(Runner run) => (run.PetX, run.Ground - run.Lift - run.StandPx - 9 * run.PetScale);
-
-    // 끝난 점수: 머리 위. 말풍선 그림이 떠 있으면 그 위로
-    (double X, double Y) ScoreAt() => (b.X, b.HeadY - (b.Emoting ? 26 : 6) * b.Scale);
-    int ScoreK => Math.Max(1, b.Scale - 1);
-
-    void RunDirty(Runner run, List<Rectangle> r)
-    {
-        RunSee(run);
-        if (!RunHere(run)) return;
-        int right = run.Track.Right;
-        foreach (var t in run.Things) if (!t.Gone && t.X < right) r.Add(Client(Rectangle.Inflate(t.Box, 1, 1))); // 지난 자리는 지난 프레임 목록이 지운다
-        // 체력 막대와 안내 말풍선은 바뀔 때만 다시 칠한다 (전에는 프레임마다 칠했다)
-        var e = EnergyRect(run);
-        int fill = EnergyFill(run, e.Width) + (run.Energy < 25 ? 1 << 20 : 0);
-        if (fill != runBar) { runBar = fill; r.Add(Client(Rectangle.Inflate(e, 1, 1))); }
-        bool guide = run.Clock < GuideSec;
-        if (guide != runGuideOn) { runGuideOn = guide; r.Add(Client(RunGuide(run).Rect)); }
-        if (run.Clock - run.LevelAt < LevelSec) { var (x, y) = LevelAt(run); r.Add(Client(BadgeRect("game/star", run.Level, x, y, run.PetScale))); }
-    }
-
-    // 달리기가 없을 때: 지난 판의 것을 치우고, 끝난 점수가 떠 있으면 그 자리
-    void RunIdle(List<Rectangle> r)
-    {
-        RunSee(null);
-        if (b.Now < runScoreUntil) { var (x, y) = ScoreAt(); r.Add(Client(BadgeRect(runScoreBest ? "game/crown" : null, runScore, x, y, ScoreK))); }
-    }
-
-    void DrawRunScore(Graphics g)
-    {
-        var (x, y) = ScoreAt();
-        DrawBadge(g, runScoreBest ? "game/crown" : null, runScore, x, y, ScoreK);
-    }
-
-    void DrawRun(Graphics g, Runner run)
-    {
-        RunSee(run);
-        if (!RunHere(run)) return;
-        var sp = sprites();
-        if (runPicsFrom != sp || runPics.Length < run.Arts.Count) RunPicsFor(sp, run.Arts.Count);
-        var clip = Rectangle.Ceiling(g.ClipBounds);
-        int right = run.Track.Right;
-        foreach (var t in run.Things)
-        {
-            if (t.Gone || t.X >= right) continue; // 아직 화면 밖
-            var box = Client(t.Box);
-            if (!box.IntersectsWith(clip)) continue; // 다시 칠하는 곳 밖은 건너뛴다
-            g.DrawImageUnscaled(runPics[t.Art] ??= RunPic(sp, t), box.X, box.Y);
-        }
-        var e = Client(EnergyRect(run));
-        g.FillRectangle(barLine, e.X - 1, e.Y - 1, e.Width + 2, e.Height + 2);
-        g.FillRectangle(barBack, e);
-        g.FillRectangle(run.Energy < 25 ? redFill : barFill, e.X, e.Y, EnergyFill(run, e.Width), e.Height);
-        if (run.Clock < GuideSec)
-        {
-            var (pic, rect) = RunGuide(run);
-            var at = Client(rect);
-            if (at.IntersectsWith(clip)) g.DrawImageUnscaled(pic, at.X, at.Y);
-        }
-        else if (run.Clock - run.LevelAt < LevelSec)
-        {
-            var (x, y) = LevelAt(run);
-            DrawBadge(g, "game/star", run.Level, x, y, run.PetScale);
         }
     }
 
@@ -762,82 +558,6 @@ public sealed class Overlay : Form
     {
         int step = 5 * k, x0 = (int)cx - (text.Length - 1) * step / 2;
         for (int i = 0; i < text.Length; i++) Put(g, sprites().Get("num/" + (text[i] == '×' ? 'x' : text[i]), 0, k), x0 + i * step, (int)cy);
-    }
-
-    // ── 미니건 ──
-    static string[]? GunNote(Minigun mg) => mg.Clock < 4 ? new[] { L.T("note.gun_aim"), L.T("note.gun_hold"), L.T("note.gun_right"), L.T("note.esc") } : null;
-    readonly Color holeColor = Color.FromArgb(14, 16, 22), rimColor = Color.FromArgb(70, 60, 52);
-    readonly SolidBrush chip = new(Color.FromArgb(200, 204, 212)), chipEdge = new(Color.FromArgb(90, 94, 104)), brass = new(Color.FromArgb(214, 170, 60)),
-        spark = new(Color.FromArgb(255, 236, 140)), sparkCore = new(Color.White);
-    Pen? tracerPen;
-
-    // 파인 칸은 까맣게, 아직 남은 칸과 맞닿은 가장자리는 그을린 갈색으로
-    void PaintHoles(Minigun mg, Rectangle r)
-    {
-        if (gunHoles == null) return;
-        int c = Minigun.Cell;
-        int x0 = Math.Max(0, (r.Left - mg.Field.Left) / c), x1 = Math.Min(mg.Gw - 1, (r.Right - mg.Field.Left) / c);
-        int y0 = Math.Max(0, (r.Top - mg.Field.Top) / c), y1 = Math.Min(mg.Gh - 1, (r.Bottom - mg.Field.Top) / c);
-        for (int gx = x0; gx <= x1; gx++)
-            for (int gy = y0; gy <= y1; gy++)
-            {
-                if (!mg.Gone(gx, gy)) { gunHoles.SetPixel(gx, gy, Color.Transparent); continue; }
-                bool rim = (mg.Land(gx - 1, gy) && !mg.Gone(gx - 1, gy)) || (mg.Land(gx + 1, gy) && !mg.Gone(gx + 1, gy))
-                    || (mg.Land(gx, gy - 1) && !mg.Gone(gx, gy - 1)) || (mg.Land(gx, gy + 1) && !mg.Gone(gx, gy + 1));
-                gunHoles.SetPixel(gx, gy, rim ? rimColor : holeColor);
-            }
-    }
-
-    void DrawMinigun(Graphics g, Minigun mg)
-    {
-        var sp = sprites();
-        int k = b.Scale, c = Minigun.Cell;
-        if (gunHoles != null) // 다시 칠하는 곳에 걸친 칸만 늘려 그린다
-        {
-            var f = Client(mg.Field);
-            var clip = Rectangle.Intersect(Rectangle.Ceiling(g.ClipBounds), new Rectangle(f.X, f.Y, mg.Gw * c, mg.Gh * c));
-            if (!clip.IsEmpty)
-            {
-                int sx = (clip.X - f.X) / c, sy = (clip.Y - f.Y) / c, sw = Math.Min(mg.Gw - sx, clip.Width / c + 2), sh = Math.Min(mg.Gh - sy, clip.Height / c + 2);
-                var state = g.Save();
-                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
-                g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
-                g.DrawImage(gunHoles, new Rectangle(f.X + sx * c, f.Y + sy * c, sw * c, sh * c), new Rectangle(sx, sy, sw, sh), GraphicsUnit.Pixel);
-                g.Restore(state);
-            }
-        }
-        foreach (var bit in mg.Bits) // 파편(칸만 한 네모, 어두운 테두리), 탄피, 맞은 자리 불꽃
-        {
-            var p = ToClient(bit.X, bit.Y);
-            int s2 = bit.Size / 2;
-            if (bit.Brass) g.FillRectangle(brass, p.X - s2, p.Y - k / 2, bit.Size, Math.Max(1, k));
-            else if (bit.Spark)
-            {
-                g.FillRectangle(spark, p.X - s2, p.Y - s2 / 3, bit.Size, s2 * 2 / 3); // 十 모양으로 번쩍
-                g.FillRectangle(spark, p.X - s2 / 3, p.Y - s2, s2 * 2 / 3, bit.Size);
-                g.FillRectangle(sparkCore, p.X - s2 / 3, p.Y - s2 / 3, s2 * 2 / 3, s2 * 2 / 3);
-            }
-            else
-            {
-                g.FillRectangle(chipEdge, p.X - s2 - 1, p.Y - s2 - 1, bit.Size + 2, bit.Size + 2);
-                g.FillRectangle(chip, p.X - s2, p.Y - s2, bit.Size, bit.Size);
-            }
-        }
-        tracerPen ??= new Pen(Color.FromArgb(255, 220, 90), Math.Max(2, k));
-        foreach (var bl in mg.Bullets) g.DrawLine(tracerPen, ToClient(bl.X - bl.Vx * .012, bl.Y - bl.Vy * .012), ToClient(bl.X, bl.Y)); // 예광탄
-        foreach (var n in mg.Nades) Put(g, sp.Get("game/grenade", 0, k), (int)n.X, (int)n.Y);
-        foreach (var bl in mg.Blasts)
-        {
-            double t = mg.Clock - bl.At;
-            if (t < .45) Put(g, sp.Get("game/boom", Math.Min(3, (int)(t / .11)), Math.Max(1, (int)Math.Round(k * bl.R / (50.0 * k / 3)))), (int)bl.X, (int)bl.Y);
-        }
-        int flash = mg.Firing && mg.Spin >= 1 && mg.Clock - mg.LastShot < .05 ? (int)(mg.Clock * 40) % 2 : -1;
-        foreach (var (pivot, aim) in mg.Guns()) // 쌍 미니건이면 양손에 하나씩
-        {
-            var pv = ToClient(pivot.X, pivot.Y);
-            GunArt.Draw(g, sp, "minigun", new PointF(pv.X, pv.Y), aim, mg.Kick * 2 * k, mg.GunK, flash);
-        }
-        if (GunNote(mg) is { } note) DrawNoteAt(g, b.X, b.Y, mg.Field, note);
     }
 
     // ── 포트리스 ──

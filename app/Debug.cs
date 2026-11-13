@@ -135,7 +135,6 @@ public sealed class DevLink
             case "say": b.Say(3.5, string.Join(' ', a.Skip(1)).Split('|')); break; // 예: say 첫 줄|둘째 줄
             case "nap": if (!b.TryNap()) Dbg.Log("nap-none"); break;
             case "worms": form.WormsCommand(a); break;
-            case "minigun": form.MinigunCommand(a); break;
             case "visit": form.VisitCommand(a); break;
             case "gesture": b.Gesture(a[1]); break; // 마우스 손짓 반응만: gesture stroke|pat|poke
             case "clover": form.CloverCommand(a); break; // clover (지금 돋기) / clover wear / clover drop / clover off
@@ -143,7 +142,6 @@ public sealed class DevLink
             case "release": form.Release(); break;
             case "break": form.BreakCommand(a.Length > 1 ? a[1] : "start", a.Length > 2 ? a[2] : null); break;
             case "esc": form.BossKey(); break; // 보스 키 (Esc 를 누른 것과 같다)
-            case "run": if (a.Length > 1 && a[1] == "stop") form.StopRun(); else form.StartRun(); break;
             case "game": form.StartGame(a.Length > 1 ? a[1] : null, a.Length > 2 ? a[2] : null); break;
             case "fire": form.GameMouse(false, int.Parse(a[1]), int.Parse(a[2])); form.GameRelease(); break;
             case "reload": form.GameMouse(true, 0, 0); break;
