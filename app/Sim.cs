@@ -202,29 +202,92 @@ static class Sim
         Expect(egg.P.Pets == 0, "알은 쓰다듬기가 안 된다");
     }
 
+    // ── 달리기 ──
+    static readonly int[] RunScales = { 2, 3, 4, 5, 6 };    // 볼록이 배율: 100% 모니터는 3, 125% 는 4, 200% 는 6. 가장 작게는 2
+
+    // 길 위 그림을 잰다 (PetForm.StartRun 과 같다): 폭, 높이, 칸 왼쪽 위에서 그림까지
+    static Func<string, int, (int, int, int, int)> RunMeasure(Sprites sp)
+    {
+        var solids = new Dictionary<string, bool[,]>();
+        return (name, scale) =>
+        {
+            if (!solids.TryGetValue(name, out var solid)) solids[name] = solid = Props.Solid(sp.Get(name, 0, 1));
+            var (x0, y0, x1, y1) = Props.Trim(solid);
+            return ((x1 - x0 + 1) * scale, (y1 - y0 + 1) * scale, x0 * scale, (y1 + 1) * scale);
+        };
+    }
+
+    // 그림 데이터(art.json)에 있는 형태 전부. 새 형태가 생기면 달리기 검사도 저절로 그 형태를 본다
+    static List<string> RunForms()
+    {
+        using var s = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("pets/art.json")!;
+        using var doc = System.Text.Json.JsonDocument.Parse(s);
+        var root = doc.RootElement;
+        bool drop = root.GetProperty("poses").TryGetProperty("land", out var land) && land.GetArrayLength() > 0
+            && land[0].TryGetProperty("sq", out var sq) && sq.GetDouble() == RunBody.DuckDrop;
+        Expect(drop, $"엎드린 자세(land)는 몸이 {RunBody.DuckDrop}칸px 낮다 — art.json 의 sq 를 바꾸면 RunBody.DuckDrop 도 같이");
+        return root.GetProperty("forms").EnumerateObject().Select(p => p.Name).ToList();
+    }
+
+    static RunBody RunBodyOf(string form)
+    {
+        var (rx, ry) = PetArt.Embedded.Size(form);
+        return RunBody.Of(rx, ry);
+    }
+
+    // 잘하는 사람: 장애물 한가운데서 가장 높이 뜨게 뛰고, 구름이 오면 엎드리고, 구름이 머리 위에 있으면 기다린다.
+    // 사이에 내려설 틈이 없는 장애물들은 한 번에 넘는다 (길 위의 것은 앞에서부터 차례로 들어 있다).
+    // 늦게 뛰어서 다음 장애물 앞에 내려설 틈이 없으면 닿기 직전에 한 번 더 뛴다 (더블 점프) — 어려운 레벨에서 연달아 올 때 쓴다
+    static void RunBot(Runner r)
+    {
+        var me = r.PetBox;
+        bool cloud = false, any = false;
+        double from = 0, to = 0, top = 0;
+        foreach (var x in r.Things)
+        {
+            if (x.X + x.W <= me.Left) continue;
+            if (x.Kind == ThingKind.Fly && x.X < me.Right + r.Speed * .1) cloud = true;
+            if (x.Kind != ThingKind.Block) continue;
+            if (!any) (from, to, top, any) = (x.X, x.X + x.W, x.H, true);
+            else if (x.X >= from && x.X - to < r.Speed * .45) (to, top) = (Math.Max(to, x.X + x.W), Math.Max(top, x.H));
+        }
+        r.Slide(cloud);
+        if (cloud || !any) return;
+        if (r.Lift == 0) { if (from - me.Right <= r.Speed * .395 - (to - from + me.Width) / 2.0) r.Jump(); return; }
+        if (r.Jumps != 1 || r.Vy <= 0) return;
+        double sf = r.PetScale / 3.0, g = Runner.Gravity * sf, v1 = Runner.JumpSpeed * sf, v2 = v1 * .85;
+        double Rise(double v, double h) => h <= 0 ? 0 : v * v < 2 * g * h ? 9 : (v - Math.Sqrt(v * v - 2 * g * h)) / g; // 속도 v 로 뛰어 h 만큼 오르는 데 걸리는 시간
+        double land = (-r.Vy + Math.Sqrt(r.Vy * r.Vy + 2 * g * r.Lift)) / g;
+        double front = (from - me.Right) / r.Speed, back = (to - me.Left) / r.Speed;
+        bool noTime = back > land && front < land + Rise(v1, top) + .035;  // 내려서 다시 뛰기엔 늦다
+        if (noTime && front <= Rise(v2, top - r.Lift) + .035) r.Jump();
+    }
+
     static string RunnerChecks(Tuning k)
     {
         var area = new Rectangle(0, 0, 1920, 1080);
         var sp = Sprites.Embedded();
-        (int, int, int, int) Measure(string name, int scale)
-        {
-            var (x0, y0, x1, y1) = Props.Trim(Props.Solid(sp.Get(name, 0, 1)));
-            return ((x1 - x0 + 1) * scale, (y1 - y0 + 1) * scale, x0 * scale, (y1 + 1) * scale);
-        }
-        Runner Make() { var r = new Runner(area, 1030, 120, new Random(1), Measure); r.Things.Clear(); return r; }
+        var measure = RunMeasure(sp);
+        var forms = RunForms();
+        Expect(forms.Contains("baby") && forms.Contains("child") && forms.Count >= 5, "그림 데이터에 아기·어린이·어른 형태가 있다");
+        var child = RunBodyOf("child");
+        Runner New(int seed = 1, int level = 1, RunBody? body = null, int scale = 3) => new(area, 1030, 40 * scale, body ?? child, new Random(seed), measure, level);
+        Runner Make(RunBody? body = null, int scale = 3, int level = 1) { var r = New(1, level, body, scale); r.Things.Clear(); return r; }
         void Run(Runner r, double sec, Action<Runner, double>? each = null) { for (double t = 0; t < sec; t += 1 / 60.0) { each?.Invoke(r, t); r.Update(1 / 60.0); } }
+        // 놓아둔 것이 볼록이를 지나갈 때까지만 (더 달리면 저절로 나온 것들이 끼어든다)
+        void Pass(Runner r, Thing last, Action<Runner>? each = null) { for (int i = 0; i < 600 && !last.Gone && last.X + last.W > r.PetBox.Left - 10; i++) { each?.Invoke(r); r.Update(1 / 60.0); } }
 
         // 가만히 있으면 땅 장애물에 부딪히고, 맞춰 점프하면 넘는다
         var stand = Make();
-        stand.Add("block", "prop/mushroom", 2, stand.PetX + 300, stand.Ground);
+        stand.Add(ThingKind.Block, "prop/mushroom", 2, stand.PetX + 300, stand.Ground);
         Run(stand, 1.5);
         Expect(stand.Energy < 100 - Runner.HitCostOf(1) + 1, $"가만히 있으면 부딪힌다: 체력 {stand.Energy:F0}");
         var hop = Make();
-        var block = hop.Add("block", "prop/mushroom", 2, hop.PetX + 300, hop.Ground);
+        var block = hop.Add(ThingKind.Block, "prop/mushroom", 2, hop.PetX + 300, hop.Ground);
         bool jumped = false;
         Run(hop, 1.5, (r, t) => { if (!jumped && block.X - (r.PetX + r.PetBox.Width / 2) < 50) { r.Jump(); jumped = true; } }); // 바로 앞에서 뛴다
         var early = Make();
-        var far = early.Add("block", "prop/mushroom", 2, early.PetX + 300, early.Ground);
+        var far = early.Add(ThingKind.Block, "prop/mushroom", 2, early.PetX + 300, early.Ground);
         bool jumpedEarly = false;
         Run(early, 1.5, (r, t) => { if (!jumpedEarly && far.X - (r.PetX + r.PetBox.Width / 2) < 120) { r.Jump(); jumpedEarly = true; } });
         Expect(early.Energy > 95, $"조금 일찍 뛰어도 넘는다 (타이밍 여유): 체력 {early.Energy:F0}");
@@ -232,11 +295,11 @@ static class Sim
 
         // 공중 장애물은 슬라이드로 밑을 지난다
         var duck = Make();
-        duck.Add("fly", "prop/cloud", 2, duck.PetX + 300, duck.Ground - 58);
+        duck.Add(ThingKind.Fly, "prop/cloud", 2, duck.PetX + 300, duck.Ground - duck.CloudUp);
         Run(duck, 1.5, (r, t) => r.Slide(true));
         Expect(duck.Energy > 95, $"슬라이드하면 공중 장애물 밑을 지난다: 체력 {duck.Energy:F0}");
         var tall = Make();
-        tall.Add("fly", "prop/cloud", 2, tall.PetX + 300, tall.Ground - 58);
+        tall.Add(ThingKind.Fly, "prop/cloud", 2, tall.PetX + 300, tall.Ground - tall.CloudUp);
         Run(tall, 1.5);
         Expect(tall.Energy < 85, "서 있으면 공중 장애물에 부딪힌다");
 
@@ -249,16 +312,16 @@ static class Sim
 
         // 씨앗을 먹으면 점수, 부딪힌 뒤 1초는 안 다친다, 체력이 닳으면 끝
         var eat = Make();
-        for (int i = 0; i < 4; i++) eat.Add("seed", "icon/seed", 1, eat.PetX + 100 + i * 34, eat.Ground - 18);
+        for (int i = 0; i < 4; i++) eat.Add(ThingKind.Seed, "icon/seed", 1, eat.PetX + 100 + i * 34, eat.Ground - 18);
         Run(eat, 1.5);
         Expect(eat.Seeds == 4 && eat.Score >= 40, $"씨앗을 먹으면 점수: {eat.Seeds}개 {eat.Score}점");
         var safe = Make();
-        safe.Add("block", "prop/mushroom", 2, safe.PetX + 200, safe.Ground);
-        safe.Add("block", "prop/acorn", 2, safe.PetX + 320, safe.Ground);
+        safe.Add(ThingKind.Block, "prop/mushroom", 2, safe.PetX + 200, safe.Ground);
+        safe.Add(ThingKind.Block, "prop/acorn", 2, safe.PetX + 320, safe.Ground);
         Run(safe, 1.5);
         Expect(safe.Energy > 100 - Runner.HitCostOf(1) * 2, "부딪힌 뒤 잠깐은 안 다친다");
-        var end = new Runner(area, 1030, 120, new Random(3), Measure);
-        Run(end, 70, (r, t) => { if (r.Things.Any(x => x.Kind == "block" && x.X - (r.PetX + 30) is > 0 and < 60) && r.Lift == 0) r.Jump(); r.Slide(r.Things.Any(x => x.Kind == "fly" && x.X - r.PetX is > -80 and < 200)); });
+        var end = New(3);
+        Run(end, 70, (r, t) => { if (r.Things.Any(x => x.Kind == ThingKind.Block && x.X - (r.PetX + 30) is > 0 and < 60) && r.Lift == 0) r.Jump(); r.Slide(r.Things.Any(x => x.Kind == ThingKind.Fly && x.X - r.PetX is > -80 and < 200)); });
         Expect(end.Over && end.Clock < 70, $"체력이 닳으면 끝난다: {end.Clock:F0}초, {end.Score}점");
 
         // 레벨: 오를수록 빠르고 아프고 목표가 높다. 12레벨부터는 그대로
@@ -275,31 +338,30 @@ static class Sim
         up.Seeds += (Runner.GoalOf(2) - 20) / 10;
         up.Update(1 / 60.0);
         Expect(up.Level == 2, "다음 레벨 목표는 올라간 뒤 번 점수로 센다");
-        Expect(new Runner(area, 1030, 120, new Random(1), Measure, 5).Speed == Runner.StartSpeedOf(5), "저장된 레벨에서 시작한다");
+        Expect(New(1, 5).Speed == Runner.StartSpeedOf(5), "저장된 레벨에서 시작한다");
 
-        // 잘하는 사람: 장애물 한가운데서 가장 높이 뜨게 뛰고, 구름이 오면 엎드리고, 구름이 머리 위에 있으면 기다린다
-        (double Sec, int Score, int Hits, int Level) Play(int level, int seed, bool good)
+        // 한 판 해 보기. 길에 저절로 나온 것들이 몸 크기 규칙을 지키는지도 같이 본다
+        (double Sec, int Score, int Hits, int Level) Play(int level, int seed, bool good, RunBody? body = null, int scale = 3)
         {
-            var r = new Runner(area, 1030, 120, new Random(seed), Measure, level);
+            var r = New(seed, level, body, scale);
             int hits = 0;
             r.OnEvent = e => { if (e == "hit") hits++; };
             for (int i = 0; i < 60 * 150 && !r.Over; i++)
             {
-                if (good)
-                {
-                    var me = r.PetBox;
-                    bool cloud = r.Things.Any(x => x.Kind == "fly" && x.X < me.Right + r.Speed * .1 && x.X + x.W > me.Left);
-                    r.Slide(cloud);
-                    // 사이에 내려설 틈이 없는 장애물들은 한 번에 넘는다
-                    var blocks = r.Things.Where(x => x.Kind == "block" && x.X + x.W > me.Left).OrderBy(x => x.X).ToList();
-                    if (!cloud && r.Lift == 0 && blocks.Count > 0)
-                    {
-                        double from = blocks[0].X, to = from + blocks[0].W;
-                        foreach (var nb in blocks.Skip(1)) { if (nb.X - to < r.Speed * .45) to = nb.X + nb.W; else break; }
-                        if (from - me.Right <= r.Speed * .395 - (to - from + me.Width) / 2.0) r.Jump();
-                    }
-                }
+                if (good) RunBot(r);
                 r.Update(1 / 60.0);
+                if (i % 30 != 0) continue;
+                foreach (var t in r.Things)
+                {
+                    bool ok = t.Kind switch
+                    {
+                        ThingKind.Fly => t.Y == r.Ground - r.CloudUp && t.Scale == r.Px(2),
+                        ThingKind.Block => t.Y == r.Ground && t.H <= r.TallMax && (r.TallBlocks.Contains(t.Art) || r.NormalBlocks.Contains(t.Art)),
+                        ThingKind.Heart => t.Y == r.Ground - 2 * r.StandPx,
+                        _ => t.Scale == r.Px(1) && t.Y <= r.Ground,
+                    };
+                    Expect(ok, $"길에 나온 것은 몸 크기 규칙을 따른다: {t.Kind} {t.Sprite}×{t.Scale} 높이 {t.H} (선 키 {r.StandPx}, 배율 {scale})");
+                }
             }
             return (r.Clock, r.Score, hits, r.Level);
         }
@@ -328,7 +390,226 @@ static class Sim
         for (int i = 0; i < 15; i++) quit |= keys.Keys(true, true, 1 / 60.0);
         Expect(quit, "Ctrl+Shift 를 0.5초 누르면 끝");
         Expect(end.Things.All(t => t.X < area.Right + 400), "길 위의 것은 화면 밖에서 와서 사라진다");
-        return $"달리기 잘하는 사람 ({string.Join(" / ", rows)}), 가만히 {lazy.Sec:F0}초";
+
+        // ── 몸 크기별 (YELL 2026-11-13): 그림 데이터의 모든 형태 × 볼록이 배율. 판정이 눈에 보이는 몸을 따른다 ──
+        var table = new List<string>();
+        int combos = 0, jumps = 0;
+        double worstSec = 999, worstHits = 0;
+        foreach (var form in forms)
+        {
+            var body = RunBodyOf(form);
+            // 그림과 맞는지: 서 있는 그림(귀 포함)은 선 키보다 낮지 않고, 엎드린 그림은 그만큼 낮다
+            int Top(string pose) => sp.Cell - Props.Trim(Props.Solid(sp.Get($"{form}/0/{pose}", 0, 1))).Y0;
+            int idleTop = Top("idle"), landTop = Top("land");
+            Expect(idleTop >= body.Stand - 1 && idleTop <= body.Stand + 9, $"{form}: 선 키 {body.Stand} 가 그림(귀까지 {idleTop})과 맞는다");
+            Expect(idleTop - landTop is >= 4 and <= 6, $"{form}: 엎드리면 그림이 5칸px 낮아진다 ({idleTop} → {landTop})");
+            foreach (int scale in RunScales)
+            {
+                combos++;
+                var probe = Make(body, scale);
+                int stand1 = probe.StandPx, duck1 = probe.DuckPx;
+                Expect(probe.PetBox.Height == stand1 && Math.Abs(stand1 - body.Stand * scale) <= .5 && Math.Abs(duck1 - body.Duck * scale) <= .5
+                    && Math.Abs(probe.BoxW - body.W * .8 * scale) <= .5, $"{form}×{scale}: 판정 상자는 몸 폭의 0.8, 선 키·엎드린 키");
+                Expect(probe.CloudUp == (stand1 + duck1) / 2.0 && stand1 - probe.CloudUp >= 2 * scale && probe.CloudUp - duck1 >= 2 * scale, $"{form}×{scale}: 구름 바닥은 선 키와 엎드린 키 한가운데");
+                if (scale == 3)
+                    table.Add($"  {form,-13} 폭 {probe.BoxW,2} 선 키 {stand1,2} 엎드린 키 {duck1,2} 구름 바닥 {probe.CloudUp,4:F1} 장애물 보통 ≤{probe.NormalMax,4:F1} ({probe.NormalBlocks.Count}종, 가장 큰 것 {probe.NormalBlocks.Max(a => probe.Arts[a].H)}) 키 큰 것 ≤{probe.TallMax,5:F1} ({probe.TallBlocks.Count}종, 가장 큰 것 {probe.TallBlocks.Max(a => probe.Arts[a].H)})");
+
+                // 서면 구름에 맞고 엎드리면 지나간다. 어느 속도에서든
+                foreach (int level in new[] { 1, 12 })
+                    foreach (bool down in new[] { false, true })
+                    {
+                        var r = Make(body, scale, level);
+                        int hits = 0;
+                        r.OnEvent = e => { if (e == "hit") hits++; };
+                        double speed = level == 1 ? Runner.StartSpeedOf(1) : Runner.MaxSpeedOf(12); // 가장 느릴 때와 가장 빠를 때
+                        r.Speed = speed * scale / 3;
+                        var cloud = r.Add(ThingKind.Fly, "prop/cloud", r.Px(2), r.PetX + 300 * scale / 3.0, r.Ground - r.CloudUp);
+                        Pass(r, cloud, x => x.Slide(down));
+                        Expect(down ? hits == 0 : hits == 1, $"{form}×{scale}: {(down ? "엎드리면 구름 밑을 지나간다" : "서면 구름에 맞는다")} (속도 {speed})");
+                    }
+
+                // 맞춰 뛰면 나올 수 있는 모든 땅 장애물을 넘고, 가만히 있으면 부딪힌다
+                foreach (int art in probe.NormalBlocks.Concat(probe.TallBlocks).Distinct())
+                {
+                    var a = probe.Arts[art];
+                    bool isTall = !probe.NormalBlocks.Contains(art);
+                    Expect(a.H <= (isTall ? probe.TallMax : probe.NormalMax) || probe.NormalBlocks.Count == 1, $"{form}×{scale}: {a.Sprite}×{a.Scale} 높이 {a.H} 가 한도 안");
+                    foreach (int level in new[] { 1, 12 })
+                        foreach (bool jump in new[] { true, false })
+                        {
+                            var r = Make(body, scale, level);
+                            int hits = 0;
+                            r.OnEvent = e => { if (e == "hit") hits++; };
+                            double speed = level == 1 ? Runner.StartSpeedOf(1) : Runner.MaxSpeedOf(12);
+                            r.Speed = speed * scale / 3;
+                            var one = r.Add(ThingKind.Block, a.Sprite, a.Scale, r.PetX + 400 * scale / 3.0, r.Ground);
+                            Pass(r, one, x => { if (jump) RunBot(x); });
+                            Expect(jump ? hits == 0 : hits == 1, $"{form}×{scale}: {a.Sprite}×{a.Scale} (높이 {a.H}, 선 키 {stand1}) 를 {(jump ? "맞춰 뛰면 넘는다" : "가만히 있으면 부딪힌다")} (속도 {speed})");
+                            jumps++;
+                        }
+                }
+
+                // 씨앗 무지개(선 키의 0.3~1배)는 서서 지나가면 다 먹고, 하트(선 키의 2배)는 뛰어야 닿는다
+                var bow = Make(body, scale);
+                Thing? seed = null;
+                for (int i = 0; i < 6; i++) seed = bow.Add(ThingKind.Seed, "icon/seed", bow.Px(1), bow.PetX + (300 + i * 34) * scale / 3.0, bow.Ground - (.3 + .7 * Math.Sin(i / 5.0 * Math.PI)) * stand1);
+                Pass(bow, seed!);
+                Expect(bow.Seeds == 6, $"{form}×{scale}: 서서 지나가면 씨앗 무지개를 다 먹는다 ({bow.Seeds}/6)");
+                foreach (bool jump in new[] { false, true })
+                {
+                    var r = Make(body, scale);
+                    bool got = false;
+                    r.OnEvent = e => got |= e == "heart";
+                    var heart = r.Add(ThingKind.Heart, "icon/heart", r.Px(1), r.PetX + 300 * scale / 3.0, r.Ground - 2 * stand1);
+                    Pass(r, heart, x => { if (jump && x.Lift == 0 && heart.X - x.PetX < x.Speed * .11) x.Jump(); }); // 올라가는 길에 스친다 (작은 몸은 다 뛰면 하트보다 높이 뜬다)
+                    Expect(got == jump, $"{form}×{scale}: 하트는 {(jump ? "뛰면 닿는다" : "서서는 안 닿는다")}");
+                }
+
+                // 잘하는 사람은 어느 몸·어느 배율에서든 버틴다 (가장 쉬운 레벨과 가장 어려운 레벨)
+                foreach (int level in new[] { 1, 12 })
+                {
+                    var runs = Enumerable.Range(0, 4).Select(seed => Play(level, 20 + seed, true, body, scale)).ToList();
+                    double sec = runs.Average(x => x.Sec), hit = runs.Average(x => x.Hits);
+                    (worstSec, worstHits) = (Math.Min(worstSec, sec), Math.Max(worstHits, hit));
+                    Expect(sec > 35 && hit <= 1.5, $"{form}×{scale} Lv{level}: 잘하면 버틴다 ({sec:F0}초, 부딪힘 {hit:F1})");
+                }
+            }
+        }
+        return $"달리기 잘하는 사람 ({string.Join(" / ", rows)}), 가만히 {lazy.Sec:F0}초\n"
+            + $"달리기 몸 크기별: {forms.Count}형태 × 배율 {string.Join("·", RunScales)} = {combos}조합 — 서면 구름에 맞고 엎드리면 지나감, 장애물 {jumps / 4}개를 두 속도에서 맞춰 뛰면 넘음, 잘하는 사람 가장 짧게 {worstSec:F0}초·가장 많이 부딪힘 {worstHits:F1}\n"
+            + "  배율 3 (화면 px):\n" + string.Join("\n", table);
+    }
+
+    // 달리기 한 프레임 값: 규칙(Update)·다시 칠할 자리(Sync)·그리기(Render)를 따로 재고, 프레임마다 새로 잡는 메모리도 센다.
+    // 화면 없이 재는 것이라 창에 실제로 칠하는 값은 빠져 있다. 2026-11-13 에 고치기 전 → 뒤 (같은 재기, Debug 빌드, 길 위 12개):
+    //   달릴 때  규칙 3.2µs 72B → 1.0µs 6B, 다시 칠할 자리 47µs 3201B → 7µs 0B, 그리기 177µs 1562B → 63µs 1B
+    //   안내 4초  규칙 3.0µs 73B → 0.7µs 7B, 다시 칠할 자리 15µs 3239B → 7µs 4B, 그리기 500µs 1678B → 57µs 2B
+    static string RunnerPerf()
+    {
+        var area = new Rectangle(0, 0, 1920, 1080);
+        var sp = Sprites.Embedded();
+        var measure = RunMeasure(sp);
+        var body = RunBodyOf("child");
+        var brain = new Brain(new Pet { Stage = "child" }, new Tuning(), area) { Scale = 3 };
+        Runner? run = null;
+        using var ov = new Overlay(brain, () => sp, () => null, area) { Runner = () => run };
+        using var bmp = new Bitmap(1920, 1080, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+        using var g = Graphics.FromImage(bmp);
+        double[] ms = new double[3];
+        long[] bytes = new long[3];
+        int frames = 0, things = 0;
+        void Section(int i, Action a)
+        {
+            long b0 = GC.GetAllocatedBytesForCurrentThread(), t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            a();
+            ms[i] += System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
+            bytes[i] += GC.GetAllocatedBytesForCurrentThread() - b0;
+        }
+        Action update = () => run!.Update(1 / 60.0), sync = ov.Sync, render = () => ov.Render(g);
+        string Bench(bool guide, int warm, int count)
+        {
+            int seed = 0;
+            run = null;
+            for (int i = 0; i < warm + count; i++)
+            {
+                // 달릴 때: 안내 말풍선이 지난 뒤부터. 안내: 처음 4초만 되풀이
+                if (run == null || run.Over || (guide && run.Clock > 3.9)) { run = new Runner(area, 1030, 120, body, new Random(seed++), measure, 8); if (!guide) run.Clock = 10; }
+                RunBot(run);
+                if (i == warm) { Array.Clear(ms); Array.Clear(bytes); frames = things = 0; } // 처음은 데우기 (그림 불러오기)
+                Section(0, update);
+                Section(1, sync);
+                Section(2, render);
+                frames++;
+                things += run.Things.Count;
+            }
+            run = null;
+            ov.Sync(); // 지난 판의 것을 치운다
+            double all = (bytes[0] + bytes[1] + bytes[2]) / (double)frames;
+            Expect(all < 400, $"달리기 한 프레임에 새로 잡는 메모리가 적다 ({(guide ? "안내" : "달릴 때")}): {all:F0}B");
+            return $"규칙 {ms[0] / frames * 1000:F1}µs {bytes[0] / (double)frames:F0}B, 다시 칠할 자리 {ms[1] / frames * 1000:F1}µs {bytes[1] / (double)frames:F0}B, 그리기 {ms[2] / frames * 1000:F1}µs {bytes[2] / (double)frames:F0}B (길 위 평균 {things / (double)frames:F1}개)";
+        }
+        string running = Bench(false, 600, 6000), guiding = Bench(true, 600, 6000);
+        return $"달리기 한 프레임 (6000프레임): 달릴 때 {running} / 안내 4초 {guiding}";
+    }
+
+    // 달리기 장면 그려 보기 (화면을 띄우지 않는다): 형태마다 한 줄. 왼쪽부터 서서 구름에 맞음 · 레벨 별 · 엎드려 구름 밑 ·
+    // 보통 장애물과 키 큰 장애물(가장 큰 것) · 씨앗 무지개와 하트 · 끝난 점수. 빨간 테두리는 볼록이 판정, 파란 테두리는 부딪히는 자리
+    public static void RunScene(string path, int scale = 3, string? only = null)
+    {
+        var sp = Sprites.Embedded();
+        var measure = RunMeasure(sp);
+        var forms = RunForms().Where(f => only == null || f == only).ToList();
+        double u = scale / 3.0;
+        int width = (int)(1920 * u), rowH = (int)(330 * u);
+        using var bmp = new Bitmap(width, rowH * forms.Count);
+        using var g = Graphics.FromImage(bmp);
+        g.Clear(Color.FromArgb(150, 160, 170));
+        using var red = new Pen(Color.FromArgb(230, 40, 60));
+        using var blue = new Pen(Color.FromArgb(40, 90, 230));
+        using var line = new Pen(Color.FromArgb(110, 118, 128));
+        using var limit = new Pen(Color.FromArgb(250, 185, 40)) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dash };
+        for (int row = 0; row < forms.Count; row++)
+        {
+            string form = forms[row];
+            var track = new Rectangle(0, row * rowH, width, rowH);
+            int ground = track.Bottom - (int)(30 * u), cell = 40 * scale;
+            var brain = new Brain(new Pet { Stage = form }, new Tuning(), track) { Scale = scale };
+            var run = new Runner(track, ground, cell, RunBodyOf(form), new Random(1), measure, 3) { Clock = 10 };
+            run.LevelAt = run.Clock - .5;
+            run.Energy = 60;
+            Runner? shown = run;
+            using var ov = new Overlay(brain, () => sp, () => null, new Rectangle(0, 0, bmp.Width, bmp.Height)) { Runner = () => shown };
+            double X(double at) => at * u;
+            void PetAt(double x, bool down)
+            {
+                g.DrawImageUnscaled(sp.Get($"{form}/0/{(down ? "land" : "walk")}", 0, scale), (int)(x - cell / 2.0), ground - cell);
+                int h = down ? run.DuckPx : run.StandPx;
+                g.DrawRectangle(red, (int)(x - run.BoxW / 2.0), ground - h, run.BoxW - 1, h - 1);
+            }
+            void Outline(Thing t) { var r = Runner.Hard(t); g.DrawRectangle(blue, r.X, r.Y, r.Width - 1, r.Height - 1); }
+            int Tallest(IReadOnlyList<int> pool) => pool.MaxBy(a => run.Arts[a].H);
+
+            g.DrawLine(line, 0, ground, width, ground);
+            var hit = run.Add(ThingKind.Fly, "prop/cloud", run.Px(2), 0, ground - run.CloudUp);
+            var pass = run.Add(ThingKind.Fly, "prop/cloud", run.Px(2), 0, ground - run.CloudUp);
+            (hit.X, pass.X) = (X(150) - hit.W / 2.0, X(700) - pass.W / 2.0);
+            var (n, t2) = (run.Arts[Tallest(run.NormalBlocks)], run.Arts[Tallest(run.TallBlocks)]);
+            var low = run.Add(ThingKind.Block, n.Sprite, n.Scale, X(1010), ground);
+            var high = run.Add(ThingKind.Block, t2.Sprite, t2.Scale, X(1130), ground);
+            for (int i = 0; i < 6; i++) run.Add(ThingKind.Seed, "icon/seed", run.Px(1), X(1340 + i * 34), ground - (.3 + .7 * Math.Sin(i / 5.0 * Math.PI)) * run.StandPx);
+            run.Add(ThingKind.Heart, "icon/heart", run.Px(1), X(1440), ground - 2 * run.StandPx);
+            g.DrawLine(limit, (int)X(900), ground - (int)run.NormalMax, (int)X(1110), ground - (int)run.NormalMax);
+            g.DrawLine(limit, (int)X(1110), ground - (int)run.TallMax, (int)X(1260), ground - (int)run.TallMax);
+
+            PetAt(X(150), false);
+            PetAt(run.PetX, false);
+            PetAt(X(700), true);
+            PetAt(X(930), false);
+            PetAt(X(1300), false);
+            ov.Render(g);
+            foreach (var t in new[] { hit, pass, low, high }) Outline(t);
+
+            // 끝난 점수: 달리기가 끝난 뒤 머리 위 (새 기록이면 왕관)
+            shown = null;
+            (brain.X, brain.Y) = (X(1700), ground);
+            ov.ShowRunScore(1234, true);
+            g.DrawImageUnscaled(sp.Get($"{form}/0/dizzy", 0, scale), (int)(brain.X - cell / 2.0), ground - cell);
+            ov.Render(g);
+            (brain.X, brain.Y) = (X(1830), ground);
+            ov.ShowRunScore(870, false);
+            g.DrawImageUnscaled(sp.Get($"{form}/0/happy", 0, scale), (int)(brain.X - cell / 2.0), ground - cell);
+            ov.Render(g);
+        }
+        if (only == null) { bmp.Save(path); return; }
+        // 형태 하나만: 자세히 보게 두 배로 키워 왼쪽·오른쪽 두 장으로 (<이름>-1.png, <이름>-2.png)
+        for (int half = 0; half < 2; half++)
+        {
+            using var zoom = new Bitmap(width, rowH * 2);
+            using var zg = Graphics.FromImage(zoom);
+            (zg.InterpolationMode, zg.PixelOffsetMode) = (System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor, System.Drawing.Drawing2D.PixelOffsetMode.Half);
+            zg.DrawImage(bmp, new Rectangle(0, 0, width, rowH * 2), new Rectangle(half * width / 2, 0, width / 2, rowH), GraphicsUnit.Pixel);
+            zoom.Save(Path.Combine(Path.GetDirectoryName(path) ?? "", $"{Path.GetFileNameWithoutExtension(path)}-{half + 1}.png"));
+        }
     }
 
     // 다국어: 모든 문장에 영어·한국어가 있고, 번역된 문장은 {0} 같은 자리표시자가 영어와 같다. 언어 바꾸기·조사
@@ -1677,6 +1958,7 @@ static class Sim
         FailureChecks(k);
         GameChecks(k);
         o.WriteLine(RunnerChecks(k));
+        o.WriteLine(RunnerPerf());
         o.WriteLine(BreakoutChecks());
         o.WriteLine(WormsChecks());
         o.WriteLine(MinigunChecks());

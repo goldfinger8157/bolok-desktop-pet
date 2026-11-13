@@ -598,7 +598,8 @@ public sealed class PetForm : Form, IGameHost
             var (x0, y0, x1, y1) = Props.Trim(solid);
             return ((x1 - x0 + 1) * scale, (y1 - y0 + 1) * scale, x0 * scale, (y1 + 1) * scale);
         }
-        runner = new Runner(area, area.Bottom - b.K.FloorGap, b.CellPx, new Random(), Measure, runLevel); // 저장된 레벨에서 시작
+        var (rx, ry) = PetArt.Embedded.Size(b.P.Stage); // 판정은 지금 몸 크기대로 (아기는 작게, 어른은 크게)
+        runner = new Runner(area, area.Bottom - b.K.FloorGap, b.CellPx, RunBody.Of(rx, ry), new Random(), Measure, runLevel); // 저장된 레벨에서 시작
         runner.OnEvent = e =>
         {
             switch (e)
@@ -607,7 +608,7 @@ public sealed class PetForm : Form, IGameHost
                 case "seed": Sfx.Play("hit"); break;
                 case "hit": Sfx.Play("pistol"); b.Emote("bang", .5); break;
                 case "heart": b.Emote("heart", .8); break;
-                case "level": b.Emote("star", 1.2); Sfx.Play("reload"); break;
+                case "level": Sfx.Play("reload"); break; // 머리 위 별 + 레벨 숫자는 Overlay.DrawRun 이 그린다
             }
             if (e is "hit" or "heart" or "over" or "level") Dbg.Log("run", ("event", e), ("energy", (int)(runner?.Energy ?? 0)), ("score", runner?.Score));
         };
@@ -630,13 +631,32 @@ public sealed class PetForm : Form, IGameHost
 
     public void StopRun() { if (runner != null) EndRun(false, record: false); } // 디버그 시험 판: 기록에 안 남긴다
 
+    const double RunScoreSec = 2.5;
+    int runEnds; // 끝난 횟수: 늦게 도는 「녹화에 다시 보이기」가 그 사이 새로 시작한 판을 건드리지 않게
+
+    void RunCapture(bool hide)
+    {
+        Native.HideFromCapture(Handle, hide);
+        foreach (var o in overlays) Native.HideFromCapture(o.Handle, hide);
+    }
+
     void EndRun(bool quit, bool record = true)
     {
         var r = runner!;
         runner = null;
         b.EndRun();
-        Native.HideFromCapture(Handle, false);
-        foreach (var o in overlays) { Native.HideFromCapture(o.Handle, false); o.Invalidate(); }
+        int ended = ++runEnds;
+        if (r.Over && !quit) // 끝까지 달렸으면 머리 위에 점수를 잠깐. Esc·Ctrl+Shift 로 숨길 땐 아무것도 안 띄운다
+        {
+            b.EmoteUntil = 0; // 별 말풍선 자리에 점수가 뜬다
+            foreach (var o in overlays) o.ShowRunScore(r.Score, record && r.Score > runBest, RunScoreSec);
+            // 점수가 떠 있는 동안은 화면 공유·녹화에 계속 안 찍히게 둔다
+            var later = new System.Windows.Forms.Timer { Interval = (int)(RunScoreSec * 1000) + 200 };
+            later.Tick += (_, _) => { later.Dispose(); if (ended == runEnds && runner == null) RunCapture(false); };
+            later.Start();
+        }
+        else RunCapture(false);
+        foreach (var o in overlays) o.Invalidate();
         Dbg.Log("run-quit", ("byKeys", quit), ("record", record));
         if (!record) return;
         runLast = r.Score;
