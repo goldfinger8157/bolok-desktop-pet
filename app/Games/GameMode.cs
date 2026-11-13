@@ -48,6 +48,7 @@ static class GameModes
     // 게임마다 한 줄. 메뉴에 이 순서로 나온다. 게임을 빼려면 폴더를 지우고 여기서 그 줄만 뺀다
     static readonly GameEntry[] All =
     {
+        new("minigun", h => new MinigunGame(h), MinigunGame.Check, MinigunGame.Scene, MinigunGame.BenchRun),
         new("raid", h => new RaidGame(h), RaidGame.Check, RaidGame.Scene, RaidGame.BenchRun),
         new("swarm", h => new SwarmGame(h), SwarmGame.Check, SwarmGame.Scene, SwarmGame.BenchRun),
     };
