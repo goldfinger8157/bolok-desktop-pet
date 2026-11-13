@@ -75,6 +75,7 @@ public sealed class Sprites
     (Bitmap Bmp, int Frames)? Row(string name)
     {
         if (drawn.TryGetValue(name, out var d)) return d;
+        if (common.Rows.ContainsKey(name)) return null; // 공통 그림은 바로 넘긴다 (아래 HasRow 는 이름을 쪼개느라 부를 때마다 메모리를 잡는다)
         if (ThumbOf(name) is { } id) { if (!art.Can(id)) return null; d = (art.Thumb(id), 2); }
         else if (art.HasRow(name)) d = art.Row(Species, name);
         else return null;
