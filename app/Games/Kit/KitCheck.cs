@@ -7,7 +7,8 @@ static class KitCheck
 {
     static void Expect(bool ok, string what) { if (!ok) throw new Exception("자가 검사 실패: " + what); }
 
-    // 옮기기 전 ICBM 구멍 모양 (Overlay.CraterShape 그대로). Ragged 가 같은 모양을 내는지 견준다
+    // 옮기기 전 ICBM 구멍 모양 (옛 Overlay.CraterShape 그대로). Ragged 가 같은 모양을 내는지 견준다. 그리는 쪽이 그 모양을 쓰는지는 ICBM 모듈이 검사한다
+    const int IcbmCell = 12;
     static (List<(int, int, bool)> Cells, List<(int, int)> Cracks) OldCrater(double cx, double cy, double R, double R0, int c)
     {
         var cells = new List<(int, int, bool)>();
@@ -63,12 +64,10 @@ static class KitCheck
         int same = 0;
         foreach (var (x, y, r, r0) in new[] { (360.0, 380.0, 108.0, 108.0), (1521.5, 820.25, 72.0, 108.0), (997.0, 820.0, 36.0, 108.0), (-300.5, 77.0, 108.0, 108.0), (2500.0, 1300.0, 24.0, 90.0) })
         {
-            var (cells, cracks) = OldCrater(x, y, r, r0, Icbm.Cell);
+            var (cells, cracks) = OldCrater(x, y, r, r0, IcbmCell);
             var now = Ragged.At(x, y);
-            Expect(cells.SequenceEqual(now.Cells(r, Icbm.Cell)) && cracks.SequenceEqual(now.Cracks(r, r0, Icbm.Cell / 2)), $"ICBM 구멍 모양이 전과 같다: ({x}, {y}) r {r}");
-            var art = Overlay.CraterShape(new Icbm.Crater { X = x, Y = y, R = r, R0 = r0 });
-            Expect(cells.SequenceEqual(art.Cells) && cracks.SequenceEqual(art.Cracks), "그리는 쪽도 같은 모양을 쓴다");
-            int inside = cells.Count(c => now.Inside((c.Item1 + .5) * Icbm.Cell, (c.Item2 + .5) * Icbm.Cell, r));
+            Expect(cells.SequenceEqual(now.Cells(r, IcbmCell)) && cracks.SequenceEqual(now.Cracks(r, r0, IcbmCell / 2)), $"ICBM 구멍 모양이 전과 같다: ({x}, {y}) r {r}");
+            int inside = cells.Count(c => now.Inside((c.Item1 + .5) * IcbmCell, (c.Item2 + .5) * IcbmCell, r));
             Expect(inside == cells.Count, "그려지는 칸은 모두 규칙의 폭발 안이다");
             same++;
         }

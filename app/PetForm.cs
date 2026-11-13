@@ -131,7 +131,7 @@ public sealed class PetForm : Form, IGameHost
         hud.SpeciesName = () => b.P.Stage == "egg" ? "" : L.Species(species);
         if (!debug) // 새 버전을 받아 바꿔 두면 메뉴에 알린다. 그냥 둬도 다음에 켤 때 새 버전이다
             Updater.Start(() => autoUpdate, tag => BeginInvoke(() => { updateTag = tag; updateItem.Text = L.T("menu.update", tag); updateItem.Visible = true; settings?.ShowReady(); }));
-        foreach (var o in overlays) { o.IcbmGame = () => icbm; o.Guest = () => visitor; o.GuestSprites = () => visitorSprites; o.Present = () => present; o.Clover = () => clover.State == Clover.Phase.Ground ? (clover.Kind, clover.X, clover.Y) : null; o.Dreams = Dreams; o.Modes = () => modes; }
+        foreach (var o in overlays) { o.Guest = () => visitor; o.GuestSprites = () => visitorSprites; o.Present = () => present; o.Clover = () => clover.State == Clover.Phase.Ground ? (clover.Kind, clover.X, clover.Y) : null; o.Dreams = Dreams; o.Modes = () => modes; }
         hud.PlaceAt(area);
         if (runDir != null) dev = new DevLink(runDir, assetsDir!, b, this);
 
@@ -323,7 +323,6 @@ public sealed class PetForm : Form, IGameHost
         menuTexts.Add((sleepItem, () => L.T(b.P.Asleep ? "menu.wake" : "menu.sleep")));
         menu.Items.Add(new ToolStripSeparator());
         Add("menu.shoot", () => BeginInvoke(StartGame)); // 메뉴가 닫히고 포커스가 돌아온 뒤에 시작한다
-        Add("menu.icbm", () => BeginInvoke(StartIcbm));
         foreach (var m in modes) // 게임 모듈. 그 게임을 하는 중에 또 고르면 게임에 알린다 (한 발 더 쏘기 같은 것)
         {
             if (m.MenuKey is not { } key) continue;
@@ -417,7 +416,6 @@ public sealed class PetForm : Form, IGameHost
         VisitTick();
         PresentTick();
         if (visitor != null) visitor.Update(dt, b.X, b.Y, b.Mode is Mode.Wander or Mode.Anim || b.P.Asleep, b.P.Asleep, b.Area);
-        if (icbm != null) IcbmFrame(dt);
         SyncScale();
         if (game != null)
         {
@@ -967,7 +965,7 @@ public sealed class PetForm : Form, IGameHost
 
     // 게임에 쓸 창(최대화 안 한 창)이 없다: 말 대신 「X 표 창」 그림을 머리 위에 띄우고 고개를 젓는다 (YELL 2026-11-13: 알림 말풍선도 그림으로)
     void NoWindow() { b.Emote("nowin", 3); b.ShakeUntil = b.Now + .5; }
-    bool Playing => game != null || icbm != null || modes.Any(m => m.Running);
+    bool Playing => game != null || modes.Any(m => m.Running);
 
     // ── 보스 키 (YELL 2026-11-13: "게임에서 esc 는 언제나 빠져나가기다!!") ──
     // 어느 창에 초점이 있든(판을 놓쳐 일하는 창을 눌렀어도) Esc 를 누르는 순간 하던 게임을 결과 화면 없이 곧바로 다 끝내고,
@@ -986,7 +984,6 @@ public sealed class PetForm : Form, IGameHost
         Dbg.Log("boss-key");
         quit?.Invoke(); // 판이 알려 준 끝내기 (아래와 겹쳐도 게임마다 한 번만 끝난다)
         foreach (var m in modes) if (m.Running) m.Stop(true);
-        if (icbm != null) EndIcbm();
         if (game is { } gm) { gm.Finish(); gm.Finish(); EndGame(); } // 결과 화면 없이
         b.Hush();
         foreach (var o in overlays) o.Invalidate();
@@ -1019,62 +1016,6 @@ public sealed class PetForm : Form, IGameHost
         if (gameFocus != IntPtr.Zero) Native.SetForegroundWindow(gameFocus); // 하던 일로 돌려준다
         foreach (var o in overlays) o.Invalidate();
         Native.Topmost(Handle);
-    }
-
-    // ── ICBM: 볼록이가 버튼을 누르면 미사일이 날아갔다가 아무 데나(활성 창은 빼고) 떨어지고, 볼록이가 달려가 고친다 ──
-    Icbm? icbm;
-
-    public void StartIcbm()
-    {
-        if (icbm != null) { if (!icbm.Launch()) b.Emote("no"); return; } // 이미 하는 중이면 한 발 더 (구멍 다섯까지)
-        if (InGame || b.P.Stage == "egg") return;
-        if (b.P.Asleep) { b.Emote("zzz"); return; }
-        if (b.P.Energy < 10) { b.Emote("no"); return; } // 고칠 기운이 없으면 안 쏜다
-        var ic = icbm = new Icbm(Screen.AllScreens.Select(s => s.WorkingArea).ToList(), b.X, b.Y, b.Scale, new Random())
-            { Friends = released.Select(r => PetArt.Key(r.Species, r.Variant)).Distinct().ToList() }; // 구멍에서 가끔 빼꼼 (떠날 때 색 그대로)
-        ic.OnEvent = e =>
-        {
-            switch (e)
-            {
-                case "press": Sfx.Play("empty"); break;
-                case "launch": Sfx.Play("shotgun"); break;
-                case "fall": Sfx.Play("rumble"); break;
-                case "peek": b.Emote("heart", 1.6); Dbg.Log("icbm-peek", ("friend", ic.Peeks.LastOrDefault()?.Species)); break; // 옛 친구를 알아본다
-                case "boom": Sfx.Play("boom"); b.Emote("bang", 1); break;
-                case "blown": b.Throw(ic.BlownVx, ic.BlownVy, hard: true); break; // 어지러워하다가 거기서부터 고치러 간다
-                case "nowhere": b.Emote("ask", 2); break; // 떨어뜨릴 곳이 없다: 갸웃 (말 대신 그림)
-                case "repaired": b.P.Energy = Math.Max(0, b.P.Energy - 4); b.Emote("spark", .8); break; // 일은 기운이 든다
-            }
-            if (e is "boom" or "nowhere" or "repaired") Dbg.Log("icbm", ("event", e), ("craters", ic.Craters.Count), ("x", (int)ic.TX), ("y", (int)ic.TY));
-        };
-        b.StartPuppet();
-        ic.Launch();
-        Dbg.Log("icbm-start");
-    }
-
-    void IcbmFrame(double dt)
-    {
-        var ic = icbm!;
-        ic.Update(dt, ic.Stage == Icbm.Phase.Away ? Native.Foreground()?.R : null);
-        if (b.Mode != Mode.Puppet) // 잡아서 옮기거나 던지는 중: 볼록이가 가는 대로 두고, 내려앉으면 거기서 이어서 한다
-        {
-            ic.Hold(b.X, b.Y);
-            if (b.Mode == Mode.Wander) b.StartPuppet();
-            return;
-        }
-        (b.X, b.Y, b.Dir, b.Pose) = (ic.X, ic.Y, ic.Dir, ic.Pose);
-        if (ic.Finished) EndIcbm();
-    }
-
-    // 디버그: icbm / icbm stop
-    public void IcbmCommand(string[] a) { if (a.Length > 1 && a[1] == "stop") EndIcbm(); else StartIcbm(); }
-
-    void EndIcbm()
-    {
-        if (icbm is not { } ic) return;
-        icbm = null;
-        foreach (var o in overlays) o.Invalidate();
-        b.EndPuppet(true, "icbm", ("launched", ic.Launched));
     }
 
     // ── 총쏘기 게임 ──

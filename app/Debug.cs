@@ -137,7 +137,6 @@ public sealed class DevLink
             case "visit": form.VisitCommand(a); break;
             case "gesture": b.Gesture(a[1]); break; // 마우스 손짓 반응만: gesture stroke|pat|poke
             case "clover": form.CloverCommand(a); break; // clover (지금 돋기) / clover wear / clover drop / clover off
-            case "icbm": form.IcbmCommand(a); break;
             case "species": form.SetSpecies(a[1], a.Length > 2 ? int.Parse(a[2]) : 0); break; // 예: species fox 2 (2번 색)
             case "release": form.Release(); break;
             case "esc": form.BossKey(); break; // 보스 키 (Esc 를 누른 것과 같다)
@@ -188,8 +187,14 @@ public sealed class DevLink
     {
         var t = new[] { "sprites.png", "pets/art.json" }.Max(f => File.GetLastWriteTimeUtc(Path.Combine(assets, f))); // 그림 데이터를 고쳐도 다시 그린다
         if (t == spriteTime) return;
+        Sprites fresh;
+        try { fresh = Sprites.FromDir(assets, form.SpriteKey); }
+        catch (Exception ex) when (ex is ArgumentException or IOException or System.Runtime.InteropServices.ExternalException)
+        {
+            return; // 그림을 쓰는 중에 읽었다 (「Parameter is not valid」): 다 쓴 뒤 다음 번에 다시 읽는다
+        }
         spriteTime = t;
-        form.SwapSprites(Sprites.FromDir(assets, form.SpriteKey));
+        form.SwapSprites(fresh);
         Dbg.Log("sprites-reloaded");
     }
 }

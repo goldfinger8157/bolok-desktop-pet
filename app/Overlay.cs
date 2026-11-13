@@ -7,7 +7,6 @@ public sealed class Overlay : Form
     readonly Brain b;
     readonly Func<Sprites> sprites;
     readonly Func<Game?> game;
-    public Func<Icbm?> IcbmGame = () => null;
     public Func<Visitor?> Guest = () => null;           // 놀러 온 떠난 친구
     public Func<Sprites?> GuestSprites = () => null;
     public Func<(string Kind, string From, double X, double Y, double At)?> Present = () => null; // 친구가 두고 간 선물
@@ -15,9 +14,6 @@ public sealed class Overlay : Form
     public Func<IReadOnlyList<string>> Dreams = () => Array.Empty<string>();                     // 꿈 말풍선 그림들
     internal Func<IReadOnlyList<IGameMode>> Modes = () => Array.Empty<IGameMode>();               // 게임 모듈 (app/Games)
     public Sprites Art => sprites();
-    Icbm? icbmSeen;
-    int icbmVersion = -1;
-    List<Rectangle> craterRects = new();
     int gameSeen = -1;
     readonly SolidBrush redFill = new(Color.FromArgb(232, 72, 92));
     readonly SolidBrush barLine = new(Color.FromArgb(92, 58, 40)), barBack = new(Color.FromArgb(255, 243, 224)), barFill = new(Color.FromArgb(250, 185, 40));
@@ -83,16 +79,6 @@ public sealed class Overlay : Form
         foreach (var seed in b.Foods) { var p = ToClient(seed.X, seed.Y); r.Add(new Rectangle(p.X - s, p.Y - s, s * 2, s * 2)); }
         if (b.Emoting) r.Add(EmoteRect());
         if (b.Saying) r.Add(Client(NoteRect(b.X, b.Y, b.Area, b.SayLines!)));
-        if (IcbmGame() is { } ic)
-        {
-            int k = b.Scale;
-            r.Add(Client(new Rectangle((int)ic.ButtonX - 20 * k, (int)ic.ButtonY - 26 * k, 40 * k, 28 * k)));
-            if (ic.MissileOn) r.Add(Client(Rectangle.Inflate(new Rectangle((int)ic.MX, (int)ic.MY, 0, 0), ic.Stage == Icbm.Phase.Fall ? 64 * k : 34 * k, ic.Stage == Icbm.Phase.Fall ? 64 * k : 34 * k))); // 떨어질 땐 꼬리 불꽃까지
-            foreach (var cr in ic.Craters) if (cr.Friend != null) r.Add(Client(Rectangle.Inflate(new Rectangle((int)cr.X, (int)cr.Y, 0, 0), CraterReach(cr), CraterReach(cr)))); // 구름·냇물이 움직인다
-            if (ic.HasTarget) r.Add(Client(Rectangle.Inflate(new Rectangle((int)ic.TX, (int)ic.TY, 0, 0), 24 * k, 24 * k)));
-            foreach (var bit in ic.Bits) r.Add(Client(new Rectangle((int)bit.X - bit.Size, (int)bit.Y - bit.Size, bit.Size * 2, bit.Size * 2)));
-            foreach (var bl in ic.Blasts) r.Add(Client(new Rectangle((int)bl.X - 62 * k, (int)bl.Y - 118 * k, 124 * k, 124 * k)));
-        }
         for (var (ms, i) = (Modes(), 0); i < ms.Count; i++) if (ms[i].Running) ms[i].Dirty(this, r); // 번호로 돈다: 목록 약속(IReadOnlyList)을 foreach 로 돌면 프레임마다 메모리를 잡는다
         if (Guest() is { } gv) r.Add(Client(GuestRect(gv)));
         if (Present() is { } pr) r.Add(Client(Around(pr.X, pr.Y - 8 * b.Scale, 14 * b.Scale, 14 * b.Scale)));
@@ -127,17 +113,6 @@ public sealed class Overlay : Form
         var now = Dirty();
         var once = dirtyOnce;
         once.Clear();
-        if (IcbmGame() is { } ic) // 구멍이 생기거나 줄면 그 자리만 한 번 다시 칠한다
-        {
-            if (ic != icbmSeen || ic.Version != icbmVersion)
-            {
-                (icbmSeen, icbmVersion) = (ic, ic.Version);
-                once.AddRange(craterRects);
-                craterRects = ic.Craters.Select(c => Client(Rectangle.Inflate(new Rectangle((int)c.X, (int)c.Y, 0, 0), CraterReach(c), CraterReach(c)))).ToList();
-                once.AddRange(craterRects);
-            }
-        }
-        else if (icbmSeen != null) { icbmSeen = null; craterRects.Clear(); }
         InvalidateMerged(last, now, once);
         (dirtySpare, last) = (last, now);
     }
@@ -222,7 +197,6 @@ public sealed class Overlay : Form
         }
         if (b.Saying) DrawNoteAt(g, b.X, b.Y, b.Area, b.SayLines!);
         if (game() is { } gm) DrawGame(g, gm);
-        if (IcbmGame() is { } ic) DrawIcbm(g, ic);
         for (var (ms, i) = (Modes(), 0); i < ms.Count; i++) if (ms[i].Running) ms[i].Draw(this, g);
         if (Guest() is { } gv && GuestSprites() is { } gs) DrawGuest(g, gv, gs);
         if (Present() is { } pr) // 선물: 바닥에서 통통, 가끔 반짝
@@ -338,17 +312,19 @@ public sealed class Overlay : Form
 
     Font? noteFont;
     int noteFontScale;
+    string? noteFontName;
     readonly Dictionary<string, Size> noteSizes = new();
     static readonly Graphics measure = Graphics.FromImage(new Bitmap(1, 1));
 
     Font NoteFont()
     {
-        if (noteFont == null || noteFontScale != b.Scale || noteFont.FontFamily.Name != L.Font) // 언어가 바뀌면 글꼴도
+        if (noteFont == null || noteFontScale != b.Scale || noteFontName != L.Font) // 언어가 바뀌면 글꼴도 (FontFamily.Name 은 한국어 윈도우에서 「맑은 고딕」으로 나와 요청한 이름과 견주면 늘 달랐다 → 프레임마다 새로 만들던 것)
         {
             noteFont?.Dispose();
             noteSizes.Clear();
             noteFont = new Font(L.Font, 4 * b.Scale + 3, FontStyle.Bold, GraphicsUnit.Pixel);
             noteFontScale = b.Scale;
+            noteFontName = L.Font;
         }
         return noteFont;
     }
@@ -380,121 +356,6 @@ public sealed class Overlay : Form
     }
 
     readonly SolidBrush holeFill = new(Color.FromArgb(14, 16, 22)), holeEdge = new(Color.FromArgb(46, 50, 60)); // 구멍 속·턱 (ICBM·포트리스)
-
-    // ── ICBM ──
-    readonly SolidBrush rimBrush = new(Color.FromArgb(70, 60, 52)), smokeBrush = new(Color.FromArgb(186, 184, 188));
-
-    void DrawIcbm(Graphics g, Icbm ic)
-    {
-        var sp = sprites();
-        int k = b.Scale;
-        foreach (var cr in ic.Craters) PaintCrater(g, cr, ToClient(cr.X, cr.Y), rimBrush, holeFill, ic.Clock, k);
-        foreach (var pk in ic.Peeks) PaintPeek(g, sp, pk, ic.Clock, ToClient(pk.Hole.X, pk.Hole.Y), k);
-        if (ic.Stage <= Icbm.Phase.Boom) // 빨간 버튼
-        {
-            var p = ToClient(ic.ButtonX - 20 * k, ic.ButtonY - 24 * k);
-            g.DrawImageUnscaled(sp.Get(ic.ButtonDown ? "game/button_down" : "game/button_up", 0, k), p.X, p.Y);
-        }
-        foreach (var bit in ic.Bits) // 연기는 사라지며 작아지고, 파편은 칸만 한 네모
-        {
-            var p = ToClient(bit.X, bit.Y);
-            int s = bit.Smoke ? Math.Max(2, (int)(bit.Size * Math.Min(1, bit.Life / .5))) : bit.Size;
-            if (!bit.Smoke) g.FillRectangle(chipEdge, p.X - s / 2 - 1, p.Y - s / 2 - 1, s + 2, s + 2);
-            g.FillRectangle(bit.Smoke ? smokeBrush : chip, p.X - s / 2, p.Y - s / 2, s, s);
-        }
-        if (ic.HasTarget && (int)(ic.Clock * 10) % 2 == 0) Put(g, sp.Get("game/aim", 0, 2 * k), (int)ic.TX, (int)ic.TY); // 떨어질 자리
-        if (ic.MissileOn)
-        {
-            var m = ToClient(ic.MX, ic.MY);
-            if (ic.Stage == Icbm.Phase.Fall) m.Offset(Random.Shared.Next(-3, 4) * k / 2, Random.Shared.Next(-3, 4) * k / 2); // 우르르 덜덜 떨린다
-            PaintMissile(g, sp, ic, m, k);
-        }
-        foreach (var bl in ic.Blasts) // 버섯구름: 바닥 가운데(20, 38)를 터진 자리에
-            Put(g, sp.Get("game/nuke", Math.Min(7, (int)((ic.Clock - bl.At) / .14)), Icbm.CloudScale * k), (int)bl.X, (int)bl.Y - 18 * Icbm.CloudScale * k);
-    }
-
-    // ── ICBM 그리기 (창 좌표만 받는다. --icbm-scene 으로 화면 밖에서도 그려 본다) ──
-
-    // 구멍 모양: 동그라미가 아니라 찢긴 모양. 자리마다 다르고(터진 자리로 정한다), 고치며 줄어도 모양은 그대로
-    // 칸(12px): Hole = 뻥 뚫린 안쪽, 아니면 그을린 가장자리. 바깥으로 금(6px 칸)이 몇 줄 간다
-    // 모양은 Kit 의 Ragged 가 정한다 (씨와 난수 순서가 전과 같아 같은 자리의 구멍은 전과 같은 모양이다).
-    // 프레임마다 다시 뽑지 않게 구멍마다 들고 있다가 자리·크기가 바뀔 때만 새로 뽑는다 (돌려준 목록은 고치지 않는다)
-    sealed class CraterArt { public (double, double, double, double) Key; public List<(int I, int J, bool Hole)> Cells = new(); public List<(int X, int Y)> Cracks = new(); }
-    static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Icbm.Crater, CraterArt> craterArt = new();
-
-    internal static (List<(int I, int J, bool Hole)> Cells, List<(int X, int Y)> Cracks) CraterShape(Icbm.Crater cr)
-    {
-        var art = craterArt.GetOrCreateValue(cr);
-        var key = (cr.X, cr.Y, cr.R, cr.R0);
-        if (art.Key == key) return (art.Cells, art.Cracks);
-        int c = Icbm.Cell;
-        var shape = Ragged.At(cr.X, cr.Y);
-        (art.Key, art.Cells, art.Cracks) = cr.R < c ? (key, new(), new()) : (key, shape.Cells(cr.R, c), shape.Cracks(cr.R, cr.R0, c / 2));
-        return (art.Cells, art.Cracks);
-    }
-
-    // 구멍 + 금이 닿을 수 있는 넓이 (다시 칠할 자리)
-    internal static int CraterReach(Icbm.Crater cr) => (int)(cr.R0 * 1.4) + 6 * Icbm.Cell;
-
-    // 친구 구멍(Friend)이면 안쪽에 그 친구가 사는 자연을 터질 때부터 바로 그린다. 아니면 검은 구멍
-    internal static void PaintCrater(Graphics g, Icbm.Crater cr, Point ctr, Brush rim, Brush hole, double clock = 0, int k = 3)
-    {
-        int c = Icbm.Cell;
-        var (cells, cracks) = CraterShape(cr);
-        BlastArt.Hole(g, cells, cracks, ctr, c, rim, cr.Friend == null ? hole : rim);
-        if (cr.Friend == null) return;
-        var inner = cells.Where(x => x.Hole).ToList();
-        if (inner.Count == 0) return;
-        var state = g.Save();
-        using (var clip = new System.Drawing.Drawing2D.GraphicsPath())
-        {
-            foreach (var (i, j, _) in inner) clip.AddRectangle(new Rectangle(ctr.X + i * c, ctr.Y + j * c, c, c));
-            g.SetClip(clip);
-        }
-        var box = Rectangle.FromLTRB(ctr.X + inner.Min(x => x.I) * c, ctr.Y + inner.Min(x => x.J) * c, ctr.X + (inner.Max(x => x.I) + 1) * c, ctr.Y + (inner.Max(x => x.J) + 1) * c);
-        PaintNature(g, box, PeekFloor(cr, inner, ctr, Math.Max(1, (int)Math.Round((k + 1) * .6))), (int)(cr.X * 3 + cr.Y * 5), clock, k);
-        g.Restore(state);
-    }
-
-    // 친구가 올라오는 바닥: 몸 너비보다 양옆 한 칸씩 더 넓게 다 뚫린 가장 아래 줄 (들쭉날쭉한 바닥 끝에서 올라오면 양옆이 잘려 귀만 보인다)
-    static int PeekFloor(Icbm.Crater cr, List<(int I, int J, bool Hole)> inner, Point ctr, int ps)
-    {
-        int c = Icbm.Cell, half = (cr.Friend == null ? 40 * ps : 30 * ps) / c / 2 + 1;
-        var holeSet = inner.Select(x => (x.I, x.J)).ToHashSet();
-        int floorJ = inner.Select(x => x.J).Distinct().OrderByDescending(j => j)
-            .FirstOrDefault(j => Enumerable.Range(-half, half * 2).All(i => holeSet.Contains((i, j)) && holeSet.Contains((i, j - 1))), 0);
-        return ctr.Y + (floorJ + 1) * c;
-    }
-
-    // 떠난 친구가 친구 구멍(자연이 보이는 구멍)에서 빼꼼 (YELL): 아래에서 몸의 1/3 만 올라와 눈만 깜빡깜빡. 다 올라오면 작은 하트
-    internal static void PaintPeek(Graphics g, Sprites sp, Icbm.Peek pk, double clock, Point ctr, int k)
-    {
-        int c = Icbm.Cell;
-        double t = clock - pk.At, up = Icbm.Rise(t);
-        var inside = CraterShape(pk.Hole).Cells.Where(x => x.Hole).ToList();
-        if (inside.Count < 4 || up <= 0) return;
-        int ps = Math.Max(1, (int)Math.Round((k + 1) * .6)); // 처음 크기(k+1)의 60% 쯤 (YELL: 너무 크다). 도트가 안 깨지게 정수 배율
-        bool blink = up >= 1 && t % 1.1 is > .8 and < .95;
-        var img = sp.Get("thumb/" + pk.Species, blink ? 1 : 0, ps);
-        var body = PeekBody(pk.Species, sp.Get("thumb/" + pk.Species, 0, ps));
-        int floor = PeekFloor(pk.Hole, inside, ctr, ps);
-        // 언덕 위로 귀·눈·코까지 (머리가 큰 아이들이라 몸 높이의 절반쯤이 「1/3 빼꼼」으로 보인다)
-        int top = floor - k - (int)(body.Height * .5 * up), x0 = ctr.X - (body.Left + body.Width / 2);
-        var state = g.Save();
-        using (var clip = new System.Drawing.Drawing2D.GraphicsPath())
-        {
-            foreach (var (i, j, _) in inside) clip.AddRectangle(new Rectangle(ctr.X + i * c, ctr.Y + j * c, c, c));
-            g.SetClip(clip);
-        }
-        g.IntersectClip(Rectangle.FromLTRB(ctr.X - 2000, ctr.Y - 2000, ctr.X + 2000, floor - k)); // 풀 언덕 뒤에서 몸 1/3 만
-        g.DrawImageUnscaled(img, x0, top - body.Top);
-        g.Restore(state);
-        if (up >= 1 && t % .8 < .55)
-        {
-            var heart = sp.Get("icon/heart", 0, Math.Max(1, ps - 1)); // 작게 (YELL)
-            g.DrawImageUnscaled(heart, x0 + body.Right - heart.Width / 3, top - heart.Height * 2 / 3);
-        }
-    }
 
     // 구멍 너머 자연: 파란 하늘과 구름, 나무숲, 흐르는 냇물, 풀밭. px 칸 도트로, 자리마다 조금씩 다르게
     internal static void PaintNature(Graphics g, Rectangle box, int floor, int seed, double clock, int px)
@@ -559,34 +420,6 @@ public sealed class Overlay : Form
         }
     }
 
-    // 썸네일에서 실제로 그려진 부분 (종·배율마다 한 번만 잰다)
-    static readonly Dictionary<(string, int), Rectangle> peekBodies = new();
-    static Rectangle PeekBody(string species, Bitmap img) =>
-        peekBodies.TryGetValue((species, img.Width), out var r) ? r : peekBodies[(species, img.Width)] = Ui.Opaque(img, 0);
-
-    // 미사일 (가는 쪽으로 기울여서). 떨어질 땐 꼬리에서 불꽃이 일렁인다 (글자는 쓰지 않는다: 어느 나라 사람이 봐도 같게)
-    static readonly Color[] flame = { Color.FromArgb(255, 236, 120), Color.FromArgb(255, 170, 50), Color.FromArgb(232, 80, 40) };
-    internal static void PaintMissile(Graphics g, Sprites sp, Icbm ic, Point m, int k)
-    {
-        if (ic.Stage == Icbm.Phase.Fall)
-        {
-            double len = Math.Max(1, Math.Sqrt(ic.MVx * ic.MVx + ic.MVy * ic.MVy)), ux = ic.MVx / len, uy = ic.MVy / len;
-            for (int f = 0; f < 7; f++) // 꼬리 쪽으로 갈수록 작고 붉게, 매번 조금씩 다르게
-            {
-                double back = (16 + f * 5 + Random.Shared.Next(4)) * k, wob = (Random.Shared.NextDouble() - .5) * 6 * k;
-                int size = Math.Max(k, (9 - f) * k + Random.Shared.Next(-1, 2) * k);
-                int x = m.X - (int)(ux * back) + (int)(-uy * wob), y = m.Y - (int)(uy * back) + (int)(ux * wob);
-                using var br = new SolidBrush(flame[Math.Min(2, f / 2 + Random.Shared.Next(2))]);
-                g.FillRectangle(br, x - size / 2, y - size / 2, size, size);
-            }
-        }
-        var state = g.Save();
-        g.TranslateTransform(m.X, m.Y);
-        g.RotateTransform((float)(Math.Atan2(ic.MVy, ic.MVx) * 180 / Math.PI));
-        g.DrawImageUnscaled(sp.Get("game/missile", 0, 2 * k), -39 * k, -39 * k);
-        g.Restore(state);
-    }
-
     // ── 게임 그리기 도우미 (게임 모듈이 쓴다) ──
     public static Rectangle Around(double x, double y, double hw, double hh) => new((int)(x - hw), (int)(y - hh), (int)(hw * 2), (int)(hh * 2));
 
@@ -597,7 +430,6 @@ public sealed class Overlay : Form
         for (int i = 0; i < text.Length; i++) Put(g, sprites().Get("num/" + (text[i] == '×' ? 'x' : text[i]), 0, k), x0 + i * step, (int)cy);
     }
 
-    readonly SolidBrush chip = new(Color.FromArgb(200, 204, 212)), chipEdge = new(Color.FromArgb(90, 94, 104));
 
     void DrawNote(Graphics g, Rectangle r, string[] lines, bool tailRight)
     {
