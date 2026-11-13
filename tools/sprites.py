@@ -831,49 +831,114 @@ def weather_art(rows):
     return g
 
 
-def weather_leaf(drip):
-    """나뭇잎 우산 (YELL 2026-11-13 이 보낸 그림): 길쭉한 잎 하나를 머리 위로 아치처럼 휘게. 밑동(왼쪽)은 앱이 몸 옆까지 줄기로 잇고,
-    끝(오른쪽)은 아래로 처져 빗물이 맺혀 떨어진다 (drip 0: 끝에 맺힘, 1: 떨어지는 중). 잎 위에 이슬 한 방울, 가운데 잎맥과 옆맥"""
+# 나뭇잎 우산 (YELL 2026-11-13: Sonnet 이 뽑은 시안 20개 중 1·6·9·17 을 비 올 때마다 무작위로).
+# 잎만 그린다 — 줄기는 앱이 몸 옆(손)에서 휜 손잡이로 잇는다 (붙는 자리는 app/Weather.cs 의 LeafAnchors 와 같아야 한다)
+def _upal(base, dark, light=None):
+    white = (255, 255, 255)
+    light = light or mix(base, white, .4)
+    return dict(base=base, dark=dark, light=light, vein=mix(base, dark, .55), under=mix(light, white, .3))
+
+
+def _ushape_long(u, v, R, H):
+    s = (u + R) / (2 * R)
+    return 0 <= s <= 1 and abs(v) <= H * math.sin(math.pi * s) ** .75
+
+
+def _ushape_monstera(u, v, R, H):
+    x, y = u / R, v / H
+    if x * x + y * y >= 1: return False
+    for hx in (-.5, .5):
+        for hy in (-.35, .15):
+            if math.hypot(x - hx, y - hy) < .15: return False
+    if abs(y - .55) < .09 and abs(x) > .35: return False
+    if abs(y + .6) < .08 and abs(x) > .45: return False
+    return True
+
+
+def _ushape_drop(u, v, R, H):
+    x, y = u / R, v / H
+    if abs(x) >= 1: return False
+    return abs(y) < math.sqrt(1 - x * x) * (1 - .4 * x) and not (x < -.8 and abs(y) < .2)
+
+
+def _ushape_lotus(u, v, R, H):
+    x, y = u / R, v / H
+    th = math.atan2(y, x)
+    return math.hypot(x, y) < 1 + .07 * math.cos(10 * th) and not (abs(x) < .1 and y > 0)
+
+
+_UFRESH = _upal((120, 196, 96), (52, 120, 60), (176, 226, 140))
+_UDEEP = _upal((62, 152, 84), (24, 80, 54), (122, 202, 120))
+_UYG = _upal((190, 212, 84), (104, 132, 40), (232, 242, 140))
+UMBRELLAS = [  # 시안 번호: 1 긴 타원 잎, 6 몬스테라, 9 토란잎, 17 비스듬한 연잎
+    dict(shape=_ushape_long, pal=_UFRESH, c=(20, 9), R=15, H=5.4, bend=.03, peak=-3, tilt=6, veins='mid', dew=[(-1, -3)]),
+    dict(shape=_ushape_monstera, pal=_UDEEP, c=(20, 9), R=13.5, H=8, bend=.025, veins='mid', dew=[(1, -5)], under=True),
+    dict(shape=_ushape_drop, pal=_UDEEP, c=(20, 9), R=13.5, H=8, bend=.02, tilt=10, veins='mid', dew=[(-3, -3), (3, -3)], under=True),
+    dict(shape=_ushape_lotus, pal=_UYG, c=(20, 9), R=11, H=7, bend=.035, tilt=10, veins='radial', rays=[0, 45, 90, 135, 180, -45, -90, -135], dew=[(-2, -3)], under=True),
+]
+
+
+def weather_leaf(design, drip):
+    """나뭇잎 우산 한 장: design 은 UMBRELLAS 번호, drip 0 은 끝에 맺힌 물방울, 1 은 떨어지는 물방울"""
+    d = UMBRELLAS[design]
     g = Canvas()
-    leaf, dark, light, dew, dewl, water = (120, 196, 96), (52, 120, 60), (176, 226, 140), (120, 196, 230), (235, 248, 255), (150, 196, 240)
-    bx, by, qx, qy, tx, ty = 5.0, 19.0, 17.0, 1.0, 35.0, 23.0   # 밑동 → (휘는 곳) → 끝 (2차 베지어)
+    P = d['pal']
+    cx, cy = d['c']
+    R, H = d['R'], d['H']
+    a, u0 = d.get('bend', 0), d.get('peak', 0)
+    T = math.radians(d.get('tilt', 0))
+    cs, sn = math.cos(T), math.sin(T)
 
-    def at(s):
-        return ((1 - s) ** 2 * bx + 2 * (1 - s) * s * qx + s * s * tx, (1 - s) ** 2 * by + 2 * (1 - s) * s * qy + s * s * ty)
+    def fwd(u, v):
+        v2 = v + a * (u - u0) ** 2
+        return cx + u * cs - v2 * sn, cy + u * sn + v2 * cs
 
-    pts = [at(n / 200) for n in range(201)]
-    for y in range(CELL):
-        for x in range(CELL):
-            px, py = x + .5, y + .5
-            best, bs = 99.0, 0.0
-            for n, (cx, cy) in enumerate(pts):
-                d = math.hypot(px - cx, py - cy)
-                if d < best:
-                    best, bs = d, n / 200
-            half = 5.6 * math.sin(math.pi * min(1, max(0, bs))) ** .75
-            if best <= half:
-                g.p[y][x] = light if best > half * .45 and py < at(bs)[1] else leaf  # 윗면 쪽은 밝게
-    for n in range(4, 197):  # 가운데 잎맥
-        cx, cy = at(n / 200)
-        g.put(round(cx - .5), round(cy - .5), dark, True)
-    for s in (.22, .36, .5, .64, .78):  # 옆맥: 잎맥에서 끝 쪽으로 비스듬히
-        (x0, y0), (x1, y1) = at(s), at(s + .02)
-        nx, ny = -(y1 - y0), x1 - x0
-        ln = math.hypot(nx, ny)
-        nx, ny = nx / ln, ny / ln
-        for side in (1, -1):
-            for k in range(1, 4):
-                g.put(round(x0 + side * nx * k + (x1 - x0) * k * 2 - .5), round(y0 + side * ny * k + (y1 - y0) * k * 2 - .5), dark, True)
-    g.outline(dark)
-    ex, ey = at(.42)  # 잎 위 이슬 한 방울
-    ex, ey = round(ex) - 1, round(ey) - 3
-    g.pix(dew, (ex, ey), (ex + 1, ey), (ex, ey + 1), (ex + 1, ey + 1))
-    g.pix(dewl, (ex, ey))
-    tipx, tipy = round(tx) - 1, round(ty)
-    if drip == 0:  # 끝에 맺힌 물방울
-        g.pix(water, (tipx, tipy + 1), (tipx, tipy + 2), (tipx - 1, tipy + 2), (tipx + 1, tipy + 2))
-    else:          # 떨어지는 물방울
-        g.pix(water, (tipx, tipy + 1), (tipx, tipy + 4), (tipx, tipy + 5))
+    def inv(x, y):
+        dx, dy = x - cx, y - cy
+        u = dx * cs + dy * sn
+        v2 = -dx * sn + dy * cs
+        return u, v2 - a * (u - u0) ** 2
+
+    mask = {(x, y) for y in range(CELL) for x in range(CELL) if d['shape'](*inv(x + .5, y + .5), R, H)}
+    for (x, y) in mask:
+        c = P['base']
+        if (x, y - 1) not in mask:
+            c = P['light']
+        elif (x, y + 1) not in mask and d.get('under'):
+            c = P['under']
+        g.p[y][x] = c
+
+    def line(pts):
+        for (u, v) in pts:
+            x, y = fwd(u, v)
+            x, y = round(x - .5), round(y - .5)
+            if (x, y) in mask and g.p[y][x] != P['light']:
+                g.p[y][x] = P['vein']
+
+    if d['veins'] == 'mid':
+        line([(-R * .85 + t * .5, 0) for t in range(int(R * 3.4))])
+        L = max(2, int(H * .7))
+        for k in range(1, int(R * 2 / 3.2)):
+            ub = -R + k * 3.2
+            for sgn in (1, -1):
+                line([(ub + t * .9, sgn * t * .85) for t in range(1, L + 1)])
+    else:
+        for ang in d['rays']:
+            r = math.radians(ang)
+            line([(t * .5 * math.sin(r), -t * .5 * math.cos(r)) for t in range(1, int(2.6 * max(R, H)))])
+    g.outline(P['dark'])
+    for (du, dv) in d.get('dew', []):
+        ex, ey = fwd(du, dv)
+        ex, ey = round(ex - .5), round(ey - .5)
+        g.pix((120, 196, 230), (ex, ey), (ex + 1, ey), (ex, ey + 1), (ex + 1, ey + 1))
+        g.pix((235, 248, 255), (ex, ey))
+    tx, ty = sorted(mask, key=lambda q: (-q[1], -abs(q[0] - 20)))[0]  # 가장 처진 끝
+    wa = (150, 196, 240)
+    if drip == 0:
+        g.pix(wa, (tx, ty + 1), (tx - 1, ty + 2), (tx, ty + 2), (tx + 1, ty + 2), (tx, ty + 3))
+        g.pix((235, 248, 255), (tx - 1, ty + 2))
+    else:
+        g.pix(wa, (tx, ty + 2), (tx, ty + 3), (tx, ty + 6))
     return g
 
 
@@ -947,7 +1012,7 @@ def build():
     rows += [('run/cave_l', [run_cave('l')]), ('run/cave_m', [run_cave('m', i) for i in range(3)]), ('run/cave_r', [run_cave('r')])]
     rows += [(f'weather/flake{i}', [weather_art(f) for f in pair]) for i, pair in enumerate(FLAKES)]
     rows += [('weather/snowman', [snowman(0), snowman(1), snowman(2)])]
-    rows += [('weather/rain', [weather_art(RAIN), weather_art(SPLASH), weather_art(RAIN_FAR)]), ('weather/leaf', [weather_leaf(0), weather_leaf(1)]),
+    rows += [('weather/rain', [weather_art(RAIN), weather_art(SPLASH), weather_art(RAIN_FAR)]), ('weather/leaf', [weather_leaf(n, k) for n in range(len(UMBRELLAS)) for k in (0, 1)]),
              ('weather/wet', [weather_wet(0), weather_wet(1)])]
     return rows
 

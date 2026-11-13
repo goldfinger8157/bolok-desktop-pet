@@ -58,6 +58,7 @@ public sealed class Weather
         if (sky == Sky.Clear) { Stop(now); return; }
         (Now, From, Until) = (sky, now, now + (sec > 0 ? sec : MinSec + rng.NextDouble() * (MaxSec - MinSec)));
         Reaction = sky == Sky.Rain ? cover != Cover.None ? cover : PickCover(rng) : Cover.None;
+        LeafDesign = rng.Next(LeafAnchors.Length); // 비 올 때마다 나뭇잎 우산 네 가지 중 하나 (YELL: 시안 1·6·9·17 무작위)
     }
 
     public void Stop(double now) { (Now, Reaction) = (Sky.Clear, Cover.None); quietUntil = now + GapSec; }
@@ -342,19 +343,41 @@ public sealed class Weather
     }
 
     // 그림마다 한 번: 잎 그림이 찬 자리 (배율 1, 모든 장을 합쳐), 날씨 그림이 있는지 (Sprites.Has 는 부를 때마다 메모리를 잡아 프레임마다 묻지 않는다)
-    sealed class Art { public Rectangle Leaf; public bool HasLeaf, HasWet; }
+    sealed class Art { public Rectangle[] Leaves = new Rectangle[LeafAnchors.Length]; public bool HasLeaf, HasWet; }
     static readonly ConditionalWeakTable<Sprites, Art> arts = new();
     static Art ArtOf(Sprites sp)
     {
         if (arts.TryGetValue(sp, out var a)) return a;
         a = new Art { HasLeaf = sp.Has(LeafName), HasWet = sp.Has(WetName) };
-        for (int f = 0; a.HasLeaf && f < sp.Frames(LeafName); f++) { var o = Ui.Opaque(sp.Get(LeafName, f, 1), 0); a.Leaf = a.Leaf.IsEmpty ? o : Rectangle.Union(a.Leaf, o); }
+        for (int f = 0; a.HasLeaf && f < Math.Min(sp.Frames(LeafName), 2 * LeafAnchors.Length); f++) // 디자인마다 두 장 (맺힘·떨어짐)
+        {
+            var o = LeafBody(sp.Get(LeafName, f, 1)); // 끝에 맺힌·떨어지는 물방울은 빼고 잎몸만 (물방울까지 치면 우산이 펫에서 떠 보였다)
+            ref var r = ref a.Leaves[f / 2];
+            r = r.IsEmpty ? o : Rectangle.Union(r, o);
+        }
         arts.AddOrUpdate(sp, a);
         return a;
     }
     public static bool HasLeaf(Sprites sp) => ArtOf(sp).HasLeaf;
 
-    const int LeafStemX = 5, LeafDome = 19, LeafMidX = 19; // 잎 그림: 줄기가 붙는 밑동(왼쪽 끝)과 머리 위에 올 가운데 (sprites.py weather_leaf: 베지어 밑동·가운데)
+    // 잎 그림에서 물방울(빗물 색)을 뺀 잎몸 자리
+    static Rectangle LeafBody(Bitmap bmp)
+    {
+        int x0 = bmp.Width, y0 = bmp.Height, x1 = -1, y1 = -1;
+        for (int y = 0; y < bmp.Height; y++)
+            for (int x = 0; x < bmp.Width; x++)
+            {
+                var c = bmp.GetPixel(x, y);
+                if (c.A == 0 || (c.R, c.G, c.B) is (150, 196, 240) or (235, 248, 255)) continue;
+                (x0, y0, x1, y1) = (Math.Min(x0, x), Math.Min(y0, y), Math.Max(x1, x), Math.Max(y1, y));
+            }
+        return x1 < 0 ? Rectangle.Empty : Rectangle.FromLTRB(x0, y0, x1 + 1, y1 + 1);
+    }
+
+    // 나뭇잎 우산 네 가지 (sprites.py UMBRELLAS — 시안 1 긴 타원 잎·6 몬스테라·9 토란잎·17 비스듬한 연잎): 줄기가 붙는 자리, 머리 위에 올 가운데, 밑동이 오른쪽인가
+    static readonly (int StemX, int StemY, int MidX, bool Right)[] LeafAnchors = { (7, 10, 20, false), (10, 12, 20, false), (10, 10, 20, false), (27, 13, 20, true) };
+    public int LeafDesign;
+    public int StemSide = -1; // 줄기가 나오는 쪽 (몸 옆, 화면 기준 -1 왼쪽 / 1 오른쪽)
 
     // 우산 잎 자리. ox·oy: 볼록이 그림 칸의 왼쪽 위 (화면 좌표). 잎은 덮는 열들의 가장 위 칸보다 한 칸 위에 (귀·뿔과 안 겹친다),
     // 줄기는 머리 가운데 열을 따라 머리 꼭대기 밑까지 — 잎·줄기는 볼록이 창 뒤(Overlay)에 그려서 머리 뒤로 들어간 것처럼 보인다
@@ -371,20 +394,24 @@ public sealed class Weather
         var art = ArtOf(sp);
         if (!UmbrellaUp || name == null || !art.HasLeaf) return;
         var h = HeadNow(sp, name, frame, flip);
-        var r = art.Leaf;
-        int rx = flip ? PetArt.Cell - r.Right : r.X, sx = flip ? PetArt.Cell - 1 - LeafMidX : LeafMidX; // 잎 가운데를 머리 위에
+        int design = Math.Clamp(LeafDesign, 0, LeafAnchors.Length - 1);
+        var (stemX, stemY, midX, right) = LeafAnchors[design];
+        var r = art.Leaves[design];
+        if (r.IsEmpty) r = art.Leaves[0];
+        int rx = flip ? PetArt.Cell - r.Right : r.X, sx = flip ? PetArt.Cell - 1 - midX : midX; // 잎 가운데를 머리 위에
         int cx = h.Col - sx, high = PetArt.Cell;
         for (int x = Math.Max(0, cx + rx); x < Math.Min(PetArt.Cell, cx + rx + r.Width); x++) high = Math.Min(high, h.Tops[x]);
-        int cy = high - 1 - r.Bottom, stemTop = cy + LeafDome;
+        int cy = high - 1 - r.Bottom, stemTop = cy + stemY;
         LeafAt = new Point(ox + cx * k, oy + cy * k);
         Leaf = new Rectangle(LeafAt.X + rx * k, LeafAt.Y + r.Y * k, r.Width * k, r.Height * k);
-        int sd = flip ? 1 : -1, ex = h.Col; // 잎이 높은 쪽 몸 옆에서 든다
+        int sd = right != flip ? 1 : -1, ex = h.Col; // 잎 밑동이 있는 쪽 몸 옆에서 든다
+        StemSide = sd;
         while (ex + sd >= 0 && ex + sd < PetArt.Cell && h.Tops[ex + sd] < PetArt.Cell) ex += sd;
         int fromY = Math.Min(PetArt.Cell - 5, (h.Surface + 37) / 2 + 2);
         StemFrom = new Point(ox + (ex + sd) * k, oy + fromY * k);
-        StemTo = new Point(LeafAt.X + (flip ? PetArt.Cell - 1 - LeafStemX : LeafStemX) * k, oy + stemTop * k);
+        StemTo = new Point(LeafAt.X + (flip ? PetArt.Cell - 1 - stemX : stemX) * k, oy + stemTop * k);
         Stem = Rectangle.Inflate(Rectangle.FromLTRB(Math.Min(StemFrom.X, StemTo.X), Math.Min(StemFrom.Y, StemTo.Y), Math.Max(StemFrom.X, StemTo.X) + 2 * k, Math.Max(StemFrom.Y, StemTo.Y) + 2 * k), 5 * k, 6 * k); // 휜 줄기·손잡이까지
-        (LeafK, LeafFlip, LeafFrame) = (k, flip, (int)(t / .8) % 2);
+        (LeafK, LeafFlip, LeafFrame) = (k, flip, design * 2 + (int)(t / .8) % 2);
     }
 
     public static int WetFrame(double t) => (int)(t / .45) % 2;
@@ -604,9 +631,11 @@ public sealed class Weather
         {
             var ps = Sprites.Drawn(art, id, null);
             var wl = new Weather { UmbrellaUp = true };
+            for (int design = 0; design < LeafAnchors.Length; design++) // 우산 네 가지 모두
             foreach (var form in Showcase.Forms)
                 foreach (bool flip in new[] { false, true })
                 {
+                    wl.LeafDesign = design;
                     string name = $"{form}/0/idle";
                     wl.PlaceLeaf(ps, name, 0, flip, 1, 0, 0, 0);
                     var one = ps.Get(name, 0, 1, flip);

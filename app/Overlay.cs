@@ -241,7 +241,7 @@ public sealed class Overlay : Form
         if (!w.Leaf.IsEmpty && Weather.HasLeaf(sp)) // 우산: 줄기(볼록이 머리 뒤로 들어간다) 위에 잎
         {
             // 줄기: 잎 밑동에서 바깥으로 살짝 휘어 몸 옆(손)까지, 아래 끝은 손잡이처럼 몸 쪽으로 동그랗게 말린다 (YELL 2026-11-13: 손잡이 부분은 휘게)
-            int k = w.LeafK, out1 = w.LeafFlip ? 1 : -1;
+            int k = w.LeafK, out1 = w.StemSide; // 줄기는 잎 밑동 쪽 바깥으로 휜다
             double x0 = w.StemTo.X - Left, y0 = w.StemTo.Y - Top, x2 = w.StemFrom.X - Left, y2 = w.StemFrom.Y - Top;
             double x1 = Math.Min(x0, x2) * (out1 < 0 ? 1 : 0) + Math.Max(x0, x2) * (out1 > 0 ? 1 : 0) + out1 * 3 * k, y1 = (y0 + y2) / 2;
             int steps = Math.Max(2, (int)(Math.Abs(y2 - y0) + Math.Abs(x2 - x0)) / Math.Max(1, k));
