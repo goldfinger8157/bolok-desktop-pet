@@ -10,6 +10,9 @@ public sealed class Overlay : Form
     public Func<Sprites?> GuestSprites = () => null;
     public Func<(string Kind, string From, double X, double Y, double At)?> Present = () => null; // 친구가 두고 간 선물
     public Func<(string Kind, double X, double Y, bool Falling, bool Flip)?> Clover = () => null; // 바닥에 돋은 네잎클로버·새싹·해바라기, 내려오는 낙엽
+    public Func<(double X, double Y, int Seed)?> LeafPile = () => null; // 땅에 쌓인 낙엽 더미 (YELL 2026-11-13: 쌓인 낙엽에서 줍는 느낌, 던져서 떨궜을 때도)
+    static readonly string[] PileKinds = { "item/fallen_lie", "item/ginkgo_lie", "item/maple_lie" };
+    static readonly (double Dx, double Dy)[] PileAt = { (-1.15, .1), (1.0, 0), (-.5, .35), (.55, .3), (.05, -.05) };
     public Func<IReadOnlyList<string>> Dreams = () => Array.Empty<string>();                     // 꿈 말풍선 그림들
     internal Func<IReadOnlyList<IGameMode>> Modes = () => Array.Empty<IGameMode>();               // 게임 모듈 (app/Games)
     public Sprites Art => sprites();
@@ -79,6 +82,7 @@ public sealed class Overlay : Form
         if (Guest() is { } gv) r.Add(Client(GuestRect(gv)));
         if (Present() is { } pr) r.Add(Client(Around(pr.X, pr.Y - 8 * b.Scale, 14 * b.Scale, 14 * b.Scale)));
         if (Clover() is { } cl) r.Add(Client(Around(cl.X, cl.Y - 10 * b.Scale, 16 * b.Scale, 16 * b.Scale)));
+        if (LeafPile() is { } lp) r.Add(Client(Around(lp.X, lp.Y - 4 * b.Scale, b.CellPx * .85, 12 * b.Scale)));
         if (b.Now < b.BasketUntil + .1) r.Add(Client(Around(b.BasketX, b.BasketY, 18 * b.Scale, 14 * b.Scale)));
         if (Dreams().Count > 0) r.Add(Client(DreamRect()));
         return r;
@@ -181,13 +185,24 @@ public sealed class Overlay : Form
             Put(g, sp.Get("item/" + pr.Kind, 0, k), (int)pr.X, (int)pr.Y - 6 * k - hop);
             if (Environment.TickCount64 / 400 % 3 == 0) Put(g, sp.Get("game/spark", 0, Math.Max(1, k - 1)), (int)pr.X + 6 * k, (int)pr.Y - 12 * k);
         }
+        if (LeafPile() is { } lp) // 낙엽 더미: 누운 잎 몇 장을 흩어 놓는다 (주울 낙엽보다 먼저 = 밑에)
+        {
+            int s = Bolok.Clover.Scale(b.Scale);
+            for (int i = 0; i < PileAt.Length; i++)
+            {
+                var (dx, dy) = PileAt[i];
+                string kind = PileKinds[(lp.Seed + i * 7) % PileKinds.Length];
+                if (sp.Has(kind)) Put(g, sp.Get(kind, 0, s, (lp.Seed + i) % 2 == 0), (int)(lp.X + dx * b.CellPx * .5), (int)(lp.Y - 3 * s + dy * b.CellPx * .25));
+            }
+        }
         if (Clover() is { } cl) // 네잎클로버·새싹: 바닥에서 살랑, 가끔 반짝 (줄기 끝이 땅에)
         {
             int k = b.Scale, s = Bolok.Clover.Scale(k), sway = Math.Sin(Environment.TickCount64 / 260.0) > .7 ? 1 : 0;
             if (cl.Falling) Put(g, sp.Get("item/" + cl.Kind, 0, s, cl.Flip), (int)cl.X, (int)cl.Y); // 낙엽: 팔랑팔랑 뒤집히며 내려온다
             else
             {
-                Put(g, sp.Get("item/" + cl.Kind, 0, s), (int)cl.X + sway, (int)cl.Y - 3 * s);
+                string gk = Bolok.Clover.Falls(cl.Kind) && sp.Has("item/" + cl.Kind + "_lie") ? cl.Kind + "_lie" : cl.Kind; // 땅의 낙엽은 누운 그림
+                Put(g, sp.Get("item/" + gk, 0, s), (int)cl.X + sway, (int)cl.Y - 3 * s);
                 if (Environment.TickCount64 / 500 % 4 == 0) Put(g, sp.Get("game/spark", 0, s), (int)cl.X + 5 * s, (int)cl.Y - 12 * s);
             }
         }
