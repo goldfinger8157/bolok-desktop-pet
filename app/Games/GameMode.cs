@@ -18,6 +18,7 @@ interface IGameMode
     string? SaveState();             // 기록 (JSON 글), 없으면 null
     void LoadState(string? json);
     IReadOnlyList<GameChoice>? Choices => null; // 하위 메뉴 (대포 고르기처럼 시작할 때 하나를 고르는 게임). 있으면 메뉴 이름 아래에 달고, Start 대신 고른 줄의 Start 를 부른다
+    string HudLine => "";            // 상태창(Hud) 맨 아래 줄에 덧붙일 글 (없으면 빈칸)
 }
 
 // 하위 메뉴 한 줄: 보일 글(언어가 바뀌면 다시 묻는다)과 고르면 할 일
@@ -48,6 +49,7 @@ static class GameModes
     // 게임마다 한 줄. 메뉴에 이 순서로 나온다. 게임을 빼려면 폴더를 지우고 여기서 그 줄만 뺀다
     static readonly GameEntry[] All =
     {
+        new("run", h => new RunGame(h), RunGame.Check, RunGame.Scene, RunGame.BenchRun),
         new("raid", h => new RaidGame(h), RaidGame.Check, RaidGame.Scene, RaidGame.BenchRun),
         new("swarm", h => new SwarmGame(h), SwarmGame.Check, SwarmGame.Scene, SwarmGame.BenchRun),
         new("fortress", h => new FortressGame(h), FortressGame.Check, FortressGame.Scene, FortressGame.BenchRun),
@@ -60,6 +62,7 @@ static class GameModes
 
     // 화면을 띄우지 않고 그려 보기: Bolok.exe --mode-scene <id> <그림.png> (kit: 공통 도구 그림).
     // 다른 배율로 보려면 id 뒤에 @배율: --mode-scene raid@5 (기본은 3. 모니터가 크거나 글자 크기를 키운 화면은 4~6)
+    public static string? SceneArg; // 장면에 덧붙여 넘기는 값 (그 게임이 정한 뜻: 달리기는 형태 하나만 자세히)
     public static Dictionary<string, Action<string>> Scenes
     {
         get
