@@ -11,7 +11,7 @@ public sealed class Swarm
     public enum Up { Rate, Multi, Arc, Heart }     // 총이 빨라짐, 총알 하나 더, 칼이 커짐, 하트
     public sealed class Foe { public Kind Kind; public int Hp; public double X, Y, Speed, Hit = -9; }
     public sealed class Shot { public double X, Y, Vx, Vy, Until; }
-    public sealed class Gem { public double X, Y; public int Xp; public bool Heart; }
+    public sealed class Gem { public double X, Y; public int Xp; public bool Heart; public double ShownX = double.NaN, ShownY; } // Shown: 그리는 쪽이 마지막으로 그린 자리
     public sealed class Pop { public double X, Y, At, R; }
 
     // 배율 3 기준 px·초. 판은 앱이 볼록이 둘레에 220×150 칸(배율 3 이면 660×450)으로 잡는다
@@ -25,6 +25,7 @@ public sealed class Swarm
     public readonly List<Shot> Shots = new();
     public readonly List<Gem> Gems = new();
     public readonly List<Pop> Pops = new();
+    public readonly List<Gem> Gone = new();        // 이번 프레임에 사라진 보석 (그리는 쪽이 그 자리를 지운다)
     public readonly int[] FromSide = new int[4];   // 변마다 들어온 수 (왼쪽·오른쪽·위·아래)
     public double X, Y, Clock, SafeUntil, HurtAt = -9, SwingAt = -9, SwingDir, FireAt = -9, UpAt = -9;
     public double GunSec = .8, SwordSec = 1.1, Reach = 44, ArcHalf = Math.PI / 3;   // 크면서 바뀌는 무기 값
@@ -37,6 +38,7 @@ public sealed class Swarm
     public bool Moving { get; private set; }
     public double Time => State == Phase.Play ? Clock : endAt;   // 버틴 시간
     public int Need => 2 + 4 * Level;                            // 다음 레벨까지 보석
+    public double EndedFor => State == Phase.Play ? 0 : Clock - endAt; // 끝난 지
 
     readonly Random rng;
     readonly int[] ups = new int[4];
@@ -63,7 +65,8 @@ public sealed class Swarm
     public void Update(double dt)
     {
         Clock += dt;
-        Pops.RemoveAll(p => Clock - p.At > .45);
+        Gone.Clear();
+        for (int i = Pops.Count - 1; i >= 0; i--) if (Clock - Pops[i].At > BlastArt.Sec) Pops.RemoveAt(i);
         if (State != Phase.Play)
         {
             if (State != Phase.Done && Clock - endAt >= EndSec) State = Phase.Done;
@@ -166,46 +169,68 @@ public sealed class Swarm
     {
         swordCool -= dt;
         if (swordCool > 0) return;
-        var near = Foes.Where(f => Dist(f) < ReachPx + FoeR(f)).MinBy(Dist);
+        Foe? near = null;
+        double nearD = double.MaxValue;
+        foreach (var f in Foes) { double d = Dist(f); if (d < ReachPx + FoeR(f) && d < nearD) (near, nearD) = (f, d); }
         if (near == null) return;
         (swordCool, SwingAt, SwingDir) = (SwordSec, Clock, Math.Atan2(near.Y - Y, near.X - X));
-        foreach (var f in Foes.ToList())
+        for (int i = 0; i < Foes.Count; i++)
         {
+            var f = Foes[i];
             double d = Dist(f);
             if (d >= ReachPx + FoeR(f) || Math.Abs(Math.IEEERemainder(Math.Atan2(f.Y - Y, f.X - X) - SwingDir, 2 * Math.PI)) > ArcHalf + .01) continue;
             if (d > 1) { f.X += (f.X - X) / d * 12 * sf; f.Y += (f.Y - Y) / d * 12 * sf; } // 살짝 밀려난다
+            int before = Foes.Count;
             Damage(f, 2);
+            if (Foes.Count < before) i--; // 잡혀서 빠졌다
         }
         OnEvent?.Invoke("swing");
     }
 
     // ── 총: 닿는 거리 안에서 가장 가까운 벌레부터 총알 수만큼 하나씩 겨눠 쏜다. 벌레가 모자라면 남는 총알은 옆으로 벌려 쏜다 ──
+    readonly Foe[] aim = new Foe[MaxBullets];
+    readonly double[] aimD = new double[MaxBullets];
+
     void Gun(double dt)
     {
         gunCool -= dt;
         if (gunCool > 0) return;
-        var aim = Foes.Where(f => Dist(f) < GunRange * sf).OrderBy(Dist).Take(Bullets).ToList();
-        if (aim.Count == 0) return;
+        int want = Math.Min(Bullets, MaxBullets), count = 0;
+        foreach (var f in Foes) // 가까운 순서로 want 마리 (거리가 같으면 먼저 온 벌레가 앞)
+        {
+            double d = Dist(f);
+            if (d >= GunRange * sf) continue;
+            int at = count;
+            while (at > 0 && aimD[at - 1] > d) at--;
+            if (at >= want) continue;
+            if (count < want) count++;
+            for (int i = count - 1; i > at; i--) (aim[i], aimD[i]) = (aim[i - 1], aimD[i - 1]);
+            (aim[at], aimD[at]) = (f, d);
+        }
+        if (count == 0) return;
         (gunCool, FireAt, AimDir) = (GunSec, Clock, aim[0].X >= X ? 1 : -1);
         for (int i = 0; i < Bullets; i++)
         {
-            var f = aim[i % aim.Count];
-            int extra = i / aim.Count;
+            var f = aim[i % count];
+            int extra = i / count;
             double a = Math.Atan2(f.Y - Y, f.X - X) + (extra + 1) / 2 * (extra % 2 == 0 ? -.2 : .2);
             Shots.Add(new Shot { X = X, Y = Y, Vx = Math.Cos(a) * ShotSpeed * sf, Vy = Math.Sin(a) * ShotSpeed * sf, Until = Clock + GunRange * 1.25 / ShotSpeed });
         }
+        Array.Clear(aim); // 잡힌 벌레를 붙들고 있지 않게
         OnEvent?.Invoke("fire");
     }
 
     void MoveShots(double dt)
     {
-        foreach (var s in Shots.ToList())
+        for (int i = 0; i < Shots.Count; i++)
         {
+            var s = Shots[i];
             s.X += s.Vx * dt;
             s.Y += s.Vy * dt;
-            var f = Foes.FirstOrDefault(f => Dist(f.X, f.Y, s.X, s.Y) < FoeR(f) + 3 * sf);
-            if (f != null) { Shots.Remove(s); Damage(f, 1); }
-            else if (Clock > s.Until) Shots.Remove(s);
+            Foe? hit = null;
+            foreach (var f in Foes) if (Dist(f.X, f.Y, s.X, s.Y) < FoeR(f) + 3 * sf) { hit = f; break; }
+            if (hit != null) { Shots.RemoveAt(i--); Damage(hit, 1); }
+            else if (Clock > s.Until) Shots.RemoveAt(i--);
         }
     }
 
@@ -218,14 +243,17 @@ public sealed class Swarm
         Pops.Add(new Pop { X = f.X, Y = f.Y, At = Clock, R = FoeR(f) * 1.5 });
         Gems.Add(new Gem { X = f.X, Y = f.Y, Xp = f.Kind switch { Kind.Boss => 10, Kind.Beetle => 3, _ => 1 } });
         if (f.Kind == Kind.Boss) Gems.Add(new Gem { X = f.X + 14 * sf, Y = f.Y, Heart = true }); // 큰 놈은 하트도 남긴다
-        if (Gems.Count > MaxGems) Gems.RemoveAt(0);
+        if (Gems.Count > MaxGems) { Gone.Add(Gems[0]); Gems.RemoveAt(0); }
         OnEvent?.Invoke(f.Kind == Kind.Boss ? "bigkill" : "kill");
     }
 
     // ── 닿으면 하트 하나. 둘레 벌레를 밀어내고 잠깐은 안 맞는다 ──
     void Touch()
     {
-        if (Clock < SafeUntil || !Foes.Any(f => Dist(f) < FoeR(f) + BodyR * .8)) return;
+        if (Clock < SafeUntil) return;
+        bool touched = false;
+        foreach (var f in Foes) if (Dist(f) < FoeR(f) + BodyR * .8) { touched = true; break; }
+        if (!touched) return;
         Lives--;
         (HurtAt, SafeUntil) = (Clock, Clock + SafeSec);
         Pops.Add(new Pop { X = X, Y = Y, At = Clock, R = 18 * sf });
@@ -241,8 +269,9 @@ public sealed class Swarm
     // ── 보석: 가까이 가면 끌려와 주워진다. 다 차면 레벨이 오르고 하나가 세진다 ──
     void Pick(double dt)
     {
-        foreach (var g in Gems.ToList())
+        for (int i = 0; i < Gems.Count; i++)
         {
+            var g = Gems[i];
             double d = Dist(g.X, g.Y, X, Y);
             if (d >= PickRange * sf) continue;
             if (d > 10 * sf)
@@ -251,7 +280,8 @@ public sealed class Swarm
                 (g.X, g.Y) = (g.X + (X - g.X) / d * step, g.Y + (Y - g.Y) / d * step);
                 continue;
             }
-            Gems.Remove(g);
+            Gems.RemoveAt(i--);
+            Gone.Add(g);
             if (g.Heart) { Lives = Math.Min(MaxLives, Lives + 1); OnEvent?.Invoke("heart"); }
             else Xp += g.Xp;
         }

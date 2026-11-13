@@ -75,11 +75,14 @@ public sealed class Sprites
     (Bitmap Bmp, int Frames)? Row(string name)
     {
         if (drawn.TryGetValue(name, out var d)) return d;
+        if (plain.Contains(name)) return null;
         if (ThumbOf(name) is { } id) { if (!art.Can(id)) return null; d = (art.Thumb(id), 2); }
         else if (art.HasRow(name)) d = art.Row(Species, name);
-        else return null;
+        else { plain.Add(name); return null; }
         return drawn[name] = d;
     }
+
+    readonly HashSet<string> plain = new(); // 데이터로 그리는 줄이 아니라고 이미 확인한 이름 (공통 그림: 그릴 때마다 이름을 쪼개 보지 않게)
 
     public int Frames(string name) => Row(name) is { } d ? d.Frames : common.Rows.TryGetValue(name, out var r) ? r.Frames : 1;
 

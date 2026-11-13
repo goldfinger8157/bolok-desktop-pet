@@ -30,6 +30,7 @@ public sealed class Raid
     public Action<string>? OnEvent;
     public bool Done => State == Phase.Done;
     public bool Moving { get; private set; }
+    public double PhaseFor => Clock - phaseAt;         // 지금 단계(맞음·판 깸·끝)에 들어선 지
 
     readonly Random rng;
     readonly double sf;
@@ -94,7 +95,7 @@ public sealed class Raid
     public void Update(double dt)
     {
         Clock += dt;
-        Pops.RemoveAll(p => Clock - p.At > .45);
+        for (int i = Pops.Count - 1; i >= 0; i--) if (Clock - Pops[i].At > BlastArt.Sec) Pops.RemoveAt(i);
         switch (State)
         {
             case Phase.Hit when Clock - phaseAt >= HitSec:
@@ -121,7 +122,7 @@ public sealed class Raid
         }
         fireCool -= dt;
         bool star = Clock < StarUntil;
-        if (State == Phase.Play && fire && fireCool <= 0 && Shots.Count(s => !s.Enemy) < (star ? MaxShots * 2 : MaxShots))
+        if (State == Phase.Play && fire && fireCool <= 0 && Mine() < (star ? MaxShots * 2 : MaxShots))
         {
             fireCool = FireSec;
             double v = -ShotSpeed * sf;
@@ -134,6 +135,8 @@ public sealed class Raid
         Collide();
         if (State == Phase.Play && Foes.Count == 0) Go(Phase.Clear, "clear");
     }
+
+    int Mine() { int n = 0; foreach (var s in Shots) if (!s.Enemy) n++; return n; } // 날아가는 내 탄 수
 
     void Go(Phase p, string ev) { (State, phaseAt) = (p, Clock); OnEvent?.Invoke(ev); }
 
@@ -211,36 +214,52 @@ public sealed class Raid
     void MoveShots(double dt)
     {
         foreach (var s in Shots) { s.X += s.Vx * dt; s.Y += s.Vy * dt; }
-        Shots.RemoveAll(s => s.Y < Field.Top - 10 || s.Y > Field.Bottom + 10);
+        for (int i = Shots.Count - 1; i >= 0; i--) if (Shots[i].Y < Field.Top - 10 || Shots[i].Y > Field.Bottom + 10) Shots.RemoveAt(i);
         foreach (var d in Drops) d.Y += DropSpeed * sf * dt;
-        Drops.RemoveAll(d => d.Y > Field.Bottom + 10);
+        for (int i = Drops.Count - 1; i >= 0; i--) if (Drops[i].Y > Field.Bottom + 10) Drops.RemoveAt(i);
     }
 
+    // 프레임마다 도는 곳이라 목록을 새로 만들지 않고 번호로 돈다 (지우면 그 자리부터 다시)
     void Collide()
     {
-        foreach (var s in Shots.Where(s => !s.Enemy).ToList()) // 내 탄 → 버그
+        for (int i = 0; i < Shots.Count; i++) // 내 탄 → 버그
         {
-            var f = Foes.FirstOrDefault(f => Shown(f) && Dist(f.X, f.Y, s.X, s.Y) < FoeR(f));
-            if (f == null) continue;
-            Shots.Remove(s);
-            f.Hit = Clock;
-            if (--f.Hp <= 0) Kill(f, true);
+            var s = Shots[i];
+            if (s.Enemy) continue;
+            Foe? hit = null;
+            foreach (var f in Foes) if (Shown(f) && Dist(f.X, f.Y, s.X, s.Y) < FoeR(f)) { hit = f; break; }
+            if (hit == null) continue;
+            Shots.RemoveAt(i--);
+            hit.Hit = Clock;
+            if (--hit.Hp <= 0) Kill(hit, true);
             else OnEvent?.Invoke("hit");
         }
         if (State != Phase.Play) return;
         bool safe = Clock < SafeUntil;
-        foreach (var s in Shots.Where(s => s.Enemy).ToList()) // 침 → 볼록이
-            if (Dist(s.X, s.Y, X, ShipY) < ShipR + 3 * sf) { Shots.Remove(s); if (!safe) { Hurt(); return; } }
-        foreach (var f in Foes.Where(f => f.Mode == Move.Dive).ToList()) // 내려온 버그와 부딪힘
-            if (Dist(f.X, f.Y, X, ShipY) < FoeR(f) + ShipR * .8) { Kill(f, false); if (!safe) { Hurt(); return; } }
-        foreach (var d in Drops.ToList()) // 떨어지는 선물 줍기
-            if (Math.Abs(d.X - X) < 14 * sf && Math.Abs(d.Y - ShipY) < 16 * sf)
-            {
-                Drops.Remove(d);
-                if (d.Heart) Lives = Math.Min(MaxLives, Lives + 1);
-                else StarUntil = Clock + StarSec;
-                OnEvent?.Invoke(d.Heart ? "heart" : "star");
-            }
+        for (int i = 0; i < Shots.Count; i++) // 침 → 볼록이
+        {
+            var s = Shots[i];
+            if (!s.Enemy || Dist(s.X, s.Y, X, ShipY) >= ShipR + 3 * sf) continue;
+            Shots.RemoveAt(i--);
+            if (!safe) { Hurt(); return; }
+        }
+        for (int i = 0; i < Foes.Count; i++) // 내려온 버그와 부딪힘
+        {
+            var f = Foes[i];
+            if (f.Mode != Move.Dive || Dist(f.X, f.Y, X, ShipY) >= FoeR(f) + ShipR * .8) continue;
+            Kill(f, false);
+            i--;
+            if (!safe) { Hurt(); return; }
+        }
+        for (int i = 0; i < Drops.Count; i++) // 떨어지는 선물 줍기
+        {
+            var d = Drops[i];
+            if (Math.Abs(d.X - X) >= 14 * sf || Math.Abs(d.Y - ShipY) >= 16 * sf) continue;
+            Drops.RemoveAt(i--);
+            if (d.Heart) Lives = Math.Min(MaxLives, Lives + 1);
+            else StarUntil = Clock + StarSec;
+            OnEvent?.Invoke(d.Heart ? "heart" : "star");
+        }
     }
 
     void Kill(Foe f, bool byShot)
@@ -257,7 +276,7 @@ public sealed class Raid
     {
         Lives--;
         Pops.Add(new Pop { X = X, Y = ShipY, At = Clock, R = 18 * sf });
-        Shots.RemoveAll(s => s.Enemy);
+        for (int i = Shots.Count - 1; i >= 0; i--) if (Shots[i].Enemy) Shots.RemoveAt(i);
         Go(Phase.Hit, "hurt");
     }
 

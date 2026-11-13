@@ -167,6 +167,15 @@ static class Program
             return 0;
         }
 
+        if (args.Length == 2 && args[0] == "--mode-bench") // 게임 모듈 속도 재기 (화면을 띄우지 않는다)
+        {
+            ApplicationConfiguration.Initialize();
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
+            L.Use("ko");
+            Console.WriteLine(GameModes.Benches[args[1]]());
+            return 0;
+        }
+
         if (args.Length == 3 && args[0] == "--scene") // 창 위 소품만 그려 본다 (화면을 찍지 않는다)
         {
             var sp = Sprites.Embedded();

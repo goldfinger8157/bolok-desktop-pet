@@ -641,7 +641,7 @@ public sealed class Brain
 
     // ── 쿠키런 모드 ──
     public Runner? Run;
-    public bool Blink => Run is { } r && r.Clock < r.InvUntil && (int)(r.Clock * 12) % 2 == 0; // 다친 뒤 1초는 깜빡
+    public bool Blink => Run is { } r && r.Clock < r.InvUntil && (int)(r.Clock * 12) % 2 == 0 || Mode == Mode.Puppet && PuppetBlink?.Invoke() == true; // 다친 뒤 1초는 깜빡
 
     public void StartRun(Runner r)
     {
@@ -678,8 +678,12 @@ public sealed class Brain
     }
 
     // ── 포트리스: 게임이 볼록이 자리와 자세를 정한다 ──
+    public int PuppetMs;              // 게임이 정하는 값 둘 (게임 모듈): 그림 한 장을 보이는 시간(ms, 0 이면 자세마다 평소대로)과
+    public Func<bool>? PuppetBlink;   // 깜빡임 (true 인 프레임은 본체를 번쩍이게). 게임이 끝나면 지워진다
+
     public void StartPuppet()
     {
+        (PuppetMs, PuppetBlink) = (0, null);
         Behind = false;
         fleeing = false;
         Foods.Clear();
@@ -690,12 +694,14 @@ public sealed class Brain
     // 표정·수치 없이 그냥 돌려놓는다 (디버그 도구: 캐릭터 확인)
     public void LeavePuppet()
     {
+        (PuppetMs, PuppetBlink) = (0, null);
         Mode = Mode.Wander;
         next = Now + 1;
     }
 
     public void EndPuppet(bool won, string what, params (string, object?)[] log)
     {
+        (PuppetMs, PuppetBlink) = (0, null);
         Mode = Mode.Wander;
         next = Now + 2;
         P.Act(K, "play"); // 한 판은 놀아주기 한 번
