@@ -131,7 +131,7 @@ public sealed class PetForm : Form, IGameHost
         hud.SpeciesName = () => b.P.Stage == "egg" ? "" : L.Species(species);
         if (!debug) // 새 버전을 받아 바꿔 두면 메뉴에 알린다. 그냥 둬도 다음에 켤 때 새 버전이다
             Updater.Start(() => autoUpdate, tag => BeginInvoke(() => { updateTag = tag; updateItem.Text = L.T("menu.update", tag); updateItem.Visible = true; settings?.ShowReady(); }));
-        foreach (var o in overlays) { o.Runner = () => runner; o.Break = () => breakout; o.WormsGame = () => worms; o.MinigunGame = () => minigun; o.IcbmGame = () => icbm; o.Guest = () => visitor; o.GuestSprites = () => visitorSprites; o.Present = () => present; o.Clover = () => clover.State == Clover.Phase.Ground ? (clover.Kind, clover.X, clover.Y) : null; o.Dreams = Dreams; o.Modes = () => modes; }
+        foreach (var o in overlays) { o.Runner = () => runner; o.WormsGame = () => worms; o.MinigunGame = () => minigun; o.IcbmGame = () => icbm; o.Guest = () => visitor; o.GuestSprites = () => visitorSprites; o.Present = () => present; o.Clover = () => clover.State == Clover.Phase.Ground ? (clover.Kind, clover.X, clover.Y) : null; o.Dreams = Dreams; o.Modes = () => modes; }
         hud.PlaceAt(area);
         if (runDir != null) dev = new DevLink(runDir, assetsDir!, b, this);
 
@@ -288,7 +288,7 @@ public sealed class PetForm : Form, IGameHost
         if (pendingSave.Species != species || pendingSave.Variant != variant) SetSpecies(pendingSave.Species, pendingSave.Variant);
         (met, released) = (pendingSave.Met?.ToHashSet() ?? new(), pendingSave.Released ?? new());
         if (b.P.Stage != "egg") met.Add(species); // 도감 전부터 키우던 아이도 도감에
-        (breakBest, wormsWins) = (pendingSave.BreakBest, pendingSave.WormsWins);
+        wormsWins = pendingSave.WormsWins;
         (visitDay, visitMin, lastVisitDay, visits) = (pendingSave.VisitDay ?? "", pendingSave.VisitMin, pendingSave.LastVisitDay ?? "", pendingSave.Visits ?? new());
         language = pendingSave.Language;
         L.Use(language);
@@ -305,7 +305,7 @@ public sealed class PetForm : Form, IGameHost
 
     void Save()
     {
-        var data = new SaveData { Pet = b.P, X = b.X, Y = b.Y, Holes = b.Holes.Select(h => new[] { h.Cx, h.Cy }).ToList(), GameBest = gameBest, GameSound = Sfx.On, AutoUpdate = autoUpdate, Species = species, Met = met.ToList(), Released = released, RunBest = runBest, RunLast = runLast, RunLevel = runLevel, RunScores = runScores, BreakBest = breakBest, WormsWins = wormsWins, VisitDay = visitDay, VisitMin = visitMin, LastVisitDay = lastVisitDay, Visits = visits, Language = language, Clover = clover.Snapshot(), Variant = variant, CardVariant = cardVariant,
+        var data = new SaveData { Pet = b.P, X = b.X, Y = b.Y, Holes = b.Holes.Select(h => new[] { h.Cx, h.Cy }).ToList(), GameBest = gameBest, GameSound = Sfx.On, AutoUpdate = autoUpdate, Species = species, Met = met.ToList(), Released = released, RunBest = runBest, RunLast = runLast, RunLevel = runLevel, RunScores = runScores, WormsWins = wormsWins, VisitDay = visitDay, VisitMin = visitMin, LastVisitDay = lastVisitDay, Visits = visits, Language = language, Clover = clover.Snapshot(), Variant = variant, CardVariant = cardVariant,
             GameData = modes.Select(m => (m.Id, Json: m.SaveState())).Where(x => x.Json != null).ToDictionary(x => x.Id, x => x.Json!),
             Gifts = gifts, Album = album, Cards = cards, VisitCounts = visitCounts, CardFrom = cardFrom, CardForm = cardForm, CardDay = cardDay, MorningDay = morningDay, NightDay = nightDay };
         var tmp = savePath + ".tmp";
@@ -326,7 +326,6 @@ public sealed class PetForm : Form, IGameHost
         menu.Items.Add(new ToolStripSeparator());
         Add("menu.shoot", () => BeginInvoke(StartGame)); // 메뉴가 닫히고 포커스가 돌아온 뒤에 시작한다
         Add("menu.run", () => BeginInvoke(StartRun));
-        Add("menu.breakout", () => BeginInvoke(StartBreak));
         Add("menu.minigun", () => BeginInvoke(StartMinigun));
         Add("menu.icbm", () => BeginInvoke(StartIcbm));
         foreach (var m in modes) // 게임 모듈. 그 게임을 하는 중에 또 고르면 게임에 알린다 (한 발 더 쏘기 같은 것)
@@ -421,11 +420,8 @@ public sealed class PetForm : Form, IGameHost
 
         b.Mouse = MousePosition;
         BossKeyTick();
-        if (breakAuto && breakout is { } auto && auto.Balls.Where(x => !x.Stuck).MaxBy(x => x.Vy > 0 ? x.Y : x.Y - 2000) is { } low)
-            b.Mouse = new Point((int)low.X, b.Mouse.Y); // 디버그 시험: 가장 낮게 내려오는 공을 받는다
         if (runner != null) RunFrame(dt);
         b.Update(dt, !InGame && Afk());
-        if (breakout != null) BreakFrame(dt);
         if (worms != null) WormsFrame(dt);
         if (minigun != null) MinigunFrame(dt);
         foreach (var m in modes) if (m.Running) m.Frame(dt);
@@ -463,13 +459,11 @@ public sealed class PetForm : Form, IGameHost
         bool flash = b.Now < b.FlashUntil || b.Blink;
         if (now != drawn || b.CoverProp != clipShown || flash != flashShown) { drawn = now; clipShown = b.CoverProp; flashShown = flash; Invalidate(); }
 
-        int want = b.Mode is Mode.Thrown or Mode.Held or Mode.Prey or Mode.Run or Mode.Paddle or Mode.Puppet ? 15 : 30; // 빠르게 움직일 때만 자주 그린다
+        int want = b.Mode is Mode.Thrown or Mode.Held or Mode.Prey or Mode.Run or Mode.Puppet ? 15 : 30; // 빠르게 움직일 때만 자주 그린다
         if (timer.Interval != want) timer.Interval = want;
 
         SyncPad();
-        long syncStart = Stopwatch.GetTimestamp();
         foreach (var o in overlays) o.Sync();
-        if (breakout != null) perf.Sync(Stopwatch.GetElapsedTime(syncStart).TotalMilliseconds);
         hud.Sync();
         dev?.Poll(fps, frameMs);
 
@@ -477,29 +471,7 @@ public sealed class PetForm : Form, IGameHost
         ApplyZOrder();
         double took = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
         frameMs = frameMs * .95 + .05 * took;
-        if (breakout != null && !perfSkip) perf.Frame(took, dt);
-        perfSkip = false;
     }
-
-    // 벽돌깨기 한 판의 시간 재기: 프레임 전체, 규칙(Update), 화면 알림(Sync), 그리기(OnPaint)
-    sealed class Perf
-    {
-        int frames;
-        double frameSum, frameMax, updSum, updMax, syncSum, syncMax, dtSum, dtMax;
-        public void Frame(double ms, double dt) { frames++; (frameSum, frameMax, dtSum, dtMax) = (frameSum + ms, Math.Max(frameMax, ms), dtSum + dt, Math.Max(dtMax, dt)); }
-        public void Update(double ms) => (updSum, updMax) = (updSum + ms, Math.Max(updMax, ms));
-        public void Sync(double ms) => (syncSum, syncMax) = (syncSum + ms, Math.Max(syncMax, ms));
-        public (string, object?)[] Report()
-        {
-            int n = Math.Max(1, frames), p = Math.Max(1, Overlay.Paints);
-            return new (string, object?)[] { ("fps", Math.Round(frames / Math.Max(.001, dtSum))), ("gapMax", Math.Round(dtMax * 1000)),
-                ("frameAvg", Math.Round(frameSum / n, 2)), ("frameMax", Math.Round(frameMax, 1)), ("updAvg", Math.Round(updSum / n, 2)), ("updMax", Math.Round(updMax, 1)),
-                ("syncAvg", Math.Round(syncSum / n, 2)), ("syncMax", Math.Round(syncMax, 1)),
-                ("paintAvg", Math.Round(Overlay.PaintMsSum / p, 2)), ("paintMax", Math.Round(Overlay.PaintMsMax, 1)), ("paints", Overlay.Paints) };
-        }
-    }
-    Perf perf = new();
-    bool perfSkip; // 판을 까는 프레임(창 목록·판 만들기)은 재지 않는다
 
     // 평소엔 맨 앞이고, 일부러 숨을 때만 그 창 바로 아래로 들어간다
     void SyncPad()
@@ -723,7 +695,6 @@ public sealed class PetForm : Form, IGameHost
             p.BitesTotal, left is { } l ? Math.Max(0, l) : null, Math.Clamp(frac, 0, 1), to, new GameStat[]
             {
                 new(L.T("game.run"), runLast > 0 ? L.T("game.run_val", runLevel, runBest.ToString("N0", L.Culture)) : never, runLast > 0),
-                new(L.T("game.breakout"), breakBest > 0 ? L.T("game.breakout_val", breakBest.ToString("N0", L.Culture)) : never, breakBest > 0),
                 new(L.T("game.fortress"), wormsWins > 0 ? L.T("game.fortress_val", wormsWins) : L.T("game.fortress_none"), wormsWins > 0),
                 new(L.T("game.shoot"), gameBest > 0 ? L.T("game.shoot_val", gameBest) : never, gameBest > 0),
             }.Concat(modes.SelectMany(m => m.Stats())).ToList()); // 게임 모듈 기록도
@@ -1098,7 +1069,7 @@ public sealed class PetForm : Form, IGameHost
 
     // 게임에 쓸 창(최대화 안 한 창)이 없다: 말 대신 「X 표 창」 그림을 머리 위에 띄우고 고개를 젓는다 (YELL 2026-11-13: 알림 말풍선도 그림으로)
     void NoWindow() { b.Emote("nowin", 3); b.ShakeUntil = b.Now + .5; }
-    bool Playing => game != null || runner != null || breakout != null || worms != null || minigun != null || icbm != null || modes.Any(m => m.Running);
+    bool Playing => game != null || runner != null || worms != null || minigun != null || icbm != null || modes.Any(m => m.Running);
 
     // ── 보스 키 (YELL 2026-11-13: "게임에서 esc 는 언제나 빠져나가기다!!") ──
     // 어느 창에 초점이 있든(판을 놓쳐 일하는 창을 눌렀어도) Esc 를 누르는 순간 하던 게임을 결과 화면 없이 곧바로 다 끝내고,
@@ -1118,7 +1089,6 @@ public sealed class PetForm : Form, IGameHost
         quit?.Invoke(); // 판이 알려 준 끝내기 (아래와 겹쳐도 게임마다 한 번만 끝난다)
         foreach (var m in modes) if (m.Running) m.Stop(true);
         if (runner != null) EndRun(true);
-        if (breakout != null) EndBreak(true);
         if (worms != null) EndWorms(true);
         if (minigun != null) EndMinigun(true);
         if (icbm != null) EndIcbm();
@@ -1378,111 +1348,6 @@ public sealed class PetForm : Form, IGameHost
         if (w.Me.Out) b.Y = w.Field.Bottom - b.K.FloorGap; // 물에 빠졌으면 바닥으로 돌아온다
         b.EndPuppet(won, "worms", ("me", w.Me.Hp), ("cpu", w.Cpu.Hp), ("esc", quit));
         Save();
-    }
-
-    // ── 벽돌깨기: 창모드 창 하나를 조각내고, 볼록이가 쟁반으로 쇠공을 튕긴다 ──
-    Breakout? breakout;
-    List<(IntPtr H, Rectangle R)> breakWindows = new();
-    int breakBest;
-
-    public void StartBreak()
-    {
-        if (InGame || b.P.Stage == "egg") return;
-        gameFocus = Native.GetForegroundWindow();
-        var screens = Screen.AllScreens.Select(s => s.WorkingArea).ToList();
-        if (Breakout.Pick(Native.Foreground(), Native.ListWindows(), b.Area, screens, b.CellPx) is not { } pick)
-        {
-            NoWindow(); // 창모드 창이 없다
-            Dbg.Log("break-none");
-            return;
-        }
-        breakWindows = pick.Targets.Select(t => (t.Win.H, t.Win.R)).ToList();
-        var bo = breakout = new Breakout(pick.Field, pick.Targets.Select(t => t.Board).ToList(), b.Scale, new Random());
-        bo.OnEvent = e =>
-        {
-            switch (e)
-            {
-                case "plate": Sfx.Play("empty"); break;
-                case "break": Sfx.Play("hit"); break;
-                case "miss": Sfx.Play("boom"); b.Emote("tear", 1); break;
-                case "won": Sfx.Play("reload"); break;
-                default: if (e.StartsWith("item:")) { Sfx.Play("reload"); b.Emote(e == "item:life" ? "heart" : "spark", .8); } break;
-            }
-            if (e is "miss" or "won" or "over" || e.StartsWith("item:")) Dbg.Log("break", ("event", e), ("broken", bo.Broken), ("lives", bo.Lives), ("balls", bo.Balls.Count));
-        };
-        // 그 모니터 위에 판을 깐다: 클릭은 공 던지기, Esc 는 끝. 다른 창은 눌리지 않는다
-        var layer = new GameLayer(pick.Field, b.K.GameLayerOpacity);
-        layer.MouseDown += (_, e) => { if (e.Button == MouseButtons.Left) breakout?.Launch(); };
-        layer.KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) EndBreak(true); };
-        layers.Add(layer);
-        layer.Show();
-        layer.Bounds = pick.Field;
-        layer.Activate(); // Esc 를 받으려면 활성 창이어야 한다
-        foreach (var o in overlays) Native.Topmost(o.Handle); // 판 위에 조각·공이 보이게
-        Native.SetClickThrough(Handle, true);
-        Native.Topmost(Handle);
-        pad.Hide();
-        b.StartBreak(bo);
-        (perf, perfSkip) = (new Perf(), true);
-        (Overlay.PaintMsSum, Overlay.PaintMsMax, Overlay.Paints) = (0, 0, 0);
-        Dbg.Log("break-start", ("field", pick.Field.ToString()), ("boards", string.Join(" ", bo.Boards.Select(r => $"{r.X},{r.Y},{r.Width}x{r.Height}"))), ("tiles", bo.Tiles.Count));
-    }
-
-    void BreakFrame(double dt)
-    {
-        var bo = breakout!;
-        long t0 = Stopwatch.GetTimestamp();
-        bo.Update(dt, b.X, PlateTop());
-        perf.Update(Stopwatch.GetElapsedTime(t0).TotalMilliseconds);
-        if (bo.Stage == Breakout.Phase.Play && b.Now > nextWindowCheck)
-        {
-            nextWindowCheck = b.Now + .25;
-            foreach (var (h, r) in breakWindows)
-            {
-                var st = Native.Probe(h);
-                // 창이 닫히거나 움직이면 조각이 어긋나서 끝낸다
-                if (!st.Alive || st.Minimized || st.R != r) { Dbg.Log("break-window-gone"); EndBreak(false); return; }
-            }
-        }
-        if (bo.Done) EndBreak(false);
-    }
-
-    // 디버그: break / break launch / break stop / break auto(쟁반이 공을 따라간다, 기록 안 남김) / break item <종류>
-    bool breakAuto;
-    public void BreakCommand(string what, string? arg)
-    {
-        if (what == "stop") EndBreak(true);
-        else if (what == "launch") breakout?.Launch();
-        else if (what == "auto") breakAuto = true;
-        else if (what == "item" && arg != null) breakout?.Apply(arg);
-        else StartBreak();
-    }
-
-    void EndBreak(bool quit)
-    {
-        if (breakout is not { } bo) return;
-        breakout = null;
-        foreach (var l in layers) l.Close();
-        layers.Clear();
-        Native.SetClickThrough(Handle, false);
-        if (gameFocus != IntPtr.Zero) Native.SetForegroundWindow(gameFocus); // 하던 일로 돌려준다
-        if (!breakAuto) breakBest = Math.Max(breakBest, bo.Broken);
-        breakAuto = false;
-        Dbg.Log("break-perf", perf.Report().Append(("tiles", bo.Tiles.Count)).Append(("broken", bo.Broken)).ToArray());
-        b.EndBreak();
-        foreach (var o in overlays) o.Invalidate();
-        Native.Topmost(Handle);
-        Dbg.Log("break-quit", ("esc", quit));
-        Save();
-    }
-
-    // 쟁반 윗면: 머리 위로 올린 앞발에 쟁반 아래 두 줄이 걸친다
-    readonly Dictionary<string, int> pawTop = new();
-    double PlateTop()
-    {
-        string name = b.SpriteName();
-        if (!pawTop.TryGetValue(name, out int top)) pawTop[name] = top = Props.Trim(Props.Solid(sprites.Get(name, 0, 1))).Y0;
-        return b.Y - (sprites.Cell - top) * b.Scale - 3 * b.Scale;
     }
 
     // ── 총쏘기 게임 ──

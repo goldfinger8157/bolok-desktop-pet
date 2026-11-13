@@ -171,6 +171,7 @@ GAME = {
     'item_fire': ('.rrrrrrrrr.|rrrrryrrrrr|rrrryyrrrrr|rrryyyyrrrr|rrryywyyrrr|rrrryyyrrrr|.rrrrrrrrr.', 'b'),
     'item_life': ('.ppppppppp.|ppwwpppwwpp|pwwwwpwwwwp|pwwwwwwwwwp|ppwwwwwwwpp|ppppwwwpppp|.ppppppppp.', 'b'),
     'plate': ('wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww|llllllllllllllllllllllllllllllllll|.dddddddddddddddddddddddddddddddd.', 'g'),  # 쟁반: 윗면이 17줄
+    'tile': ('wwwwwgwww|llllgllll|lllggllll|lllllglll|llllgllll|dddgddddd', 'k'),  # 금 간 조각 (벽돌깨기 끝 화면: 깬 조각 수 앞에)
     # 대포 게임: 바주카 포탄(오른쪽을 본다), 수류탄
     'rocket': ('g.dddd.|ggddddr|g.dddd.', 'k'),
     'grenade': ('..g..|.vvv.|vvwvv|vvvvv|vvvvv|.vvv.', 'k'),

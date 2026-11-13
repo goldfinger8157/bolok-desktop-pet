@@ -50,6 +50,7 @@ static class GameModes
     {
         new("raid", h => new RaidGame(h), RaidGame.Check, RaidGame.Scene, RaidGame.BenchRun),
         new("swarm", h => new SwarmGame(h), SwarmGame.Check, SwarmGame.Scene, SwarmGame.BenchRun),
+        new("breakout", h => new BreakoutGame(h), BreakoutGame.Check, BreakoutGame.Scene, BreakoutGame.BenchRun),
     };
 
     public static List<IGameMode> Create(IGameHost host) => All.Select(e => e.Create(host)).ToList();
