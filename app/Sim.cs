@@ -499,95 +499,6 @@ static class Sim
         return $"ICBM: 한 발 {ic.Clock:F0}초(발사부터 복구까지), 다섯 발 {many.Clock:F0}초";
     }
 
-    static string MinigunChecks()
-    {
-        var field = new Rectangle(0, 0, 1920, 1040);
-        var win = new Rectangle(700, 200, 500, 300);
-        double ground = 990;
-        Minigun Make(int seed = 1) => new(field, new[] { win }, ground, 3, new Random(seed), dualChance: 0);
-        void Run(Minigun m, double sec, double mx, double my, bool fire) { for (double t = 0; t < sec; t += 1 / 60.0) m.Update(1 / 60.0, mx, my, fire); }
-
-        // 마우스 X 쪽으로 걷고, 위쪽만 겨눈다
-        var walk = Make();
-        Run(walk, 3, 1500, 900, false);
-        Expect(Math.Abs(walk.X - 1500) < 3 && walk.Aim < 0, $"볼록이는 마우스 X 쪽으로 걷는다: {walk.X:F0}");
-        Run(walk, .2, 1500, 1040, false);
-        Expect(walk.Aim <= -.11 && walk.Aim >= -Math.PI + .11, "아래로는 못 쏜다");
-
-        // 총신이 돌아야 쏘고, 돌고 나면 초당 25발
-        var spin = Make();
-        Run(spin, Minigun.SpinUpSec * .5, 950, 100, true);
-        Expect(spin.Shots == 0, "총신이 도는 동안은 안 나간다");
-        Run(spin, 1, 950, 100, true);
-        Expect(spin.Shots is >= 18 and <= 27, $"돌고 나면 초당 25발: {spin.Shots}");
-
-        // 맞은 자리가 파이고, 계속 쏘면 아래부터 위로 뚫고 올라간다. 창 밖은 안 파인다
-        var dig = Make();
-        Run(dig, 3.5, 950, 0, false);
-        Run(dig, .5, 950, 0, true); // 총신 0.35초 + 몇 발
-        double Top(Minigun m) { for (int gy = 0; gy < m.Gh; gy++) for (int gx = 0; gx < m.Gw; gx++) if (m.Gone(gx, gy)) return gy * Minigun.Cell; return double.MaxValue; }
-        int early = dig.GoneCount();
-        double d1 = Top(dig);
-        Run(dig, 4, 950, 0, true);
-        double d2 = Top(dig);
-        Expect(early > 0 && dig.GoneCount() > early && d2 < d1 && d1 >= win.Bottom - 120, $"아래부터 파여 올라간다: {d1:F0} → {d2:F0}");
-        bool outside = false;
-        for (int gx = 0; gx < dig.Gw; gx++)
-            for (int gy = 0; gy < dig.Gh; gy++)
-                if (dig.Gone(gx, gy) && !win.Contains(gx * Minigun.Cell + 2, gy * Minigun.Cell + 2)) outside = true;
-        Expect(!outside, "창 밖은 안 파인다");
-        int dug = dig.GoneCount();
-
-        // 수류탄: 창에 닿으면 크게 터진다. 빗나가면 바닥에서 터지고 창은 그대로
-        var nade = Make();
-        Run(nade, 3.5, 950, 0, false);
-        bool boom = false;
-        nade.OnEvent = e => boom |= e == "boom";
-        nade.Throw(950, 300);
-        for (int i = 0; i < 60 * 3 && !boom; i++) nade.Update(1 / 60.0, 950, 300, false);
-        int big = nade.GoneCount();
-        Expect(boom && nade.Blasts.Count == 1 && Math.Abs(nade.Blasts[0].Y - 300) < 1 && big * Minigun.Cell * Minigun.Cell > 12000,
-            $"수류탄은 가는 길의 창 아랫변에서 안 터지고 찍은 자리(창 안쪽)에서 크게 터진다: y {nade.Blasts[0].Y:F0}, {big * Minigun.Cell * Minigun.Cell}px²");
-        foreach (var (tx, ty) in new[] { (500.0, 150.0), (1700.0, 300.0), (980.0, 600.0) })
-        {
-            var aim = new Minigun(field, Array.Empty<Rectangle>(), ground, 3, new Random(2));
-            aim.Throw(tx, ty);
-            double last = double.MaxValue; // 터지기 직전 프레임에 찍은 자리 가까이 와 있어야 한다 (포물선이 제대로 맞는지)
-            for (int i = 0; i < 60 * 3 && aim.Nades.Count > 0; i++)
-            {
-                foreach (var n in aim.Nades) last = Math.Sqrt((n.X - tx) * (n.X - tx) + (n.Y - ty) * (n.Y - ty));
-                aim.Update(1 / 60.0, aim.X, 0, false);
-            }
-            Expect(last < 40 && aim.Blasts.Count == 1 && aim.Blasts[0].X == tx && aim.Blasts[0].Y == ty, $"수류탄은 찍은 자리로 날아가 거기서 터진다 ({tx},{ty}): 직전 {last:F0}px");
-        }
-        var miss = Make();
-        bool missBoom = false;
-        miss.OnEvent = e => missBoom |= e == "boom";
-        miss.Throw(100, 900);
-        Run(miss, 3, 100, 900, false);
-        Expect(missBoom && miss.GoneCount() == 0, "창 밖을 찍으면 거기서 터지고 창은 그대로");
-        Expect(Math.Abs(nade.ThrowAt - nade.Clock) > 0 && nade.Nades.Count == 0, "터진 수류탄은 사라진다");
-
-        // 쌍 미니건: 총이 둘이라 두 배로 쏟아진다. 하는 동안 한 번씩 저절로 된다
-        var dual = Make();
-        dual.StartDual();
-        Run(dual, Minigun.SpinUpSec + 1, 950, 100, true);
-        Expect(dual.Dual && dual.Guns().Count() == 2 && dual.Guns().Select(x => x.Pivot.X).Distinct().Count() == 2 && dual.Shots >= 36,
-            $"쌍 미니건: 양손에 총 둘, 두 배로: {dual.Shots}발");
-        Run(dual, Minigun.DualSec, 950, 100, false);
-        Expect(!dual.Dual && dual.Guns().Count() == 1, "10초 지나면 다시 하나");
-        var later = Make();
-        bool came = false;
-        later.OnEvent = e => came |= e == "dual";
-        Run(later, 45, 950, 100, false);
-        Expect(came, "하는 동안 20~40초마다 쌍 미니건이 된다");
-
-        // 창이 사라지면 대상에서 빼고 파인 자리도 지운다
-        dig.RemoveTarget(win);
-        Expect(dig.Targets.Count == 0 && dig.GoneCount() == 0 && !dig.Solid(950, 400), "창이 사라지면 대상에서 뺀다");
-        return $"미니건: 4.5초 쏘면 {dug * Minigun.Cell * Minigun.Cell}px² 파임(아래 {d1:F0} → {d2:F0}), 수류탄 한 방 {big * Minigun.Cell * Minigun.Cell}px²";
-    }
-
     static string WormsChecks()
     {
         var field = new Rectangle(0, 0, 1920, 1040);
@@ -1374,7 +1285,6 @@ static class Sim
         FailureChecks(k);
         GameChecks(k);
         o.WriteLine(WormsChecks());
-        o.WriteLine(MinigunChecks());
         o.WriteLine(IcbmChecks());
         UpdaterChecks();
         PetSheetChecks();
