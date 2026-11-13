@@ -377,6 +377,7 @@ public sealed class Weather
     // 나뭇잎 우산 네 가지 (sprites.py UMBRELLAS — 시안 1 긴 타원 잎·6 몬스테라·9 토란잎·17 비스듬한 연잎): 줄기가 붙는 자리, 머리 위에 올 가운데, 밑동이 오른쪽인가
     static readonly (int StemX, int StemY, int MidX, bool Right)[] LeafAnchors = { (7, 10, 20, false), (10, 12, 20, false), (10, 10, 20, false), (27, 13, 20, true) };
     public int LeafDesign;
+    public const int LeafSink = 3; // 잎을 머리 꼭대기보다 몇 칸 아래로 (머리 뒤로 살짝)
     public int StemSide = -1; // 줄기가 나오는 쪽 (몸 옆, 화면 기준 -1 왼쪽 / 1 오른쪽)
 
     // 우산 잎 자리. ox·oy: 볼록이 그림 칸의 왼쪽 위 (화면 좌표). 잎은 덮는 열들의 가장 위 칸보다 한 칸 위에 (귀·뿔과 안 겹친다),
@@ -401,7 +402,7 @@ public sealed class Weather
         int rx = flip ? PetArt.Cell - r.Right : r.X, sx = flip ? PetArt.Cell - 1 - midX : midX; // 잎 가운데를 머리 위에
         int cx = h.Col - sx, high = PetArt.Cell;
         for (int x = Math.Max(0, cx + rx); x < Math.Min(PetArt.Cell, cx + rx + r.Width); x++) high = Math.Min(high, h.Tops[x]);
-        int cy = high - 1 - r.Bottom, stemTop = cy + stemY;
+        int cy = high - 1 - r.Bottom + LeafSink, stemTop = cy + stemY; // 잎은 머리를 살짝 가려도 된다 (YELL 2026-11-13: 손잡이를 짧게) — 잎 아래 가장자리가 머리 뒤로 숨는다
         LeafAt = new Point(ox + cx * k, oy + cy * k);
         Leaf = new Rectangle(LeafAt.X + rx * k, LeafAt.Y + r.Y * k, r.Width * k, r.Height * k);
         int sd = right != flip ? 1 : -1, ex = h.Col; // 잎 밑동이 있는 쪽 몸 옆에서 든다
@@ -641,9 +642,8 @@ public sealed class Weather
                     var one = ps.Get(name, 0, 1, flip);
                     var h = HeadOf(ps, name, 0, flip);
                     Expect(!wl.Leaf.IsEmpty && wl.Stem.Bottom > h.Surface && wl.Stem.Top < h.Surface, $"{id} {form}: 줄기가 머리에 닿는다");
-                    for (int y = Math.Max(0, wl.Leaf.Top); y < Math.Min(PetArt.Cell, wl.Leaf.Bottom); y++)
-                        for (int x = Math.Max(0, wl.Leaf.Left); x < Math.Min(PetArt.Cell, wl.Leaf.Right); x++)
-                            Expect(one.GetPixel(x, y).A == 0, $"{id} {form}: 잎이 볼록이와 겹친다 ({x},{y})");
+                    var (eyeTop, _) = PetArt.Embedded.EyeRows(id, form);
+                    Expect(wl.Leaf.Bottom <= eyeTop, $"{id} {form} 우산 {design}: 잎은 머리를 살짝만 가리고 눈은 안 가린다 (잎 아래 {wl.Leaf.Bottom}, 눈 위 {eyeTop})"); // YELL 2026-11-13: 살짝 가려도 괜찮다
                 }
         }
 
