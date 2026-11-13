@@ -652,11 +652,13 @@ public sealed class Weather
         Expect(bad == 0, $"다시 칠할 자리가 모자라 지나간 알갱이가 남는다 ({bad}번)");
 
         { // 눈·비엔 얌전히 (YELL 2026-11-13): 옆·아래로만, 몸 크기 200% 안
-            var calm = new Brain(new Pet { Stage = "child", Full = 95, Mood = 95, Energy = 95 }, new Tuning(), new Rectangle(0, 0, 1920, 1040)) { X = 900, Y = 600, Calm = true };
-            for (int i = 0; i < 300; i++)
+            var calm = new Brain(new Pet { Stage = "child", Full = 95, Mood = 95, Energy = 95 }, new Tuning(), new Rectangle(0, 0, 1920, 1040)) { X = 900, Y = 600 };
+            calm.Calm = true;
+            for (int i = 0; i < 300; i++) // 여러 번 움직여도 처음 자리에서 양쪽 1칸 안 (몸 크기 200%)
             {
                 var (cx, cy) = calm.CalmRoam();
-                Expect(cy == calm.Y && Math.Abs(cx - calm.X) <= 2 * calm.CellPx + 1e-6, $"눈·비엔 옆으로만, 몸 200% 안 ({cx - calm.X:F0},{cy - calm.Y:F0})");
+                Expect(cy == 600 && Math.Abs(cx - 900) <= calm.CellPx + 1e-6, $"눈·비엔 옆으로만, 처음 자리에서 몸 200% 안 ({cx - 900:F0},{cy - 600:F0})");
+                calm.X = cx;
             }
         }
         return $"날씨: 하루 {perDay:0.0}번(많아야 {most}), 11~2월 눈만 ({snow[11] + snow[12] + snow[1] + snow[2]}번)·3~10월 비만 ({rain.Sum()}번), 일하는 창 위 0알, " +

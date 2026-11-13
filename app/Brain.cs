@@ -376,14 +376,17 @@ public sealed class Brain
 
     // 쉴 때 자세를 잠깐 바꾼다 (Weather: 비 맞으면 시무룩). null 이면 평소대로
     public string? IdlePose;
-    // 눈·비가 올 때 (YELL 2026-11-13): 많이 안 움직이고, 옆으로만, 한 번에 몸 크기 200% 까지, 천천히.
+    // 눈·비가 올 때 (YELL 2026-11-13): 많이 안 움직이고, 옆으로만, 날씨가 시작된 자리에서 좌우 합쳐 몸 크기 200% 안(양쪽 1칸), 천천히.
     // 위로 가면 머리 위에 내리던 눈·비가 같이 올라가 보였다
-    public bool Calm;
+    bool calm;
+    double calmX = double.NaN; // 얌전히 있기 시작한 자리 (여러 번 움직여도 여기서 멀어지지 않게)
+    public bool Calm { get => calm; set { if (value && !calm) calmX = X; calm = value; } }
     public (double X, double Y) CalmRoam()
     {
+        double home = double.IsNaN(calmX) ? X : calmX;
         for (int i = 0; i < 8; i++)
         {
-            double x = Math.Clamp(X + Rand(-2, 2) * CellPx, MinX, MaxX), y = Y; // 옆으로만 (YELL 2026-11-13: 위·아래로는 안 간다), 몸 크기 200% 안
+            double x = Math.Clamp(home + Rand(-1, 1) * CellPx, MinX, MaxX), y = Y; // 옆으로만 (위·아래로는 안 간다), 처음 자리에서 양쪽 1칸 = 몸 크기 200% 안
             if (!OnActive(x, y)) return (x, y);
         }
         return (X, Y);
