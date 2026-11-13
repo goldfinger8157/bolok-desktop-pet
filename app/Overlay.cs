@@ -16,6 +16,7 @@ public sealed class Overlay : Form
     static readonly (double Dx, double Dy)[] PileAt = { (-1.15, .1), (1.0, 0), (-.5, .35), (.55, .3), (.05, -.05) };
     public Func<IReadOnlyList<string>> Dreams = () => Array.Empty<string>();                     // 꿈 말풍선 그림들
     internal Func<IReadOnlyList<IGameMode>> Modes = () => Array.Empty<IGameMode>();               // 게임 모듈 (app/Games)
+    public Func<Weather?> Sky = () => null;                                                       // 눈·비와 우산 잎 (Weather.cs)
     public Sprites Art => sprites();
     readonly SolidBrush barLine = new(Color.FromArgb(92, 58, 40));
     readonly SolidBrush holeBrush = new(Color.FromArgb(7, 9, 12)), bitBrush = new(Color.White);
@@ -69,12 +70,23 @@ public sealed class Overlay : Form
     }
 
     // 이번 프레임에 그릴 것들의 자리. 지난 프레임 자리와 함께 다시 칠한다
-    List<Rectangle> Dirty()
+    internal List<Rectangle> Dirty()
     {
         var r = dirtySpare; // 지지난 프레임 목록을 다시 쓴다 (Sync 가 last 와 바꿔 준다)
         r.Clear();
         int s = sprites().Cell;
         foreach (var f in b.Bits) { var p = ToClient(f.X, f.Y); r.Add(new Rectangle(p.X, p.Y, 8, 8)); }
+        if (Sky() is { } sky) // 날씨: 알갱이마다 작은 칸, 우산 잎·줄기
+        {
+            foreach (var d in sky.Drops) r.Add(Client(Weather.Box(d, sky.Scale)));
+            if (sky.LeafVersion != leafSeen) // 잎은 움직이거나 장이 바뀔 때만: 옛 자리와 새 자리
+            {
+                leafSeen = sky.LeafVersion;
+                if (!leafWas.IsEmpty) { r.Add(Client(leafWas)); r.Add(Client(stemWas)); }
+                (leafWas, stemWas) = (sky.Leaf, sky.Stem);
+                if (!sky.Leaf.IsEmpty) { r.Add(Client(sky.Leaf)); r.Add(Client(sky.Stem)); }
+            }
+        }
         foreach (var h in b.Hearts) { var p = ToClient(h.X, h.Y); r.Add(new Rectangle(p.X - s, p.Y - s * 2, s * 2, s * 2)); }
         foreach (var seed in b.Foods) { var p = ToClient(seed.X, seed.Y); r.Add(new Rectangle(p.X - s, p.Y - s, s * 2, s * 2)); }
         if (b.Emoting) r.Add(EmoteRect());
@@ -156,6 +168,7 @@ public sealed class Overlay : Form
             var p = ToClient(f.X, f.Y);
             g.FillRectangle(bitBrush, p.X, p.Y, 8, 8);
         }
+        if (Sky() is { } sky) DrawWeather(g, sky, sp); // 날씨는 다른 그림(말풍선·하트·바구니) 아래에
         if (b.Now < b.BasketUntil) // 먹이 바구니: 씨앗을 꺼내 던지고 남은 수를 보인다. 비었으면 흔들어 보인다
         {
             int k = b.Scale, wob = b.BasketEmpty ? (int)Math.Round(Math.Sin(b.Now * 40) * 2 * k) : 0;
@@ -209,6 +222,45 @@ public sealed class Overlay : Form
             }
         }
         if (Dreams() is { Count: > 0 } dreams) DrawDream(g, dreams);
+    }
+
+    // ── 날씨 (Weather.cs): 알갱이는 공통 그림에서 그 칸만 잘라 둔 조각을 그대로 찍는다 (프레임마다 새로 만드는 것 없음) ──
+    readonly Bitmap?[] weatherPics = new Bitmap?[Weather.Pics];
+    int leafSeen = -1;
+    Rectangle leafWas, stemWas;
+    Sprites? weatherPicsOf;
+    int weatherPicsScale;
+    readonly SolidBrush stemDark = new(Color.FromArgb(58, 126, 70)), stemLight = new(Color.FromArgb(110, 190, 110));
+
+    void DrawWeather(Graphics g, Weather w, Sprites sp)
+    {
+        if (!w.Leaf.IsEmpty && Weather.HasLeaf(sp)) // 우산: 줄기(볼록이 머리 뒤로 들어간다) 위에 잎
+        {
+            var st = Client(w.Stem);
+            int third = Math.Max(1, st.Width / 3);
+            g.FillRectangle(stemDark, st);
+            g.FillRectangle(stemLight, st.X + third, st.Y, third, st.Height);
+            g.DrawImageUnscaled(sp.Get(Weather.LeafName, w.LeafFrame, w.LeafK, w.LeafFlip), w.LeafAt.X - Left, w.LeafAt.Y - Top);
+        }
+        if (w.Drops.Count == 0) return;
+        int s = w.Scale;
+        if (weatherPicsOf != sp || weatherPicsScale != s)
+        {
+            (weatherPicsOf, weatherPicsScale) = (sp, s);
+            for (int i = 0; i < weatherPics.Length; i++)
+            {
+                weatherPics[i]?.Dispose();
+                var (name, frame, _, _) = Weather.PicArt(i);
+                weatherPics[i] = sp.Has(name) ? sp.Get(name, frame, s).Clone(Weather.Src(i, s), System.Drawing.Imaging.PixelFormat.Format32bppArgb) : null;
+            }
+        }
+        int right = Left + Width, bottom = Top + Height;
+        foreach (var d in w.Drops)
+        {
+            if (d.X < Left - 40 || d.X > right + 40 || d.Y < Top - 40 || d.Y > bottom + 40) continue; // 다른 모니터
+            if (weatherPics[Weather.Pic(d)] is not { } pic) continue;
+            g.DrawImageUnscaled(pic, d.X - Left - pic.Width / 2, d.Y - Top - pic.Height / 2);
+        }
     }
 
     // 꿈 말풍선: 머리 위 한쪽에 작은 동그라미 둘 + 구름 말풍선, 안에 그림이 3초마다 바뀐다

@@ -156,6 +156,21 @@ static class Program
             return 0;
         }
 
+        if (args.Length == 2 && args[0] == "--weather-look") // 날씨 그려 보기 (화면을 띄우지 않는다): 눈·비, 우산·맞기·비 피하기
+        {
+            ApplicationConfiguration.Initialize();
+            Weather.Look(args[1]);
+            return 0;
+        }
+
+        if (args.Length == 1 && args[0] == "--weather-bench") // 날씨 속도 재기 (화면을 띄우지 않는다)
+        {
+            ApplicationConfiguration.Initialize();
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
+            Console.WriteLine(Weather.Bench());
+            return 0;
+        }
+
         // 모르는 옵션이면 볼록이를 띄우지 않고 끝낸다 (그림 확인용 옵션을 옛 빌드에 줬다가 볼록이가 하나 더 뜬 적이 있다)
         string[] known = { "--debug", "--after" };
         if (args.FirstOrDefault(x => x.StartsWith("--") && !known.Contains(x)) is { } unknown)

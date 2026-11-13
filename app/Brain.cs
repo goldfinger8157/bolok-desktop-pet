@@ -356,6 +356,27 @@ public sealed class Brain
 
     PeekPos HidePos() => HideSpots.At(hideRect, peek, CellPx, Shown, TopDuck);
 
+    // 비 피하기 (Weather.cs): 비가 오는 동안은 숨바꼭질 자리에서 나오지 않고, 그치면 나온다. 숨을 창이 없으면 false
+    public bool Sheltering { get; private set; }
+    public bool Shelter(bool on)
+    {
+        bool was = Sheltering;
+        Sheltering = on;
+        if (!on)
+        {
+            if (was) nextHide = Now + Rand(K.HideMinSec, K.HideMaxSec);           // 오래 숨어 있었다: 나와서 바로 또 숨바꼭질하지 않는다
+            if (was && Mode == Mode.Hiding) until = Now;                          // 그쳤다: 곧 나온다
+            else if (was && Mode == Mode.GoHide) { Mode = Mode.Wander; next = Now + 1; }
+            return true;
+        }
+        if (Mode is Mode.GoHide or Mode.SlipIn or Mode.Hiding) return true;
+        if (Mode is not (Mode.Wander or Mode.Anim) || !TryHide()) { Sheltering = false; return false; }
+        return true;
+    }
+
+    // 쉴 때 자세를 잠깐 바꾼다 (Weather: 비 맞으면 시무룩). null 이면 평소대로
+    public string? IdlePose;
+
     public bool TryHide()
     {
         if (P.Stage == "egg" || P.Asleep) return false;
@@ -862,7 +883,7 @@ public sealed class Brain
                     if (fleeing || OnActive(X, Y)) speed = Math.Max(speed, K.EscapeSpeed); // 활성 창 위는 빠르게 지나간다
                     if (Go(tx, ty, speed, dt)) { next = Now + Rand(2, 7); fleeing = false; }
                 }
-                else Pose = P.RestPose(K);
+                else Pose = IdlePose ?? P.RestPose(K);
                 break;
 
             case Mode.Anim:
@@ -966,7 +987,7 @@ public sealed class Brain
                 if (TargetChanged()) break;
                 if (P.Asleep) { Pose = "sleep"; break; }
                 Pose = peek.E == Edge.Top ? "idle" : "peek";
-                if (Now > until || P.Need(K) != null || Holes.Count != P.Bites) { Mode = Mode.Emerge; break; }
+                if (Now > until && !Sheltering || P.Need(K) != null || Holes.Count != P.Bites) { Mode = Mode.Emerge; break; }
                 if (Now > bobAt) { ducked = !ducked; bobAt = Now + (ducked ? Rand(.6, 1.6) : Rand(2, 7)); }
                 var at = HidePos();
                 Walk(ducked ? at.DuckX : at.X, ducked ? at.DuckY : at.Y, 70, dt);

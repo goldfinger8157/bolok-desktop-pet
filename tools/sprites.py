@@ -806,6 +806,65 @@ def emote(color, art):
     return g
 
 
+# ── 날씨 (YELL 2026-11-13, app/Weather.cs): 팔랑팔랑 눈송이 셋(두 장씩 돌아간다), 빗줄기와 튀는 물, 큰 잎 우산, 비 맞은 물방울 ──
+# 눈송이·빗줄기는 볼록이보다 한 단계 작은 배율로 그린다. 그림 칸 크기(눈송이 7×7, 빗줄기 1×5, 튀는 물 5×2)는 Weather.Size 와 같아야 한다
+WPAL = {'w': (255, 255, 255), 's': (186, 212, 240), 'r': (150, 190, 235), 'd': (110, 160, 220)}
+FLAKES = [  # 「+」 모양 ↔ 「×」 모양으로 번갈아 팔랑
+    ('...s...|.s.w.s.|..sws..|swwwwws|..sws..|.s.w.s.|...s...', 's.....s|.w.s.w.|..sws..|.swwws.|..sws..|.w.s.w.|s.....s'),
+    ('.......|...s...|..sws..|.swwws.|..sws..|...s...|.......', '.......|.s...s.|..sws..|..www..|..sws..|.s...s.|.......'),
+    ('.......|.......|...s...|..sws..|...s...|.......|.......', '.......|.......|..s.s..|...w...|..s.s..|.......|.......'),
+]
+RAIN = 's|r|r|r|d'          # 가는 빗줄기
+SPLASH = '.r.r.|r...r'       # 바닥·잎에 닿아 튀는 물
+
+
+def weather_art(rows):
+    g = Canvas()
+    rows = rows.split('|')
+    x0, y0 = (CELL - len(rows[0])) // 2, (CELL - len(rows)) // 2  # art() 와 같은 자리 (앱이 이 칸만 잘라 쓴다)
+    for y, row in enumerate(rows):
+        for x, c in enumerate(row):
+            if c != '.':
+                g.put(x0 + x, y0 + y, WPAL[c])
+    return g
+
+
+def weather_leaf(drip):
+    """큰 잎 우산: 볼록이보다 넓은 둥근 잎을 머리 위로 (앞쪽 끝이 살짝 처진다). 줄기는 앱이 머리까지 잇는다 — 볼록이 뒤로 들어가 손에 든 것처럼.
+    drip: 처진 잎 끝에서 빗물이 똑"""
+    g = Canvas()
+    leaf, dark, light, water = (110, 190, 110), (58, 126, 70), (170, 224, 150), (150, 190, 235)
+    cx, base = 20, 21
+    g.ell(cx, base + .5, 14.5, 7.5, leaf)
+    for y in range(base + 1, CELL):  # 아래 반은 잘라 둥근 지붕만
+        g.p[y] = [None] * CELL
+    for x in range(cx - 13, cx + 14, 5):  # 아랫단 물결
+        g.p[base][x] = None
+    g.pix(leaf, (cx + 13, base + 1), (cx + 14, base + 1), (cx + 15, base + 2))  # 앞쪽 잎 끝이 살짝 처진다
+    for dx, dy in ((-11, -4), (-6, -6), (0, -7), (6, -6), (11, -4)):  # 잎맥: 줄기 끝에서 퍼진다
+        for i in range(1, 9):
+            g.put(round(cx + dx * i / 8), round(base + dy * i / 8), dark, True)
+    g.pix(light, (cx - 8, base - 5), (cx - 7, base - 6), (cx - 5, base - 7), (cx - 9, base - 4))  # 빛
+    g.outline(dark)
+    if drip:
+        g.pix(water, (cx + 16, base + 4), (cx + 16, base + 5))
+    return g
+
+
+def weather_wet(i):
+    """비 맞은 볼록이: 머리에 맺힌 물방울과 옆으로 똑 떨어지는 방울. (20, 20) 을 머리 꼭대기 가운데에 맞춘다"""
+    g = Canvas()
+    blue, deep, shine = (150, 196, 240), (96, 150, 230), (235, 246, 255)
+    for x, y in ((-6, 3), (1, 1), (5, 4)):
+        g.pix(shine, (20 + x, 20 + y))
+        g.pix(blue, (21 + x, 20 + y), (20 + x, 21 + y))
+        g.pix(deep, (21 + x, 21 + y))
+    dy = 7 if i == 0 else 10
+    g.pix(blue, (10, 20 + dy))
+    g.pix(deep, (10, 21 + dy))
+    return g
+
+
 def png(pixels, path):
     h, w = len(pixels), len(pixels[0])
     raw = b''.join(b'\0' + b''.join(bytes(p) if len(p) == 4 else bytes(p) + b'\xff' for p in row) for row in pixels)
@@ -840,6 +899,9 @@ def build():
              ('run/rock', [run_rock(i) for i in range(4)])]
     rows += [(f'run/pit_{k}', [run_pit(k)]) for k in 'lmr']
     rows += [('run/cave_l', [run_cave('l')]), ('run/cave_m', [run_cave('m', i) for i in range(3)]), ('run/cave_r', [run_cave('r')])]
+    rows += [(f'weather/flake{i}', [weather_art(f) for f in pair]) for i, pair in enumerate(FLAKES)]
+    rows += [('weather/rain', [weather_art(RAIN), weather_art(SPLASH)]), ('weather/leaf', [weather_leaf(0), weather_leaf(1)]),
+             ('weather/wet', [weather_wet(0), weather_wet(1)])]
     return rows
 
 
