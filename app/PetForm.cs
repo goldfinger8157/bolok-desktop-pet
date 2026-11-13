@@ -861,7 +861,7 @@ public sealed class PetForm : Form, IGameHost
         return (clover.Kind, x, y, true, clover.Flip(now));
     }
 
-    // 디버그: clover [clover|sprout|sunflower|leaf] (지금 돋기, 낙엽은 내려오기) / clover wear [종류] (바로 머리에) / clover drop / clover off
+    // 디버그: clover [clover|sprout|sunflower|fallen|ginkgo|maple] (지금 돋기, 낙엽 셋은 내려오기) / clover wear [종류] (바로 머리에) / clover drop / clover off
     public void CloverCommand(string[] a)
     {
         double now = Environment.TickCount64 / 1000.0, ground = b.Area.Bottom - b.K.FloorGap;
@@ -888,7 +888,7 @@ public sealed class PetForm : Form, IGameHost
     {
         string item = "item/" + clover.Kind;
         if (clover.State != Clover.Phase.Worn || b.Pose is "fly" or "roll" or "flop" || !sprites.Has(item) || name.StartsWith("egg")) return;
-        int n = sprites.Frames(name), f = (frame % n + n) % n, side = clover.Kind is "sprout" or "leaf" ? 0 : -4; // 새싹·낙엽은 정수리 가운데, 네잎클로버·해바라기는 옆
+        int n = sprites.Frames(name), f = (frame % n + n) % n, side = clover.Kind == "sprout" ? 0 : Clover.Falls(clover.Kind) ? 3 : -4; // 새싹은 정수리 가운데, 네잎클로버·해바라기는 왼쪽 옆, 낙엽은 가운데에서 살짝 오른쪽 (YELL: 한가운데는 어색 → 6칸은 너무 치우침, 낙엽 폭 절반만큼 안으로)
         if (!cloverSpot.TryGetValue((name, f, flip, side), out var spot))
         {
             var one = sprites.Get(name, f, 1, flip);
@@ -912,7 +912,7 @@ public sealed class PetForm : Form, IGameHost
         }
         int k = b.Scale, s = Clover.Scale(k);
         var (sx, sy) = stem;
-        int sink = clover.Kind == "leaf" ? 2 * k : 0; // 낙엽은 꽂지 않고 머리 위에 얹는다 (YELL 2026-11-13): 꼭지가 머리에 살짝 묻히게
+        int sink = Clover.Falls(clover.Kind) ? 2 * k : 0; // 낙엽은 꽂지 않고 머리 위에 얹는다 (YELL 2026-11-13): 꼭지가 머리에 살짝 묻히게
         g.DrawImageUnscaled(sprites.Get(item, 0, s), 8 + shake + spot.X * k - sx * s, spot.Top * k - sy * s + sink); // 줄기 끝만 머리에 닿고 잎은 살짝 떠 있게 (YELL)
     }
 

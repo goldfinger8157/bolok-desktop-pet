@@ -196,14 +196,16 @@ ITEMS = {
     'acorn': ('...b...|.bbbbb.|bbbbbbb|.nnnnn.|.nnnnn.|..nnn..|...n...', 'b'),
     'flower': ('.p...p.|ppp.ppp|.ppyppp|..pyp..|.ppppp.|...v...|..vv...|...v...', 'b'),
     'shell': ('...p...|..pwp..|.pwpwp.|pwpwpwp|pwpwpwp|.ppppp.', 'b'),
-    'leaf': ('.....vv|....vvv|...vvv.|..vvv..|.vvv...|.v.....|v......', 'b'),
+    'leaf': ('.....vvvvv.|....vvvvev.|...vvvvevv.|..vvvvevv..|..vvvevvv..|..vvevvv...|..vevvv....|..evv......|.e.........|e..........', 'e'),
     'feather': ('.....u.|....uu.|...uuu.|..uuu..|.uuu...|.uu....|u......', 'b'),
     'pebble': ('.dd.dd.|ddddddd|ddddddd|.ddddd.|..ddd..|...d...', 'b'),
     'berry': ('...v...|..vv...|.rrrrr.|rrrrrrr|rrwrrrr|rrrrrrr|.rrrrr.', 'b'),
     'clover': ('...vv.vv.....|..vvvvvvv....|...vvvvv.....|vv..vvv..vv..|vvvv.v.vvvv..|.vvvveevvv...|vvvv.v.vvvv..|vv..vvv..vv..|...vvvvvv....|..vvvvvv.v...|...vv.vv..v..|..........v..|..........v..|..........v..', 'e'),  # 하트 잎 넷이 십자로, 긴 줄기 (YELL: 하트처럼 보였다 → 줄기를 더 길게)
     'sprout': ('.........vv..|.......vvvvv.|......vvvvevv|......vvvevvv|vvv..vvvevvv.|vvvv.vvevvv..|.veev.vevv...|...vvv.v.....|......v......|......v......|.....v.......|.....v.......|......v......', 'e'),  # 새싹: 왼쪽 작은 잎·오른쪽 둥근 큰 잎을 V로 떼고 잎맥, 휜 줄기 (YELL 이 보낸 그림을 참고)
     'sunflower': ('...y.y.y.....|..yyyyyyy....|.yyyobobyy...|yyyobobobyy..|.yybobobyy...|yyyobobobyy..|.yyyobobyy...|..yyyyyyy....|...y.y.y.....|.....v.......|.....v.vv....|......vve....|......v......|......v......', 'b'),  # 해바라기: 노란 꽃잎 고리에 갈색 씨 가운데, 잎 달린 줄기 (YELL 2026-11-13)
-    'leaf': ('....n....|...nnn...|.n.nrn.n.|nnnnrnnnn|.nnnrnnn.|..nrrrn..|...nrn...|....r....|....b....', 'b'),  # 낙엽(단풍잎): 하늘에서 팔랑 내려와 머리 위에 얹힌다 (YELL 2026-11-13)
+    'fallen': ('.....yyyyy.|....yyyyby.|...yoyybyy.|..ooyobyy..|..ooobyyy..|..oobooy...|..obooo....|..boo......|.b.........|b..........', 'b'),  # 낙엽 ①: 잎맥 보이는 둥근 잎, 비스듬히, 아래는 갈색·위는 금색 (YELL 이 보낸 그림). 선물의 초록 'leaf' 와 다른 이름
+    'ginkgo': ('...yyy.yyy...|..yyyy.yyyy..|yyyyyy.yyyyyy|yyyyyyyyyyyyy|.yyyyyyyyyyy.|..yyyyyyyyy..|...yyyoyyy...|.....ooo.....|......o......|......o......|......o......|.....o.......', 'o'),  # 낙엽 ②: 은행잎 — 넓고 평평한 부채꼴, 윗변 가운데 좁은 V 홈, 아래로 좁아져 가늘고 긴 꼭지 (YELL 이 보낸 은행잎 그림 참고)
+    'maple': ('....n....|...nnn...|.n.nrn.n.|nnnnrnnnn|.nnnrnnn.|..nrrrn..|...nrn...|....r....|....b....', 'b'),  # 낙엽 ③: 단풍잎 — 다섯 갈래, 주황에 빨간 잎맥
     'basket': ('...nnn...|..n...n..|.n.....n.|ooooooooo|onononono|ooooooooo|.ononono.|..ooooo..', 'b'),  # 먹이 바구니 (밥을 줄 때 잠깐 나와 씨앗을 던진다)
 }
 def bug(i, boss=False):
