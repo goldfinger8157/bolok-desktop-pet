@@ -265,7 +265,7 @@ public sealed class Swarm
             (shoesOut, shoeFrom) = (shoesOut + 1, Clock + ShoeGap);
         }
         // 자석: 보통 벌레를 잡으면 가끔. 판 위에 하나만, 처음 20초·끄는 동안·끝난 뒤 90초는 나오지 않는다 (한 판에 두 번쯤.
-        // 자주 나오면 흘린 보석을 다 주워 판이 훨씬 쉬워진다: 자동 조종 600판에서 쉬는 시간 60초면 88%, 90초면 80%, 없을 때 55% 가 끝까지 버텼다)
+        // 자주 나오면 흘린 보석을 다 주워 판이 훨씬 쉬워진다: 신발 없이 자동 조종 600판에서 쉬는 시간 60초면 88%, 90초면 80%, 자석이 없을 때 55% 가 끝까지 버텼다)
         if (f.Kind != Kind.Boss && !magnetOut && Clock >= magnetFrom && rng.NextDouble() < MagnetChance)
         {
             var (mx, my) = Inside(f.X - 14 * sf, f.Y);
