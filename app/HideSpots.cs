@@ -14,7 +14,9 @@ public static class HideSpots
 {
     const double SideDuck = .34, TopDuck = .3, SideOut = .75;
 
-    public static PeekPos At(Rectangle r, Peek p, int cell, double shown)
+    // shown: 창 위로 내민 몸의 비율 (그림 칸 위에서부터), duck: 쏙 들어갈 때 더 내려가는 비율.
+    // 볼록이는 Brain.TopPeek 이 눈 높이로 정한다 (나오면 눈 밑까지, 들어가면 이마만)
+    public static PeekPos At(Rectangle r, Peek p, int cell, double shown, double duck = TopDuck)
     {
         var area = p.A;
         double yMin = Math.Max(r.Top + cell * 1.1, area.Top + cell), yMax = Math.Min(r.Bottom - 6, area.Bottom - 4);
@@ -28,7 +30,7 @@ public static class HideSpots
             default:
                 double x = r.Left + cell * .7 + p.T * Math.Max(0, r.Width - cell * 1.4);
                 double top = r.Top + cell * (1 - shown);
-                return new(x, top, x, top + cell * TopDuck, x, r.Top - 2);
+                return new(x, top, x, top + cell * duck, x, r.Top - 2);
         }
     }
 

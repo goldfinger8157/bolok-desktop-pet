@@ -6,6 +6,7 @@ namespace Bolok;
 // 큰 무기 둘: 미사일은 총구에서 곧게 나가며 빨라지다가 처음 닿는 창 칸에서 터진다 (연기 꼬리).
 // 수류탄은 포물선으로 날아가 찍은 자리에 도착하는 순간 터진다 (가는 길의 창에는 안 부딪힌다 — 아래에서 던지니 창 안쪽을 노려도 늘 창 아랫변에서 터졌다).
 // 구멍은 모두 들쭉날쭉하다 (Kit/Ragged). 창은 칸(6 × 볼록이 배율 px)으로 기억한다: 창이던 칸, 파인 칸, 금 간 자리(반 칸).
+// 창 하나의 칸이 90% 넘게 파이면 남은 조각이 저절로 무너져 그 창은 「다 깨진 창」이 된다. 모든 창이 다 깨지면(Intact == 0) 게임이 끝낸다 (YELL 2026-11-13)
 // 화면과 무관한 규칙이라 --selfcheck 로 검사한다. 하는 동안 메모리를 새로 잡지 않는다 (총알·파편은 미리 잡아 둔 자리에)
 sealed class Minigun
 {
@@ -22,12 +23,21 @@ sealed class Minigun
         MissileStart = 300, MissileTop = 1400, MissileAccel = 2600, SpinUpSec = .35, WalkSpeed = 420, Gravity = 1400, NadeCooldown = .5, MissileCooldown = .8,
         DualSec = 10, DualStartChance = 1 / 3.0;
     public const int MaxBits = 480, HitBits = 6, ChunkBits = 14, BlastBits = 70, BlastRoom = 90, MaxPuffs = 120;
+    // 창이 「다 깨졌다」고 치는 선: 칸의 90% 가 파이면 남은 조각은 저절로 무너져 내린다.
+    // 들쭉날쭉하게 파이다 보니 끝에는 부스러기 몇 덩어리가 흩어져 남는데, 그걸 하나하나 찾아 쏘게 하면 스트레스 풀기가 아니다.
+    // 재 보니 (800×500 창을 훑어 쏠 때) 90% 까지 12초, 거기서 마지막 한 칸까지는 8초가 더 걸렸다 (미사일을 섞으면 7초 + 13초).
+    // 90% 때 남은 것은 대여섯 덩어리. 95% 로 잡으면 1~2초 더 쏘면 되지만 큰 창(1300×800)은 자동 조종이 95% 를 끝내 못 넘기기도 했고,
+    // 80% 면 창의 5분의 1 이 멀쩡한데 혼자 무너진다
+    public const double BreakAt = .9;
 
     public readonly Rectangle Field;
     public readonly List<Rectangle> Targets;
     public readonly int Gw, Gh, K, Cell;
     readonly bool[] land, gone;
     readonly byte[] look, crack;    // 칸마다 보이는 모습(0 그대로 · 1 뚫림 · 2 그을린 가장자리)과 금 간 자리(반 칸 넷: 비트 0~3)
+    readonly byte[] owner;          // 칸마다 어느 창인가 (Targets 번호 + 1, 창 밖은 0)
+    readonly int[] landOf, goneOf;  // 창마다 칸 수와 파인 칸 수 (Targets 와 같은 차례)
+    readonly bool[] doneOf;         // 다 깨진 창 (화면은 칸에 안 맞는 가장자리 자투리까지 창 자리를 통째로 까맣게 칠한다)
     public readonly List<Rectangle> Carved = new();   // 이번 프레임에 모습이 바뀐 자리 (화면이 그 자리만 다시 칠한다)
     public readonly Bag<Bullet> Bullets = new(64);
     public readonly Bag<Shell> Shells = new(8);
@@ -36,7 +46,9 @@ sealed class Minigun
     public readonly Bag<Blast> Blasts = new(8);
     public readonly double Ground;                    // 볼록이 발
     public double X, Spin, Kick, Clock, LastShot = -9, WalkAt = -9, ThrowAt = -9, LaunchAt = -9, DualUntil;
-    public int Shots, Booms, GoneCells, CrackCells;
+    public int Shots, Booms, GoneCells, CrackCells, Breaks;
+    public int Intact { get; private set; }          // 아직 덜 깨진 창 수. 0 이면 다 깼다
+    public int Broken => Targets.Count - Intact;     // 다 깨진 창 수
     public bool Firing;
     public Action<string>? OnEvent;
     public bool Dual => Clock < DualUntil;
@@ -61,8 +73,10 @@ sealed class Minigun
         cell = 40 * k;
         Targets = targets.Select(t => Rectangle.Intersect(t, field)).Where(t => !t.IsEmpty).ToList();
         (Gw, Gh) = (field.Width / Cell + 1, field.Height / Cell + 1);
-        (land, gone, look, crack) = (new bool[Gw * Gh], new bool[Gw * Gh], new byte[Gw * Gh], new byte[Gw * Gh]);
+        (land, gone, look, crack, owner) = (new bool[Gw * Gh], new bool[Gw * Gh], new byte[Gw * Gh], new byte[Gw * Gh], new byte[Gw * Gh]);
+        (landOf, goneOf, doneOf) = (new int[Targets.Count], new int[Targets.Count], new bool[Targets.Count]);
         foreach (var t in Targets) Mark(t, true);
+        Tally();
         (X, mx, my) = (field.Left + field.Width / 2.0, field.Left + field.Width / 2.0, field.Top);
         if (rng.NextDouble() < dualChance) DualUntil = DualSec;
         nextDual = DualUntil + 20 + rng.NextDouble() * 20;
@@ -74,10 +88,15 @@ sealed class Minigun
         }
     }
 
+    // 창 안에 통째로 드는 칸들 (X1·Y1 은 마지막 칸 다음)
+    (int X0, int X1, int Y0, int Y1) CellsOf(Rectangle t) =>
+        (Math.Max(0, (t.Left - Field.Left + Cell - 1) / Cell), Math.Min(Gw, (t.Right - Field.Left) / Cell), Math.Max(0, (t.Top - Field.Top + Cell - 1) / Cell), Math.Min(Gh, (t.Bottom - Field.Top) / Cell));
+
     void Mark(Rectangle t, bool on)
     {
-        for (int gx = Math.Max(0, (t.Left - Field.Left + Cell - 1) / Cell); gx < Math.Min(Gw, (t.Right - Field.Left) / Cell); gx++)
-            for (int gy = Math.Max(0, (t.Top - Field.Top + Cell - 1) / Cell); gy < Math.Min(Gh, (t.Bottom - Field.Top) / Cell); gy++)
+        var (x0, x1, y0, y1) = CellsOf(t);
+        for (int gx = x0; gx < x1; gx++)
+            for (int gy = y0; gy < y1; gy++)
             {
                 int i = gy * Gw + gx;
                 land[i] = on;
@@ -85,14 +104,41 @@ sealed class Minigun
             }
     }
 
+    // 창마다 칸을 다시 센다 (처음, 그리고 창이 빠졌을 때)
+    void Tally()
+    {
+        Array.Clear(owner);
+        (GoneCells, CrackCells, Intact) = (0, 0, 0);
+        for (int n = 0; n < Targets.Count; n++)
+        {
+            var (x0, x1, y0, y1) = CellsOf(Targets[n]);
+            int cells = 0, holes = 0;
+            for (int gy = y0; gy < y1; gy++)
+                for (int gx = x0; gx < x1; gx++)
+                {
+                    int i = gy * Gw + gx;
+                    owner[i] = (byte)(n + 1);
+                    cells++;
+                    if (gone[i]) holes++;
+                    CrackCells += System.Numerics.BitOperations.PopCount(crack[i]);
+                }
+            (landOf[n], goneOf[n], doneOf[n]) = (cells, holes, cells > 0 && holes >= cells); // 칸이 하나도 안 드는 가는 창은 깰 것도, 까맣게 칠할 것도 없다
+            GoneCells += holes;
+            if (holes < cells) Intact++;
+        }
+    }
+
+    // 창 n 이 파인 정도 0~1 (칸이 없는 창은 1)
+    public double Share(int n) => landOf[n] == 0 ? 1 : (double)goneOf[n] / landOf[n];
+    public bool Done(int n) => doneOf[n];   // 다 깨졌다
+
     // 창이 닫히거나 움직이면 그 창은 대상에서 뺀다 (파인 자리·금도 지운다)
     public void RemoveTarget(Rectangle t)
     {
         if (!Targets.Remove(t)) return;
         Mark(t, false);
         foreach (var o in Targets) Mark(o, true);
-        (GoneCells, CrackCells) = (0, 0);
-        for (int i = 0; i < gone.Length; i++) { if (gone[i]) GoneCells++; CrackCells += System.Numerics.BitOperations.PopCount(crack[i]); }
+        Tally();
         Carved.Add(t);
     }
 
@@ -135,13 +181,27 @@ sealed class Minigun
                 if (!land[i] || gone[i]) continue;
                 double cx = Field.Left + (gx + .5) * Cell - x, cy = Field.Top + (gy + .5) * Cell - y;
                 if (!(gx == hx && gy == hy) && !shape.Inside(cx, cy, r)) continue;
-                gone[i] = true;
-                GoneCells++;
-                if (crack[i] != 0) { CrackCells -= System.Numerics.BitOperations.PopCount(crack[i]); crack[i] = 0; }
+                Dig(i);
                 (ax, ay, bx, by) = (Math.Min(ax, gx), Math.Min(ay, gy), Math.Max(bx, gx), Math.Max(by, gy));
             }
         if (bx < 0) return false;
-        (ax, ay, bx, by) = (Math.Max(0, ax - 1), Math.Max(0, ay - 1), Math.Min(Gw - 1, bx + 1), Math.Min(Gh - 1, by + 1)); // 맞닿은 칸의 가장자리 색도 바뀐다
+        Relook(ax, ay, bx, by);
+        return true;
+    }
+
+    // 칸 하나를 판다 (그 칸의 금은 지운다)
+    void Dig(int i)
+    {
+        gone[i] = true;
+        GoneCells++;
+        goneOf[owner[i] - 1]++;
+        if (crack[i] != 0) { CrackCells -= System.Numerics.BitOperations.PopCount(crack[i]); crack[i] = 0; }
+    }
+
+    // 파인 칸들(ax~bx, ay~by)과 맞닿은 칸까지 보이는 모습을 다시 정하고, 그 자리를 다시 칠하게 한다 (맞닿은 칸의 가장자리 색도 바뀐다)
+    void Relook(int ax, int ay, int bx, int by)
+    {
+        (ax, ay, bx, by) = (Math.Max(0, ax - 1), Math.Max(0, ay - 1), Math.Min(Gw - 1, bx + 1), Math.Min(Gh - 1, by + 1));
         for (int gy = ay; gy <= by; gy++)
             for (int gx = ax; gx <= bx; gx++)
             {
@@ -149,7 +209,35 @@ sealed class Minigun
                 look[i] = !gone[i] ? (byte)0 : Whole(gx - 1, gy) || Whole(gx + 1, gy) || Whole(gx, gy - 1) || Whole(gx, gy + 1) ? (byte)2 : (byte)1;
             }
         Carved.Add(Rectangle.FromLTRB(Field.Left + ax * Cell, Field.Top + ay * Cell, Field.Left + (bx + 1) * Cell, Field.Top + (by + 1) * Cell));
-        return true;
+    }
+
+    // 많이 깨진 창(BreakAt)은 남은 조각이 무너져 내린다. 덜 깨진 창 수를 다시 센다 (프레임마다 한 번, 창은 많아야 여덟)
+    void Crumble()
+    {
+        int intact = 0;
+        for (int n = 0; n < Targets.Count; n++)
+        {
+            if (doneOf[n] || landOf[n] == 0) continue;
+            if (goneOf[n] < landOf[n])
+            {
+                if (goneOf[n] < landOf[n] * BreakAt) { intact++; continue; }
+                var (x0, x1, y0, y1) = CellsOf(Targets[n]);
+                for (int gy = y0; gy < y1; gy++)
+                    for (int gx = x0; gx < x1; gx++)
+                    {
+                        int i = gy * Gw + gx;
+                        if (!land[i] || gone[i]) continue;
+                        Dig(i);
+                        Debris(Field.Left + (gx + .5) * Cell, Field.Top + (gy + .5) * Cell, 1, true, 260, 1, BlastRoom); // 남은 칸마다 조각 하나가 떨어진다
+                    }
+                Relook(x0, y0, x1 - 1, y1 - 1);
+                Breaks++;
+                OnEvent?.Invoke("break");
+            }
+            doneOf[n] = true;
+            Carved.Add(Targets[n]); // 창 자리를 통째로 다시 칠한다
+        }
+        Intact = intact;
     }
 
     bool Whole(int gx, int gy) => gx >= 0 && gy >= 0 && gx < Gw && gy < Gh && land[gy * Gw + gx] && !gone[gy * Gw + gx];
@@ -327,6 +415,7 @@ sealed class Minigun
         for (int n = 0; n < Blasts.Count; n++)
             if (Clock - Blasts[n].At <= BlastArt.Sec) Blasts[keep++] = Blasts[n];
         Blasts.Trim(keep);
+        Crumble();
     }
 
     void Shoot(PointF p, double aim)

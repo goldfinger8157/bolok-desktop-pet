@@ -341,9 +341,20 @@ public sealed class Brain
         else { Play("happy", 1.2); Emote("note"); }
     }
 
-    double Shown => P.Stage == "baby" ? .72 : .64; // 창 위로 내민 몸의 비율. 작을수록 눈이 아래쪽에 있다
+    // 창 위에서 빼꼼 (YELL 2026-11-13: 창 가장자리가 눈을 가로지르면 애매하다 → 나와 있을 땐 눈 밑까지 다 보이고, 쏙 들어가면 이마·귀만).
+    // 눈 높이는 종·모습마다 그림 데이터에서 (Shown: 창 위로 내민 몸의 비율, TopDuck: 들어갈 때 더 내려가는 비율)
+    public Func<string> SpeciesKey = () => "hamster";
+    public static (double Shown, double Duck) TopPeek(string species, string form)
+    {
+        var (top, bottom) = PetArt.Embedded.EyeRows(species, form);
+        double show = Math.Min(.85, (bottom + 1.5) / PetArt.Cell);   // 눈 밑 한 줄 반까지 보인다
+        double hide = Math.Max(.05, (top - 1) / PetArt.Cell);        // 눈 위 한 줄까지만 (이마·귀)
+        return (show, Math.Max(.1, show - hide));
+    }
+    double Shown => TopPeek(SpeciesKey(), P.Stage).Shown;
+    double TopDuck => TopPeek(SpeciesKey(), P.Stage).Duck;
 
-    PeekPos HidePos() => HideSpots.At(hideRect, peek, CellPx, Shown);
+    PeekPos HidePos() => HideSpots.At(hideRect, peek, CellPx, Shown, TopDuck);
 
     public bool TryHide()
     {

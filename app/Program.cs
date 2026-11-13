@@ -104,6 +104,41 @@ static class Program
             return 0;
         }
 
+        if (args.Length >= 3 && args[0] == "--peek-look") // 창 위 빼꼼 높이 보기: --peek-look 그림.png hamster cat ... (모습마다 「나옴 | 들어감」, 아래 회색이 창)
+        {
+            ApplicationConfiguration.Initialize();
+            var art = PetArt.Embedded;
+            string[] forms = Showcase.Forms;
+            const int k = 3, cell = PetArt.Cell * k;
+            using var bmp = new Bitmap(forms.Length * (cell * 2 + 12) + 10, (args.Length - 2) * (cell + 10) + 10);
+            using var g = Graphics.FromImage(bmp);
+            g.Clear(Color.FromArgb(150, 160, 175));
+            using var win = new SolidBrush(Color.FromArgb(236, 239, 244));
+            using var bar = new SolidBrush(Color.FromArgb(96, 130, 190));
+            for (int i = 2; i < args.Length; i++)
+            {
+                var sp = Sprites.Drawn(art, args[i], null);
+                int x = 10, y = 10 + (i - 2) * (cell + 10);
+                foreach (var f in forms)
+                {
+                    var (show, duck) = Brain.TopPeek(args[i], f);
+                    foreach (double edge in new[] { show, show - duck })
+                    {
+                        int ey = y + (int)Math.Round(edge * cell); // 창 윗변 (그 아래는 창에 가린다)
+                        g.SetClip(new Rectangle(x, y, cell, ey - y));
+                        g.DrawImage(sp.Get($"{f}/0/idle", 0, k), x, y);
+                        g.ResetClip();
+                        g.FillRectangle(win, x, ey, cell, y + cell - ey);
+                        g.FillRectangle(bar, x, ey, cell, 2 * k);
+                        x += cell + 4;
+                    }
+                    x += 8;
+                }
+            }
+            bmp.Save(args[1]);
+            return 0;
+        }
+
         if (args.Length is 3 or 4 && args[0] == "--mode-scene") // 게임 모듈 장면 그려 보기 (화면을 띄우지 않는다): --mode-scene <id>[@배율] <그림.png> [그 게임이 정한 값]
         {
             ApplicationConfiguration.Initialize();

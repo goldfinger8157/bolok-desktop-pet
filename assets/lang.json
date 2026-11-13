@@ -360,16 +360,16 @@
   "ru": "Ctrl: прыжок"
  },
  "note.run_duck": {
-  "en": "Shift: Duck",
-  "ko": "Shift: 앉기",
-  "ja": "Shift: しゃがむ",
-  "zh-Hans": "Shift:蹲下",
-  "zh-Hant": "Shift:蹲下",
-  "es": "Shift: Agacharse",
-  "de": "Shift: Ducken",
-  "fr": "Shift : S'accroupir",
-  "pt": "Shift: Abaixar",
-  "ru": "Shift: пригнуться"
+  "en": "Shift: Duck (on a ledge: drop down)",
+  "ko": "Shift: 앉기 (발판 위: 내려가기)",
+  "ja": "Shift: しゃがむ（足場の上: 降りる）",
+  "zh-Hans": "Shift: 蹲下（在平台上：跳下）",
+  "zh-Hant": "Shift: 蹲下（在平台上：跳下）",
+  "es": "Shift: Agacharse (en una plataforma: bajar)",
+  "de": "Shift: Ducken (auf einem Brett: runterspringen)",
+  "fr": "Shift : Se baisser (sur une planche : descendre)",
+  "pt": "Shift: Abaixar (numa plataforma: descer)",
+  "ru": "Shift: Пригнуться (на уступе: спрыгнуть)"
  },
  "note.break_mouse": {
   "en": "Mouse: Tray",
@@ -528,16 +528,16 @@
   "ru": "←→: идти  ↑: прыжок"
  },
  "note.worms_wind": {
-  "en": "Top box: Wind",
-  "ko": "위쪽 상자: 바람",
-  "ja": "上のボックス: 風",
-  "zh-Hans": "上方的框:风",
-  "zh-Hant": "上方的框:風",
-  "es": "Cuadro de arriba: Viento",
-  "de": "Kasten oben: Wind",
-  "fr": "Cadre du haut : Vent",
-  "pt": "Caixa de cima: Vento",
-  "ru": "Рамка сверху: ветер"
+  "en": "Cloud box: Wind",
+  "ko": "구름 상자: 바람",
+  "ja": "雲のボックス: 風",
+  "zh-Hans": "云朵框:风",
+  "zh-Hant": "雲朵框:風",
+  "es": "Cuadro de la nube: Viento",
+  "de": "Wolkenkasten: Wind",
+  "fr": "Cadre au nuage : Vent",
+  "pt": "Caixa da nuvem: Vento",
+  "ru": "Рамка с облаком: ветер"
  },
  "note.raid_move": {
   "en": "←→ / Mouse: Move",

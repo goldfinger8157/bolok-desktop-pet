@@ -82,6 +82,8 @@ sealed partial class FortressGame : IGameMode
             };
         guide = new[] { L.T("note.worms_gun", w.Me.Gun.Label, w.Me.Gun.Hp), L.T("note.gun_aim"), L.T("note.worms_fire"), L.T("note.worms_walk"), L.T("note.worms_wind"), L.T("note.esc") };
         (meHead, cpuHead) = (40 * w.K * PetArt.Embedded.HeadRatio(b.P.Stage), 40 * w.K * PetArt.Embedded.HeadRatio(Rival));
+        using (var font = new Font(L.Font, 4 * b.Scale + 3, FontStyle.Bold, GraphicsUnit.Pixel)) noteHalf = (font.Height * guide.Length + 6 * b.Scale) / 2.0; // Overlay.NoteRect 와 같은 높이
+        hudMode = -1;
         upWas = true; // 누른 채 시작한 ↑ 로 뛰지 않게
         (fresh, boomsSeen) = (0, 0);
         (rivalSpot, meSpot, cpuSpot, aimSpot, hudSpot) = (default, default, default, default, default);
@@ -322,7 +324,63 @@ sealed partial class FortressGame : IGameMode
     }
 
     // ── 자리 (화면 좌표): 그리기와 다시 칠할 자리가 같은 계산을 쓴다 ──
-    static Rectangle HudRect(Fortress w) => new(w.Field.Left + w.Field.Width / 2 - 46 * w.K, w.Field.Top + 4 * w.K, 92 * w.K, 14 * w.K);
+    // ── 바람 상자 자리 (YELL 2026-11-13: 판 위 가운데는 조준할 때 보는 곳에서 멀다 → 볼록이 가까이로) ──
+    //  0 머리 위: 체력 막대·힘 막대·조준경이 도는 둘레·안내 말풍선보다 위, 볼록이 바로 위에
+    //  1 발 아래: 머리 위에 자리가 없을 때 (섬이 화면 위쪽에 붙어 있다). 말풍선 아랫변 밑, 라이벌 반대쪽으로 뻗는다 (앞쪽·위쪽을 겨누는 조준경에 안 걸린다)
+    //  2 조준경 둘레 아래: 뒤쪽이 판 끝이라 1 도 못 쓸 때
+    // 한번 고른 쪽은 자리가 있는 한 그대로 쓴다 (위아래로 오락가락하지 않게).
+    // 볼록이가 걷고 뛰고 날아가는 동안에는 제자리에 있고, 멈춰 선 뒤(HudRest 초)에만 새 자리로 스르륵 옮겨 간다:
+    // 걸음마다 따라다니면 바람을 읽을 수 없고 프레임마다 상자를 다시 칠하게 된다. 조금(6칸px 안) 움직인 것으로는 옮기지 않는다
+    const int HudW = 92, HudH = 14;     // × 배율
+    const double HudRest = .25, HudGlide = 14; // 멈춰 서고 이만큼 지나야 자리를 다시 잡는다 · 옮겨 가는 빠르기 (1/초: 0.3초쯤이면 다 간다)
+    int hudMode = -1, hudBack;          // -1 아직 안 잡았다. hudBack: 라이벌 반대쪽 (-1 왼쪽 · 1 오른쪽)
+    double hudX, hudY, hudClock;        // 지금 그려지는 자리 (왼쪽 위)
+    double hudAirAt;                    // 볼록이가 마지막으로 떠 있던 때
+    Point hudTo;                        // 가야 할 자리
+    double hudForX, hudForY;            // 그 자리를 잡았을 때의 볼록이 발
+    double noteHalf;                    // 안내 말풍선 높이의 절반
+
+    Rectangle HudRect(Fortress w) => new((int)Math.Round(hudX), (int)Math.Round(hudY), HudW * w.K, HudH * w.K);
+    static int Back(Fortress w) => w.Me.X <= w.Cpu.X ? -1 : 1;
+
+    // mode 쪽에 둘 때의 자리. 판 밖으로 나가면 빈 자리 (force: 그래도 판 안으로 밀어 넣어서)
+    Rectangle HudAt(Fortress w, int mode, bool force = false)
+    {
+        var me = w.Me;
+        int k = w.K, hw = HudW * k, hh = HudH * k, x = (int)me.X, cy = (int)w.CenterY(me), reach = (int)(40 * k * .9) + 1;
+        var room = Rectangle.Inflate(w.Field, -2 * k, -2 * k);
+        double noteMid = me.Y - host.Pet.CellPx * .4;
+        int left = x - hw / 2, top;
+        if (mode == 0) top = Math.Min(Math.Min(LabelRect(w, me).Top, cy - reach + aim.Dy), (int)(noteMid - noteHalf)) - k - hh;
+        else if (mode == 1) (left, top) = (Back(w) < 0 ? x + 4 * k - hw : x - 4 * k, (int)Math.Ceiling(noteMid + noteHalf) + k);
+        else top = cy + reach + aim.Dy + aim.Bmp.Height + k;
+        int fit = Math.Clamp(left, room.Left, Math.Max(room.Left, room.Right - hw));
+        if (force) return new(fit, Math.Clamp(top, room.Top, Math.Max(room.Top, room.Bottom - hh)), hw, hh);
+        return mode == 1 && fit != left || top < room.Top || top + hh > room.Bottom ? default : new(fit, top, hw, hh);
+    }
+
+    // 프레임마다 한 번: 볼록이가 멈춰 섰으면 자리를 다시 잡고, 가야 할 자리가 있으면 조금씩 다가간다
+    void PlaceHud(Fortress w)
+    {
+        var me = w.Me;
+        bool first = hudMode < 0;
+        if (first || me.Air) hudAirAt = first ? -9 : w.Clock;
+        if (first || !me.Out && !me.Air && w.Clock - Math.Max(me.WalkAt, hudAirAt) >= HudRest
+            && (Math.Abs(me.X - hudForX) > 6 * w.K || Math.Abs(me.Y - hudForY) >= 1 || hudMode == 1 && Back(w) != hudBack))
+        {
+            var at = first ? default : HudAt(w, hudMode);
+            for (int m = 0; m < 3 && at.IsEmpty; m++) at = HudAt(w, hudMode = m);
+            if (at.IsEmpty) at = HudAt(w, hudMode = 0, force: true); // 어디에도 자리가 없다 (판이 아주 작다): 겹치더라도 판 안에
+            (hudTo, hudForX, hudForY, hudBack) = (at.Location, me.X, me.Y, Back(w));
+            if (first) (hudX, hudY) = (at.X, at.Y);
+        }
+        double dt = w.Clock - hudClock;
+        hudClock = w.Clock;
+        if (hudX == hudTo.X && hudY == hudTo.Y) return;
+        double step = 1 - Math.Exp(-Math.Max(0, dt) * HudGlide);
+        (hudX, hudY) = (hudX + (hudTo.X - hudX) * step, hudY + (hudTo.Y - hudY) * step);
+        if (Math.Abs(hudTo.X - hudX) < 1 && Math.Abs(hudTo.Y - hudY) < 1) (hudX, hudY) = (hudTo.X, hudTo.Y);
+    }
     int BarY(Fortress w, Fortress.Hog h) => (int)(h.Y - (h == w.Me ? meHead : cpuHead)) - 7 * w.K; // 체력 막대 윗변: 귀 위로 조금 띄워서
 
     // 체력 막대 + 숫자 + 그 위 표시(차례 화살표·힘 막대·왕관)가 다 들어가는 자리
@@ -351,7 +409,7 @@ sealed partial class FortressGame : IGameMode
     }
 
     // ── 다시 칠할 자리: 프레임마다 한 번(Track) 바뀐 것만 모아 두고, 그림 창마다 그대로 넘긴다 ──
-    // 움직이지 않는 것(라이벌·체력 막대·조준경·위쪽 상자)은 값이 바뀐 프레임에만 옛 자리와 새 자리를 넣는다
+    // 움직이지 않는 것(라이벌·체력 막대·조준경·바람 상자)은 값이 바뀐 프레임에만 옛 자리와 새 자리를 넣는다
     struct Spot
     {
         Rectangle last;
@@ -401,6 +459,7 @@ sealed partial class FortressGame : IGameMode
         else aimSpot.Mark(dirty, default, 0);
         foreach (var s in w.Shells) dirty.Add(Rectangle.Inflate(ShellStamp(w, s).Box((int)s.X, (int)s.Y), 1, 1));
         foreach (var bl in w.Blasts) if (w.Clock - bl.At < BlastArt.Sec) dirty.Add(BlastArt.PopRect(bl.X, bl.Y, bl.R, k));
+        PlaceHud(w);
         hudSpot.Mark(dirty, HudRect(w), HashCode.Combine((int)Math.Round(w.Wind * 10), (int)Math.Ceiling(w.TimeLeft), w.Active.Gun.Name, w.MyTurn));
     }
 
@@ -417,7 +476,8 @@ sealed partial class FortressGame : IGameMode
         if (w.Clock < GuideSec) rs.Add(o.Client(GuideRect(o, w)));
     }
 
-    // ── 그리기: 섬 풀·흙 줄, 구멍, 라이벌, 체력 막대, 조준경, 포탄, 불덩이, 위쪽 상자(바람·남은 시간·대포), 안내 ──
+    // ── 그리기: 섬 풀·흙 줄, 구멍, 바람 상자(바람·남은 시간·대포), 라이벌, 체력 막대, 조준경, 포탄, 불덩이, 안내 ──
+    // 바람 상자는 볼록이 가까이에 있어서 맨 밑에 깐다: 뛰어오른 볼록이의 체력 막대나 지나가는 포탄·불덩이가 상자에 가리지 않게
     public void Draw(Overlay o, Graphics g)
     {
         if (game is not { } w || !o.Bounds.IntersectsWith(w.Field)) return;
@@ -442,6 +502,7 @@ sealed partial class FortressGame : IGameMode
                     if (tiles[ty * tw + tx] is { } tile) g.DrawImageUnscaled(tile, f.X + tx * TilePx, f.Y + ty * TilePx);
             foreach (var r in gaps) g.FillRectangle(Pal.Hole, r.X - o.Left, r.Y - o.Top, r.Width, r.Height);
         }
+        DrawHud(o, g, w);
         var cpu = w.Cpu; // 라이벌 (볼록이는 제 창으로 그려진다)
         if (!cpu.Out) RivalStamp(w).Put(o, g, (int)cpu.X, (int)cpu.Y - 20 * k);
         if (showMe && !w.Me.Out) Fx.Pet(o, g, artOf!, host.Pet.P.Stage, w.PoseOf(w.Me), w.Clock, k, w.Me.X, w.Me.Y, w.Me.Dir < 0);
@@ -450,7 +511,6 @@ sealed partial class FortressGame : IGameMode
         if (AimOn(w)) { var (ax, ay) = AimAt(w); aim.Put(o, g, ax, ay); }
         foreach (var s in w.Shells) ShellStamp(w, s).Put(o, g, (int)s.X, (int)s.Y);
         foreach (var bl in w.Blasts) if (w.Clock - bl.At < BlastArt.Sec) BlastArt.Pop(o, g, bl.X, bl.Y, bl.R, w.Clock - bl.At, k);
-        DrawHud(o, g, w);
         if (w.Clock < GuideSec) DrawGuide(o, g, w);
     }
 
@@ -512,7 +572,7 @@ sealed partial class FortressGame : IGameMode
         g.FillRectangle(Pal.White, box.X + u, box.Y + u, box.Width - 2 * u, box.Height - 2 * u);
     }
 
-    // 위 가운데 상자: 구름 + 바람 화살표(길이)와 세기 칸 다섯, 남은 시간, 지금 차례 대포
+    // 바람 상자 (볼록이 가까이, 자리는 PlaceHud): 구름 + 바람 화살표(길이)와 세기 칸 다섯, 남은 시간, 지금 차례 대포
     void DrawHud(Overlay o, Graphics g, Fortress w)
     {
         int k = w.K, small = GameHud.Small(k);

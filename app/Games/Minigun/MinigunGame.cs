@@ -6,6 +6,8 @@ namespace Bolok;
 // 미니건 모듈: 앱에 붙이기(판·조작·볼록이·쏠 창 고르기), 그리기, 자가 검사, 디버그 명령. 규칙은 Minigun.cs
 // 판은 쏠 창이 있는 모니터 전체. 볼록이 본체는 그대로 두고(꼭두각시) 총·구멍·파편만 그림 창에 그린다. 점수·기록은 없다
 // 조작: 마우스 조준(볼록이가 마우스 X 로 걷는다), 왼쪽 꾹 쏘기, 오른쪽 미사일, Shift+오른쪽 수류탄. Esc 끝 (보스 키)
+// 끝: 창을 다 깨면(Minigun.Intact == 0) 저절로 끝난다 (YELL 2026-11-13). 파편이 가라앉는 CheerSec 동안 볼록이가 기뻐하고(별) 판 가운데에 깬 창 수가 뜬 뒤 보통 끝내기(Stop(false))로.
+// 그동안에는 더 쏘지 않는다. 보스 키는 그때도 바로, 표정 없이 끝낸다. 쏘던 창이 다 닫히거나 움직여도 끝난다
 // 표시·효과·소리·조작은 공통 도구(app/Games/Kit)를 쓴다. 하는 동안 메모리를 새로 잡지 않고, 바뀐 자리만 다시 칠한다
 sealed class MinigunGame : IGameMode
 {
@@ -16,10 +18,14 @@ sealed class MinigunGame : IGameMode
     bool forceFire, real, grenade, mock;
     Point? forceAim;
     double checkAt;
+    public const double CheerSec = 1.2;   // 다 깨고 기뻐하는 시간 (파편은 길어야 1.2초 날아다닌다)
+    double clearAt = -1;                  // 다 깬 때 (-1: 아직)
+    Point clearAim;                       // 그때 겨누던 자리 (기뻐하는 동안 총은 그대로 든다)
+    int cleared;                          // 깬 창 수
 
     static readonly Dictionary<string, Sound> Sounds = new()
     {
-        ["throw"] = Sound.Tap, ["launch"] = Sound.ShotGun, ["boom"] = Sound.Boom, ["chunk"] = Sound.Hit, ["dual"] = Sound.Pick,
+        ["throw"] = Sound.Tap, ["launch"] = Sound.ShotGun, ["boom"] = Sound.Boom, ["chunk"] = Sound.Hit, ["dual"] = Sound.Pick, ["break"] = Sound.Hit,
     };
 
     public MinigunGame(IGameHost host) => this.host = host;
@@ -68,20 +74,21 @@ sealed class MinigunGame : IGameMode
         if (e == "hit") return;
         Snd.Play(Sounds, e);
         if (e == "dual") host.Pet.Emote("star", 1.2); // 쌍 미니건
-        if (e is "boom" or "dual") Dbg.Log("gun-" + e, ("shots", mg.Shots));
+        if (e is "boom" or "dual" or "break") Dbg.Log("gun-" + e, ("shots", mg.Shots), ("broken", mg.Breaks));
     }
 
     public void Frame(double dt)
     {
         var (mg, s, b) = (gun!, ses!, host.Pet);
         s.Tick();
-        var m = forceAim ?? s.Mouse;
+        bool cheer = clearAt >= 0; // 다 깨고 기뻐하는 중: 더 쏘지 않고 파편만 가라앉는다
+        var m = cheer ? clearAim : forceAim ?? s.Mouse;
         grenade = s.Shift;
-        if (s.RightHit) { if (grenade) mg.Throw(m.X, m.Y); else mg.Launch(m.X, m.Y); }
-        bool fire = forceFire || s.Left && (!real || (Control.MouseButtons & MouseButtons.Left) != 0); // 떼는 걸 놓쳐도 계속 쏘지 않게
+        if (s.RightHit && !cheer) { if (grenade) mg.Throw(m.X, m.Y); else mg.Launch(m.X, m.Y); }
+        bool fire = !cheer && (forceFire || s.Left && (!real || (Control.MouseButtons & MouseButtons.Left) != 0)); // 떼는 걸 놓쳐도 계속 쏘지 않게
         mg.Update(dt, m.X, m.Y, fire);
         (b.X, b.Y, b.Dir) = (mg.X, mg.Ground, Math.Cos(mg.Aim) >= 0 ? 1 : -1);
-        b.Pose = mg.Clock - mg.BigAt < .3 ? "hop" : mg.Firing ? "angry" : mg.Clock - mg.WalkAt < .1 ? "walk" : "idle";
+        b.Pose = Pose(mg);
         if (mg.Clock > checkAt) // 창이 닫히거나 움직이면 그 창만 대상에서 뺀다
         {
             checkAt = mg.Clock + .5;
@@ -95,17 +102,29 @@ sealed class MinigunGame : IGameMode
                 Dbg.Log("gun-window-gone");
             }
         }
+        if (!cheer && mg.Targets.Count > 0 && mg.Intact == 0) // 창을 다 깼다: 잠깐 기뻐하고 끝낸다 (말은 하지 않는다)
+        {
+            (clearAt, clearAim, cleared) = (mg.Clock, m, mg.Targets.Count);
+            b.Emote("star", CheerSec + .2);
+            Snd.Play(Sound.Pick);
+            Dbg.Log("gun-clear", ("windows", cleared), ("shots", mg.Shots), ("sec", mg.Clock));
+        }
         Track();
-        if (mg.Targets.Count == 0) Stop(false); // 쏠 창이 다 없어졌다
+        if (mg.Targets.Count == 0 || clearAt >= 0 && mg.Clock - clearAt >= CheerSec) Stop(false); // 쏠 창이 다 없어졌거나, 다 깨고 기뻐할 만큼 기뻐했다
     }
+
+    string Pose(Minigun mg) =>
+        clearAt >= 0 ? (mg.Clock - mg.WalkAt < .1 ? "walk" : "happy") : mg.Clock - mg.BigAt < .3 ? "hop" : mg.Firing ? "angry" : mg.Clock - mg.WalkAt < .1 ? "walk" : "idle";
 
     // quit(보스 키·디버그 stop): 표정 없이 바로 끝낸다. 그림은 같은 프레임에 다 사라진다 (Session.Close 가 그림 창을 통째로 다시 칠한다)
     public void Stop(bool quit)
     {
         if (gun is not { } mg) return;
         gun = null;
-        ses?.Close(host.Pet, quit, true, "minigun", ("shots", mg.Shots), ("gone", mg.GoneCells), ("booms", mg.Booms), ("esc", quit)); // 이기고 지는 건 없다. 실컷 쏘면 즐겁다
+        if (quit && clearAt >= 0) host.Pet.Hush(); // 기뻐하던 중에 보스 키: 머리 위 별도 같이 지운다
+        ses?.Close(host.Pet, quit, true, "minigun", ("shots", mg.Shots), ("gone", mg.GoneCells), ("booms", mg.Booms), ("broken", mg.Broken), ("cleared", clearAt >= 0), ("esc", quit)); // 이기고 지는 건 없다. 실컷 쏘면 즐겁다
         ses = null;
+        clearAt = -1;
         windows.Clear();
         frame.Clear();
         (forceFire, forceAim) = (false, null);
@@ -222,7 +241,7 @@ sealed class MinigunGame : IGameMode
     void Reset()
     {
         frame.Clear();
-        (gunShown[0], gunShown[1], hudShown, hudKey, headStage, tracked) = (default, default, default, 0, null, false);
+        (gunShown[0], gunShown[1], hudShown, hudKey, headStage, tracked, clearAt) = (default, default, default, 0, null, false, -1);
     }
 
     void Track()
@@ -265,13 +284,14 @@ sealed class MinigunGame : IGameMode
         var pet = host.Pet;
         if (!ReferenceEquals(headStage, pet.P.Stage)) (headStage, headUp) = (pet.P.Stage, pet.Y - pet.HeadY); // 머리 높이는 모습이 바뀔 때만 다시 잰다 (잴 때마다 메모리를 잡는다)
         (hudX, hudY) = ((int)mg.X, (int)(mg.Ground - headUp));
-        int hkey = pet.Emoting ? -1 : HashCode.Combine(hudX, hudY, grenade, (int)(mg.Ready(grenade) * 14 * k));
+        int hkey = pet.Emoting || clearAt >= 0 ? -1 : HashCode.Combine(hudX, hudY, grenade, (int)(mg.Ready(grenade) * 14 * k));
         if (hkey != hudKey || hudShown.IsEmpty)
         {
             if (!hudShown.IsEmpty) frame.Add(hudShown);
             (hudKey, hudShown) = (hkey, HudRect(hudX, hudY, k));
             frame.Add(hudShown);
         }
+        if (clearAt >= 0) frame.Add(GameHud.CenterRect(mg.Field, k)); // 깬 창 수 (파편이 그 위를 지나가니 기뻐하는 동안에는 프레임마다)
     }
 
     public void Dirty(Overlay o, List<Rectangle> rs)
@@ -356,8 +376,8 @@ sealed class MinigunGame : IGameMode
         (g.InterpolationMode, g.PixelOffsetMode) = (im, pm);
 
         var pet = host.Pet;
-        if (mock) Fx.Pet(o, g, host.Sprites, pet.P.Stage, mg.Firing ? "angry" : "idle", mg.Clock, k, mg.X, mg.Ground, Math.Cos(mg.Aim) < 0);
-        if (!pet.Emoting)
+        if (mock) Fx.Pet(o, g, host.Sprites, pet.P.Stage, clearAt >= 0 ? "happy" : mg.Firing ? "angry" : "idle", mg.Clock, k, mg.X, mg.Ground, Math.Cos(mg.Aim) < 0);
+        if (!pet.Emoting && clearAt < 0)
         {
             var plate = o.Client(HudPlate(hudX, hudY, k));
             int edge = Math.Max(1, k / 2);
@@ -368,13 +388,16 @@ sealed class MinigunGame : IGameMode
             double ready = mg.Ready(grenade);
             GameHud.Bar(o, g, HudBar(hudX, hudY, k), k, ready, ready >= 1 ? Pal.Gold : Pal.Red);
         }
+        if (clearAt >= 0) GameHud.Result(o, g, mg.Field, k, cleared, 0, false, "game/tile"); // 다 깼다: 금 간 조각 × 깬 창 수 (글자 없이)
         ses?.DrawGuide(o, g, mg.Clock, mg.X, mg.Ground);
     }
 
-    // 파인 칸은 까맣게, 아직 남은 칸과 맞닿은 가장자리는 그을린 갈색으로, 금은 반 칸짜리 그을음으로. 다시 칠하는 곳에 걸친 칸만, 같은 줄의 이어진 칸은 한 번에 칠한다
+    // 파인 칸은 까맣게, 아직 남은 칸과 맞닿은 가장자리는 그을린 갈색으로, 금은 반 칸짜리 그을음으로. 다시 칠하는 곳에 걸친 칸만, 같은 줄의 이어진 칸은 한 번에 칠한다.
+    // 다 깨진 창은 창 자리를 통째로 까맣게 (칸에 딱 맞지 않아 가장자리에 남는 자투리까지: 깨진 창에 테두리 한 줄이 떠 있지 않게)
     static void DrawHoles(Overlay o, Graphics g, Minigun mg)
     {
         if (mg.GoneCells == 0 && mg.CrackCells == 0) return;
+        for (int n = 0; n < mg.Targets.Count; n++) if (mg.Done(n)) g.FillRectangle(Pal.Hole, o.Client(mg.Targets[n]));
         var f = o.Client(mg.Field);
         var clip = g.ClipBounds;
         int c = mg.Cell, h = c / 2, w = mg.Gw;
@@ -469,7 +492,7 @@ sealed class MinigunGame : IGameMode
         int f = 0;
         return Bench.Run("minigun", ov, rig.Game, SceneHost.Area, () =>
         {
-            if (f >= 1200) return false;
+            if (f >= 1200 || !rig.Game.Running) return false; // 20초, 그 전에 창을 다 깨면 거기까지
             double t = f / 60.0;
             rig.Mouse = new Point((int)(950 + 750 * Math.Sin(t * .9)), (int)(260 + 160 * Math.Sin(t * 2.3)));
             if (f % 90 == 45)
@@ -483,7 +506,8 @@ sealed class MinigunGame : IGameMode
         }, () => rig.Game.Frame(1 / 60.0));
     }
 
-    // 장면 다섯: 쏘는 중(큰 파편·금) → 날아가는 미사일(연기 꼬리) → 미사일 폭발 → 수류탄 폭발 → 다 가라앉은 뒤(들쭉날쭉한 구멍·금, 쌍 미니건)
+    // 장면 여섯: 쏘는 중(큰 파편·금) → 날아가는 미사일(연기 꼬리) → 미사일 폭발 → 수류탄 폭발 → 다 가라앉은 뒤(들쭉날쭉한 구멍·금, 쌍 미니건)
+    // → 창을 다 깼다 (남은 조각이 무너져 내리고, 볼록이가 기뻐하고, 가운데에 깬 창 수)
     public static void Scene(string path, int k)
     {
         var wins = new[] { new Rectangle(560, 330, 420, 330), new Rectangle(1040, 250, 330, 300) };
@@ -492,8 +516,8 @@ sealed class MinigunGame : IGameMode
         game.mock = true;
         using var ov = rig.Host.Overlay(game);
         rig.Mouse = new Point(760, 500);
-        int f = 0, launched = -1, boomed = -1, thrown = -1, nadeBoom = -1;
-        SceneKit.Shots(path, ov, new Rectangle(500, 210, 920, 860), 5, shot =>
+        int f = 0, launched = -1, boomed = -1, thrown = -1, nadeBoom = -1, smashed = -1;
+        SceneKit.Shots(path, ov, new Rectangle(500, 210, 920, 860), 6, shot =>
         {
             f++;
             switch (shot)
@@ -515,6 +539,10 @@ sealed class MinigunGame : IGameMode
                     if (f == nadeBoom + 20) mg.DualUntil = mg.Clock + 9;
                     game.forceFire = f > nadeBoom + 80;
                     break;
+                case 5: // 부스러기만 남기고 판다 → 90% 를 넘어 남은 조각이 무너지고, 다 깼으니 기뻐한다
+                    game.forceFire = false;
+                    if (smashed < 0) { smashed = f; Smash(mg); }
+                    break;
             }
             int booms = mg.Booms;
             game.Frame(1 / 60.0);
@@ -525,9 +553,19 @@ sealed class MinigunGame : IGameMode
                 1 => launched > 0 && mg.Shells.Count > 0 && mg.Shells[0].Y < 640, // 창에 닿기 조금 전
                 2 => boomed > 0 && f == boomed + 6,
                 3 => nadeBoom > 0 && f == nadeBoom + 8,
-                _ => nadeBoom > 0 && f == nadeBoom + 112,
+                4 => nadeBoom > 0 && f == nadeBoom + 112,
+                _ => f == smashed + 22,
             };
         });
+    }
+
+    // 장면·검사용: 창마다 흩어진 부스러기(열두 칸에 하나)만 남기고 판다. 90% 를 넘으니 다음 프레임에 남은 조각이 무너진다
+    static void Smash(Minigun mg)
+    {
+        var dot = Ragged.Seeded(1);
+        for (int gy = 0; gy < mg.Gh; gy++)
+            for (int gx = 0; gx < mg.Gw; gx++)
+                if (mg.Land(gx, gy) && !mg.Gone(gx, gy) && (gx * 5 + gy * 3) % 12 != 0) mg.Carve(mg.Field.Left + (gx + .5) * mg.Cell, mg.Field.Top + (gy + .5) * mg.Cell, 1, dot);
     }
 
     // ── 자가 검사 (화면 없이) ──
@@ -723,6 +761,46 @@ sealed class MinigunGame : IGameMode
         dig.RemoveTarget(win);
         Expect(dig.Targets.Count == 0 && dig.GoneCells == 0 && dig.CrackCells == 0 && !dig.Solid(950, 400), "창이 사라지면 대상에서 뺀다");
 
+        // 다 깨진 창: 칸의 90% 가 파이면 남은 조각이 무너져 내린다 (그 전에는 그대로). 창이 여럿이면 창마다 따로 센다
+        var dot = Ragged.Seeded(1);
+        var twoWins = new[] { new Rectangle(306, 198, 360, 270), new Rectangle(900, 144, 270, 180) }; // 칸(18px)에 딱 맞는 창 둘
+        var crumble = new Minigun(field, twoWins, ground, 3, new Random(1), grip, dualChance: 0);
+        int breaks = 0;
+        crumble.OnEvent = e => { if (e == "break") breaks++; };
+        int Cells(Minigun m, Rectangle t) { int n = 0; for (int gx = 0; gx < m.Gw; gx++) for (int gy = 0; gy < m.Gh; gy++) if (m.Land(gx, gy) && t.Contains(gx * m.Cell + 2, gy * m.Cell + 2)) n++; return n; }
+        void Pick(Minigun m, Rectangle t, int count) // 창 t 의 칸을 위에서부터 count 개 한 칸씩 판다
+        {
+            for (int gy = 0; gy < m.Gh && count > 0; gy++)
+                for (int gx = 0; gx < m.Gw && count > 0; gx++)
+                    if (m.Land(gx, gy) && !m.Gone(gx, gy) && t.Contains(gx * m.Cell + 2, gy * m.Cell + 2) && m.Carve((gx + .5) * m.Cell, (gy + .5) * m.Cell, 1, dot)) count--;
+        }
+        int cellsA = Cells(crumble, twoWins[0]), cellsB = Cells(crumble, twoWins[1]), needA = (int)Math.Ceiling(cellsA * Minigun.BreakAt);
+        Expect(crumble.Intact == 2 && crumble.Broken == 0 && cellsA == 20 * 15 && cellsB == 15 * 10, $"처음에는 다 멀쩡하다: {cellsA}칸, {cellsB}칸");
+        Pick(crumble, twoWins[0], needA - 1);
+        crumble.Update(1 / 60.0, 950, 0, false);
+        Expect(crumble.GoneCells == needA - 1 && crumble.Intact == 2 && breaks == 0 && crumble.Share(0) < Minigun.BreakAt, $"90% 에 한 칸 모자라면 그대로다: {crumble.GoneCells}/{cellsA}칸");
+        Pick(crumble, twoWins[0], 1);
+        crumble.Update(1 / 60.0, 950, 0, false);
+        int fell = 0;
+        for (int i = 0; i < crumble.Bits.Count; i++) if (crumble.Bits[i].Kind == Minigun.BitKind.Chip) fell++;
+        Expect(crumble.GoneCells == cellsA && crumble.Intact == 1 && crumble.Broken == 1 && breaks == 1 && crumble.Share(0) == 1 && crumble.Share(1) == 0 && fell == cellsA - needA && crumble.CrackCells == 0,
+            $"90% 가 파이면 남은 조각이 무너져 내린다: {crumble.GoneCells}/{cellsA}칸, 덜 깨진 창 {crumble.Intact}, 떨어지는 조각 {fell}개");
+        Expect(crumble.Carved.Any(r => r.Contains(Rectangle.Inflate(twoWins[0], -crumble.Cell, -crumble.Cell))) && crumble.Looks.IndexOf((byte)2) < 0, "무너진 창은 통째로 다시 칠하고, 그을린 가장자리가 남지 않는다");
+        crumble.Update(1 / 60.0, 950, 0, false);
+        Expect(breaks == 1 && crumble.Intact == 1, "한 번 무너진 창은 다시 무너지지 않는다");
+        Pick(crumble, twoWins[1], cellsB * 8 / 10);
+        crumble.Update(1 / 60.0, 950, 0, false);
+        Expect(crumble.Intact == 1 && crumble.Broken == 1 && breaks == 1, "다른 창을 80% 깨도 아직 다 깬 게 아니다");
+        var half = new Minigun(field, twoWins, ground, 3, new Random(1), grip, dualChance: 0);
+        Pick(half, twoWins[0], cellsA);
+        half.Update(1 / 60.0, 950, 0, false);
+        half.RemoveTarget(twoWins[1]);
+        Expect(half.Targets.Count == 1 && half.Intact == 0 && half.GoneCells == cellsA, "덜 깨진 창이 닫히면 남은 창은 다 깨진 창뿐이다");
+        Pick(crumble, twoWins[1], cellsB);
+        crumble.Update(1 / 60.0, 950, 0, false);
+        crumble.RemoveTarget(twoWins[0]);
+        Expect(crumble.Targets.Count == 1 && crumble.Intact == 0 && crumble.GoneCells == cellsB && crumble.Share(0) == 1, "깨진 창이 닫혀도 남은 창의 칸은 그대로 센다");
+
         // 조작: 글자 키로는 아무 일도 없다. 왼쪽 꾹 = 쏘기, 오른쪽 = 미사일, Shift + 오른쪽 = 수류탄. 하는 중에 또 시작해도 그대로. 보스 키로 끝내면 티가 나지 않는다
         var small = new Rectangle(400, 300, 900, 780);
         var smallWins = new[] { new Rectangle(560, 380, 420, 300), new Rectangle(1040, 340, 220, 260) };
@@ -756,7 +834,8 @@ sealed class MinigunGame : IGameMode
         foreach (var t in gone.Mg.Targets.ToArray()) gone.Mg.RemoveTarget(t);
         gone.Frames(2);
         Expect(!gone.Game.Running && gone.Host.Pet.Mode != Mode.Puppet && gone.Host.Pet.Emoting, "쏠 창이 다 없어지면 끝난다 (이때는 기뻐한다)");
-        rig = new Rig(small, smallWins, guide: true);
+        // 창 둘은 6초면 다 깨져서 판이 끝난다: 총알이 안 닿는 구석(마우스가 가는 자리보다 오른쪽 아래)에 작은 창을 하나 더 둬서 이 검사 동안에는 끝나지 않게
+        rig = new Rig(small, smallWins.Append(new Rectangle(1210, 820, 80, 200)).ToArray(), guide: true);
         (game, play) = (rig.Game, rig.Mg);
         using var ov = rig.Host.Overlay(game);
         int n = 0;
@@ -805,7 +884,77 @@ sealed class MinigunGame : IGameMode
         pg.Clear(Color.Transparent);
         game.Draw(ov, pg);
         Expect(!game.Running && rects.Count == 0 && peek.GetPixel(0, 0).A == 0, "끝나면 그림도 같은 프레임에 사라진다 (다시 칠할 자리도, 그릴 것도 없다)");
-        return $"미니건: 한 자리 4초 {dug}px² 파임(아래 {d1:F0} → {d2:F0}), 훑으며 4초 {swept}px², 수류탄 한 방 {big}px², 미사일 한 방 {huge}px², 덩어리 금 반 칸 {lines}개, 쏘는 동안 {perFrame}B/프레임";
+
+        // 창을 다 깨면 저절로 끝난다: 쏘아서 창 하나를 다 깨도(다른 창이 남았으면) 계속하고, 마지막 창까지 깨면 잠깐 기뻐한 뒤 이긴 것으로 끝난다
+        rig = new Rig(small, smallWins);
+        (game, play) = (rig.Game, rig.Mg);
+        var pet = rig.Host.Pet;
+        game.ses!.Press(MouseButtons.Left, true);
+        int sweeps = 0;
+        bool Sweep(Rectangle t, double sec, Func<bool> done) // 창 t 아래를 좌우로 훑으며 쏜다 (done 이면 그만)
+        {
+            for (int i = 0; i < sec * 60 && game.Running && !done(); i++, sweeps++)
+            {
+                double u = Math.Abs((sweeps / 60.0 / 3 % 2) - 1); // 3초에 한 번 건너간다
+                rig.Mouse = new Point((int)(t.Left + 8 + (t.Width - 16) * u), t.Top - 30);
+                rig.Frames(1);
+            }
+            return done();
+        }
+        Sweep(smallWins[1], 1.5, () => false);
+        Expect(game.Running && play.Intact == 2 && play.GoneCells > 0 && game.clearAt < 0, "조금 깬 것으로는 끝나지 않는다");
+        Expect(Sweep(smallWins[1], 60, () => play.Intact == 1) && game.Running && game.clearAt < 0, $"창 하나를 다 깨도 다른 창이 남았으면 계속한다: {play.Share(1):P0}");
+        double oneAt = play.Clock;
+        rig.Mouse = new Point(700, 320);
+        game.ses.Press(MouseButtons.Left, false);
+        rig.Frames(120);
+        Expect(game.Running && play.Intact == 1 && play.Broken == 1 && pet.Mode == Mode.Puppet, "깨진 창이 하나 있어도 가만히 두면 끝나지 않는다");
+        game.ses.Press(MouseButtons.Left, true);
+        Expect(Sweep(smallWins[0], 90, () => game.clearAt >= 0) && game.Running && play.Intact == 0 && play.Breaks == 2, $"마지막 창까지 깨면 기뻐하기 시작한다: {play.Share(0):P0}");
+        double clearSec = play.Clock;
+        int shotsAtClear = play.Shots, cheerFrames = 0;
+        Expect(pet.Emoting && pet.EmoteName == "star" && pet.Mode == Mode.Puppet && !pet.Saying, "다 깨면 머리 위에 별이 뜬다 (말은 하지 않는다)");
+        rig.Mouse = new Point(600, 320);
+        game.ses.Press(MouseButtons.Right, true); // 기뻐하는 동안에는 눌러도 더 쏘지 않는다
+        rig.Frames(20);
+        cheerFrames += 20;
+        Expect(game.Running && play.Shots == shotsAtClear && play.Shells.Count == 0 && pet.Pose == "happy", $"기뻐하는 동안에는 쏘지 않고 기뻐한다: {pet.Pose}");
+        rects.Clear();
+        game.Dirty(ov, rects);
+        Expect(rects.Contains(ov.Client(GameHud.CenterRect(small, 3))), "기뻐하는 동안 판 가운데(깬 창 수)를 다시 칠한다");
+        while (game.Running && cheerFrames < 600) { rig.Frames(1); cheerFrames++; }
+        Expect(!game.Running && Math.Abs(cheerFrames / 60.0 - CheerSec) < .06, $"{CheerSec}초 기뻐하고 저절로 끝난다: {cheerFrames}프레임");
+        Expect(pet.Mode == Mode.Anim && pet.Pose == "happy" && pet.EmoteName == "star" && pet.Emoting && !pet.Saying, $"이긴 것으로 끝난다 (기뻐하고 별, 말은 없다): {pet.Mode} {pet.Pose} {pet.EmoteName}");
+        pet.Hush();
+
+        // 기뻐하는 중에도 보스 키는 바로, 표정 없이 끝낸다. 그리고 다 깨는 장면도 바뀐 자리만 다시 칠해 맞다
+        rig = new Rig(small, smallWins);
+        (game, play) = (rig.Game, rig.Mg);
+        foreach (var t in play.Targets) play.Carve(t.Left + t.Width / 2.0, t.Top + t.Height / 2.0, 2000, dot);
+        rig.Frames(10);
+        Expect(game.Running && game.clearAt >= 0 && rig.Host.Pet.Emoting && play.Breaks == 0 && play.Intact == 0, "통째로 깨져도 다 깬 것이다 (무너질 조각은 없다)");
+        game.Stop(true);
+        rects.Clear();
+        game.Dirty(ov, rects);
+        Expect(!game.Running && rig.Host.Pet.Mode == Mode.Wander && !rig.Host.Pet.Emoting && rects.Count == 0 && game.clearAt < 0, "기뻐하는 중에 보스 키를 눌러도 표정 없이 바로 끝난다");
+        rig = new Rig(small, smallWins);
+        (game, play) = (rig.Game, rig.Mg);
+        using var ov2 = rig.Host.Overlay(game);
+        game.ses!.Press(MouseButtons.Left, true);
+        n = 0;
+        (bad, first) = SceneKit.Repaint(ov2, game, small, () =>
+        {
+            n++;
+            rig.Mouse = new Point((int)(850 + 330 * Math.Sin(n / 60.0 * 1.7)), 330);
+            if (n == 90) Smash(play); // 부스러기만 남긴다 → 무너진다
+            game.Frame(1 / 60.0);
+            rig.Host.Pet.Hush(); // 머리 위 별은 그림 창이 따로 그린다
+            return game.Running;
+        }, 600, every: 3);
+        Expect(bad == 0 && !game.Running && play.Breaks == 2 && n > 90 + CheerSec * 60 - 3 && n < 90 + CheerSec * 60 + 6, $"다 깨고 기뻐하는 장면도 바뀐 자리만 다시 칠해 맞다: {bad}번 다름 (처음 {first}프레임), {n}프레임, 무너진 창 {play.Breaks}");
+        rig.Host.Pet.Hush();
+        return $"미니건: 한 자리 4초 {dug}px² 파임(아래 {d1:F0} → {d2:F0}), 훑으며 4초 {swept}px², 수류탄 한 방 {big}px², 미사일 한 방 {huge}px², 덩어리 금 반 칸 {lines}개, 쏘는 동안 {perFrame}B/프레임, " +
+               $"창 둘을 훑어 쏴서 {oneAt:F0}초에 하나·{clearSec:F0}초에 다 깨고 {cheerFrames / 60.0:F1}초 기뻐한 뒤 저절로 끝남";
     }
 
     // 파인 자리의 가장자리가 (x, y) 에서 가장 가까운 거리와 가장 먼 거리 (16 방향으로 재서)
