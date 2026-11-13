@@ -185,7 +185,7 @@ public sealed class PetArt
         return (Strip(frames.Select(f => Pet(S, p[0], F, int.Parse(p[1]), f))), frames.Length);
     }
 
-    // 도감 썸네일: 어린이가 서 있는 그림 + 눈 감은 그림 (설정 창 도감, ICBM 구멍에서 빼꼼, 꿈)
+    // 도감 썸네일: 어린이가 서 있는 그림 + 눈 감은 그림 (설정 창 도감, 게임의 구멍에서 빼꼼, 꿈)
     public Bitmap Thumb(string id)
     {
         var F = forms.First(f => f.Name == "child").F;

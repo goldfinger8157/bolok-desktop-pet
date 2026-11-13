@@ -1,6 +1,6 @@
 namespace Bolok;
 
-public enum Mode { Wander, Anim, GoBite, Chase, Held, Thrown, GoHide, SlipIn, Hiding, Emerge, GoNap, Perch, Prey, Puppet }
+public enum Mode { Wander, Anim, GoBite, Chase, Held, Thrown, GoHide, SlipIn, Hiding, Emerge, GoNap, Perch, Puppet }
 
 public sealed class Hole { public int Cx, Cy; public readonly List<Point> Cells = new(); }
 public sealed class Bit { public double X, Y, Vx, Vy, G, Life; public Color C; }
@@ -51,12 +51,7 @@ public sealed class Brain
     double vx, vy, throwSpeed, squashUntil;
     Peek peek;
     Rectangle hideRect;
-    double nextCall, comboAt, nextNap, jukeAt, hurtUntil, preyVx, preyVy, coverUntil, nextCover;
-    public Rectangle Arena;             // 총쏘기 게임에서 도망 다니는 모니터
-    List<Cover> covers = new();         // 숨을 수 있는 창들
-    (double X, double Y, Cover C)? cover;
-    bool ducking;
-    public Cover? CoverProp;            // 숨은 창. 그 안쪽 몸은 안 그리고 안 맞는다
+    double nextCall, comboAt, nextNap;
     Peek perch;
     double watchAt, bobAt, runUntil, nextHide, activeAt, activeSeen, startleOk, rollV, flipAt, lastPoke = -99, pokeShown;
     int combo;
@@ -112,7 +107,7 @@ public sealed class Brain
 
     void Play(string pose, double sec, Action? after = null)
     {
-        if (Mode is Mode.Prey or Mode.Puppet) return; // 게임 중에는 다른 동작이 끼어들지 않는다
+        if (Mode == Mode.Puppet) return; // 게임 중에는 다른 동작이 끼어들지 않는다
         Mode = Mode.Anim; Pose = pose; until = Now + sec; then = after;
         solo = false; tailSpin = false; fleeing = false;
     }
@@ -190,7 +185,7 @@ public sealed class Brain
     // 마우스 손짓 (PetForm 이 커서 움직임에서 알아낸다, Gestures.cs): 쓰다듬기·툭툭은 쓰다듬기로 쳐 주고, 찌르기는 깜짝
     public void Gesture(string kind)
     {
-        if (P.Stage == "egg" || Mode is Mode.Thrown or Mode.Held or Mode.Puppet or Mode.Hiding or Mode.SlipIn or Mode.Emerge or Mode.Prey) return;
+        if (P.Stage == "egg" || Mode is Mode.Thrown or Mode.Held or Mode.Puppet or Mode.Hiding or Mode.SlipIn or Mode.Emerge) return;
         Dbg.Log("gesture", ("kind", kind), ("asleep", P.Asleep));
         if (kind != "poke" && Now >= nextPet) { P.Act(K, "pet"); nextPet = Now + K.PetCooldownSec; }
         if (kind == "poke") P.Act(K, "annoy");
@@ -310,7 +305,7 @@ public sealed class Brain
         next = Now + 1.5;
     }
 
-    // hard: 속도와 상관없이 세게 던진 것처럼 (내려앉으면 어지러워한다). ICBM 폭발에 날아갈 때
+    // hard: 속도와 상관없이 세게 던진 것처럼 (내려앉으면 어지러워한다). 게임의 폭발에 날아갈 때
     public void Throw(double fx, double fy, bool hard = false)
     {
         if (hard) dizzyNext = true;
@@ -459,7 +454,7 @@ public sealed class Brain
 
     void OnActivated(Win w)
     {
-        if (P.Stage == "egg" || Mode is Mode.Held or Mode.Thrown or Mode.Chase or Mode.GoBite or Mode.Prey or Mode.Puppet) return;
+        if (P.Stage == "egg" || Mode is Mode.Held or Mode.Thrown or Mode.Chase or Mode.GoBite or Mode.Puppet) return;
         if (Mode == Mode.Anim && !solo) return;
         if (Mode == Mode.Perch && w.H == perch.H) return; // 누워 있는 창을 누른 것뿐이다
         bool hiding = Mode is Mode.GoHide or Mode.SlipIn or Mode.Hiding or Mode.Emerge;
@@ -489,165 +484,21 @@ public sealed class Brain
         Active = Foreground();
         if (Active is not { } w) return;
         if (was is not { } old || old.H != w.H) { OnActivated(w); return; }
-        if (old.R == w.R || Mode is Mode.Held or Mode.Thrown or Mode.Prey or Mode.Puppet) return;
+        if (old.R == w.R || Mode is Mode.Held or Mode.Thrown or Mode.Puppet) return;
         if (HideSpots.HitBy(old.R, w.R, Body(X, Y)) is { } hit) Knock(hit.Dx, hit.Dy, hit.Moved / Math.Max(gap, .01));
-    }
-
-    // 총쏘기 게임: 시작하면 그 모니터 안에서 커서를 피해 도망 다닌다
-    public void StartGame(Rectangle arena, IEnumerable<Cover>? windows = null)
-    {
-        Arena = arena;
-        covers = (windows ?? Enumerable.Empty<Cover>()).ToList();
-        (cover, ducking, CoverProp, nextCover) = (null, false, null, Now + 1);
-        (dashing, phaseUntil, freezeUntil) = (false, Now + .3, 0);
-        Behind = false;
-        fleeing = false;
-        Foods.Clear();
-        P.Asleep = false;
-        (preyVx, preyVy, jukeAt) = (0, 0, 0);
-        X = Math.Clamp(X, arena.Left + CellPx / 2.0, arena.Right - CellPx / 2.0);
-        Y = Math.Clamp(Y, arena.Top + CellPx, arena.Bottom - K.FloorGap);
-        Mode = Mode.Prey;
-        Pose = "walk";
-        Dbg.Log("game-start", ("arena", arena.ToString()));
-    }
-
-    public double FlashUntil;           // 맞으면 하얗게 번쩍
-    double freezeUntil, phaseUntil, dashX, dashY;
-    bool dashing;
-
-    // 맞음: 0.06초 멈칫(손맛), 하얗게 번쩍, 총알 방향으로 밀려나고, 곧바로 달아난다
-    public void GameHit(double x, double y, double fromX, double fromY)
-    {
-        hurtUntil = Now + .35;
-        freezeUntil = Now + .06;
-        FlashUntil = Now + .08;
-        double dx = X - fromX, dy = Y - CellPx * .45 - fromY, d = Math.Sqrt(dx * dx + dy * dy) + 1;
-        X = Math.Clamp(X + dx / d * 26 * S, Arena.Left + CellPx / 2.0, Arena.Right - CellPx / 2.0);
-        Y = Math.Clamp(Y + dy / d * 26 * S, Arena.Top + CellPx, Arena.Bottom - K.FloorGap);
-        (cover, ducking, CoverProp) = (null, false, null);
-        phaseUntil = Now + .06; // 멈칫이 끝나면 바로 다음 달리기
-        dashing = false;
-        for (int i = 0; i < 10; i++)
-            Bits.Add(new Bit { X = x, Y = y, Vx = Rand(-220, 220) * S, Vy = Rand(-280, -40) * S, G = 700 * S, Life = Rand(.25, .5), C = Color.FromArgb(250, 185, 40) });
-    }
-
-    // 아깝게 빗나가면 가끔 놀린다
-    public void NearMiss(double x, double y)
-    {
-        double dx = X - x, dy = Y - CellPx * .45 - y;
-        if (dx * dx + dy * dy < Math.Pow(150 * S, 2) && !dashing && rng.NextDouble() < .35) { Emote("note", .6); Pose = "giggle"; phaseUntil = Math.Max(phaseUntil, Now + .35); }
-    }
-
-    public bool Frozen => Now < freezeUntil;
-
-    // 게임 한 판은 놀아주기 한 번이다. 맞은 만큼 어지러워한다
-    public bool Shielded(int x, int y) => CoverProp?.Contains(x, y) == true;
-
-    // 커서와 반대쪽 창 가장자리. 창이 커서와 볼록이 사이에 오게 한다
-    (double X, double Y, Cover C)? PickCover()
-    {
-        (double X, double Y, Cover C)? best = null;
-        double bestScore = double.MinValue, half = CellPx / 2.0;
-        foreach (var c in covers)
-        {
-            var r = c.R;
-            if (r.Contains(Mouse)) continue;
-            double y = Math.Clamp(Y, r.Top + CellPx * .9, Math.Min(r.Bottom - 4, Arena.Bottom - K.FloorGap));
-            double x = Math.Clamp(X, r.Left + half, r.Right - half);
-            foreach (var (sx, sy) in new[] { (r.Left + CellPx * .12, y), (r.Right - CellPx * .12, y), (x, r.Top + CellPx * .55) })
-            {
-                if (sx - half < Arena.Left || sx + half > Arena.Right || sy - CellPx < Arena.Top) continue;
-                double away = Math.Sqrt(Math.Pow(sx - Mouse.X, 2) + Math.Pow(sy - Mouse.Y, 2)), trip = Math.Sqrt(Math.Pow(sx - X, 2) + Math.Pow(sy - Y, 2));
-                double score = away - trip * .6;
-                if (score > bestScore) { bestScore = score; best = (sx, sy, c); }
-            }
-        }
-        return best;
-    }
-
-    public void EndGame(int hits)
-    {
-        (cover, ducking, CoverProp, covers) = (null, false, null, new());
-        Mode = Mode.Wander;
-        next = Now + 2;
-        P.Act(K, "play");
-        if (hits == 0) { Play("happy", 1.4); Emote("note"); }
-        else if (hits >= 6) Play("dizzy", 2);
-        else Play("giggle", 1.4);
-        Dbg.Log("game-end", ("hits", hits));
-    }
-
-    static double Repel(double dist, double margin) => dist < margin ? (1 - Math.Max(0, dist) / margin) * 2.2 : 0;
-
-    // Doom 의 몬스터처럼 후다닥 달리고 멈추기를 되풀이한다. 멈춘 틈이 쏠 기회다. 달리기 직전엔 움츠려 예고한다
-    void Prey(double dt)
-    {
-        P.Asleep = false;
-        if (Now < freezeUntil) return; // 맞은 순간 멈칫
-        double cy = Y - CellPx * .45, ax = X - Mouse.X, ay = cy - Mouse.Y, d = Math.Sqrt(ax * ax + ay * ay) + 1;
-        double minX = Arena.Left + CellPx / 2.0, maxX = Arena.Right - CellPx / 2.0, minY = Arena.Top + CellPx, maxY = Arena.Bottom - K.FloorGap;
-
-        // 엄폐: 창 가장자리 뒤에서 빼꼼
-        if (cover is { } cv)
-        {
-            if (!ducking)
-            {
-                Pose = Now < hurtUntil ? "hurt" : "walk";
-                if (Walk(cv.X, cv.Y, K.PreySpeed * 1.8, dt))
-                {
-                    (ducking, CoverProp, coverUntil) = (true, cv.C, Now + Rand(.6, 1.4));
-                    Dir = cv.X <= cv.C.R.Left + CellPx ? -1 : cv.X >= cv.C.R.Right - CellPx ? 1 : Dir; // 창 바깥을 내다본다
-                }
-                return;
-            }
-            Pose = Now < hurtUntil ? "hurt" : cv.Y < cv.C.R.Top + CellPx ? "idle" : "peek";
-            if (Now < coverUntil) return;
-            (cover, ducking, CoverProp) = (null, false, null);
-            (nextCover, phaseUntil) = (Now + Rand(1.5, 3), Now);
-        }
-
-        if (dashing)
-        {
-            Pose = Now < hurtUntil ? "hurt" : "walk";
-            if (Walk(dashX, dashY, K.PreySpeed * (Now < hurtUntil ? 2.1 : 1.7), dt) || Now > phaseUntil)
-            {
-                dashing = false;
-                phaseUntil = Now + Rand(.4, .9) * (Now < hurtUntil ? .4 : 1); // 멈춤 — 쏠 틈
-            }
-            return;
-        }
-
-        if (Pose != "giggle" || Now > phaseUntil) Pose = Now < hurtUntil ? "hurt" : "idle";
-        bool close = d < 170 * S;
-        if (Now < phaseUntil - .08 && !close) return; // 쉬는 중
-        if (Now < phaseUntil) { Pose = "land"; return; } // 0.08초 움츠림: 곧 달린다는 예고
-        if (covers.Count > 0 && Now > nextCover && d < 320 * S && PickCover() is { } spot) { cover = spot; nextCover = Now + 1; return; }
-
-        // 커서에서 먼 곳 몇 군데 중 하나로 달린다
-        (double X, double Y) best = (X, Y);
-        double bestScore = double.MinValue;
-        for (int i = 0; i < 8; i++)
-        {
-            double tx = Rand(minX, maxX), ty = Rand(minY, maxY), trip = Math.Sqrt((tx - X) * (tx - X) + (ty - Y) * (ty - Y));
-            double away = Math.Sqrt((tx - Mouse.X) * (tx - Mouse.X) + (ty - CellPx * .45 - Mouse.Y) * (ty - CellPx * .45 - Mouse.Y));
-            double score = away - Math.Abs(trip - 280 * S) * .5; // 너무 멀지도 가깝지도 않게
-            if (score > bestScore) (bestScore, best) = (score, (tx, ty));
-        }
-        (dashX, dashY, dashing) = (best.X, best.Y, true);
-        phaseUntil = Now + 1.2;
-        Dir = dashX > X ? 1 : -1;
     }
 
     public bool Blink => Mode == Mode.Puppet && PuppetBlink?.Invoke() == true; // 게임이 정한 깜빡임 (다친 뒤 잠깐)
 
-    // ── 포트리스: 게임이 볼록이 자리와 자세를 정한다 ──
-    public int PuppetMs;              // 게임이 정하는 값 둘 (게임 모듈): 그림 한 장을 보이는 시간(ms, 0 이면 자세마다 평소대로)과
-    public Func<bool>? PuppetBlink;   // 깜빡임 (true 인 프레임은 본체를 번쩍이게). 게임이 끝나면 지워진다
+    // ── 꼭두각시: 게임 모듈(app/Games)이 볼록이 자리와 자세를 정한다 ──
+    public int PuppetMs;              // 게임이 정하는 값 (게임이 끝나면 지워진다): 그림 한 장을 보이는 시간(ms, 0 이면 자세마다 평소대로),
+    public Func<bool>? PuppetBlink;   // 깜빡임 (true 인 프레임은 본체를 안 그린다),
+    public Region? PuppetClip;        // 본체에서 안 그릴 자리 (화면 좌표: 창 뒤에 숨은 몸처럼)
+    public double FlashUntil;         // 이때까지 본체가 하얗게 번쩍인다 (맞았을 때)
 
     public void StartPuppet()
     {
-        (PuppetMs, PuppetBlink) = (0, null);
+        (PuppetMs, PuppetBlink, PuppetClip) = (0, null, null);
         Behind = false;
         fleeing = false;
         Foods.Clear();
@@ -658,14 +509,14 @@ public sealed class Brain
     // 표정·수치 없이 그냥 돌려놓는다 (디버그 도구: 캐릭터 확인)
     public void LeavePuppet()
     {
-        (PuppetMs, PuppetBlink) = (0, null);
+        (PuppetMs, PuppetBlink, PuppetClip) = (0, null, null);
         Mode = Mode.Wander;
         next = Now + 1;
     }
 
     public void EndPuppet(bool won, string what, params (string, object?)[] log)
     {
-        (PuppetMs, PuppetBlink) = (0, null);
+        (PuppetMs, PuppetBlink, PuppetClip) = (0, null, null);
         Mode = Mode.Wander;
         next = Now + 2;
         P.Act(K, "play"); // 한 판은 놀아주기 한 번
@@ -1121,11 +972,7 @@ public sealed class Brain
                 break;
             }
 
-            case Mode.Prey:
-                Prey(dt);
-                break;
-
-            case Mode.Puppet: // 포트리스: 자리와 자세는 게임이 정한다
+            case Mode.Puppet: // 자리와 자세는 게임이 정한다
                 P.Asleep = false;
                 break;
 

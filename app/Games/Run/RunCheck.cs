@@ -168,7 +168,7 @@ sealed partial class RunGame
         {
             var body = BodyOf(form);
             // 그림과 맞는지: 서 있는 그림(귀 포함)은 선 키보다 낮지 않고, 엎드린 그림은 그만큼 낮다
-            int Top(string pose) => sp.Cell - Props.Trim(Props.Solid(sp.Get($"{form}/0/{pose}", 0, 1))).Y0;
+            int Top(string pose) => sp.Cell - Ui.Opaque(sp.Get($"{form}/0/{pose}", 0, 1), 0).Top;
             int idleTop = Top("idle"), landTop = Top("land");
             Expect(idleTop >= body.Stand - 1 && idleTop <= body.Stand + 9, $"{form}: 선 키 {body.Stand} 가 그림(귀까지 {idleTop})과 맞는다");
             Expect(idleTop - landTop is >= 4 and <= 6, $"{form}: 엎드리면 그림이 5칸px 낮아진다 ({idleTop} → {landTop})");
@@ -517,7 +517,7 @@ sealed partial class RunGame
             run.Clock = 10;
             run.LevelAt = run.Clock - .5;
             run.Energy = 60;
-            using var ov = new Overlay(brain, () => sp, () => null, track) { Modes = () => modes };
+            using var ov = new Overlay(brain, () => sp, track) { Modes = () => modes };
             double X(double at) => at * u;
             void PetAt(double x, bool down)
             {

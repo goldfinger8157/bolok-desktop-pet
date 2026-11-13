@@ -37,7 +37,7 @@ def say(text):
         sys.exit(0)
 
 
-GAME_MODES = {'Prey', 'Run', 'Paddle', 'Puppet'}   # 게임 중엔 CPU 를 더 쓴다 (미니건 평균 3.3%·최대 4.7%, 2026-11-11)
+GAME_MODES = {'Puppet'}   # 게임은 모두 꼭두각시(Puppet)다. 게임 중엔 CPU 를 더 쓴다 (미니건 평균 3.3%·최대 4.7%, 2026-11-11)
 GAME_CPU = 8.0
 
 

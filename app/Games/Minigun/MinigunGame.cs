@@ -41,7 +41,7 @@ sealed class MinigunGame : IGameMode
         var b = host.Pet;
         var wins = Native.ListWindows();
         var (field, rects) = WindowPick.Islands(Native.Foreground(), wins, b.Area, Screen.AllScreens.Select(s => s.WorkingArea).ToList(), b.CellPx, 8, topRoom: 0);
-        if (rects.Count == 0) // 쏠 창(최대화 안 한 창)이 없다: 말 대신 「X 표 창」 그림과 도리도리 (PetForm.NoWindow 와 같다)
+        if (rects.Count == 0) // 쏠 창(최대화 안 한 창)이 없다: 말 대신 「X 표 창」 그림과 도리도리 (펫은 말하지 않는다)
         {
             b.Emote("nowin", 3);
             b.ShakeUntil = b.Now + .5;

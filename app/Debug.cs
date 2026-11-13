@@ -140,9 +140,6 @@ public sealed class DevLink
             case "species": form.SetSpecies(a[1], a.Length > 2 ? int.Parse(a[2]) : 0); break; // 예: species fox 2 (2번 색)
             case "release": form.Release(); break;
             case "esc": form.BossKey(); break; // 보스 키 (Esc 를 누른 것과 같다)
-            case "game": form.StartGame(a.Length > 1 ? a[1] : null, a.Length > 2 ? a[2] : null); break;
-            case "fire": form.GameMouse(false, int.Parse(a[1]), int.Parse(a[2])); form.GameRelease(); break;
-            case "reload": form.GameMouse(true, 0, 0); break;
             case "probe": Dbg.Log("probe", ("x", a[1]), ("y", a[2]), ("who", form.WhoGetsClick(int.Parse(a[1]), int.Parse(a[2])))); break;
             case "petat": Dbg.Log("petat", ("x", (int)b.X), ("y", (int)(b.Y - b.CellPx * .45)), ("mode", b.Mode.ToString())); break;
             case "hide": if (!b.TryHide()) Dbg.Log("hide-none"); break;

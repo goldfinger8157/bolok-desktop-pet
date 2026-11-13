@@ -371,18 +371,6 @@
   "pt": "Shift: Abaixar",
   "ru": "Shift: пригнуться"
  },
- "note.run_quit": {
-  "en": "Hold Ctrl+Shift: Quit",
-  "ko": "Ctrl+Shift 꾹: 종료",
-  "ja": "Ctrl+Shift長押し: 終了",
-  "zh-Hans": "长按 Ctrl+Shift:退出",
-  "zh-Hant": "長按 Ctrl+Shift:結束",
-  "es": "Mantén Ctrl+Shift: Salir",
-  "de": "Ctrl+Shift halten: Beenden",
-  "fr": "Maintenir Ctrl+Shift : Quitter",
-  "pt": "Segure Ctrl+Shift: Sair",
-  "ru": "Удерживайте Ctrl+Shift: выход"
- },
  "note.break_mouse": {
   "en": "Mouse: Tray",
   "ko": "마우스: 쟁반",
@@ -418,6 +406,42 @@
   "fr": "Esc : Quitter",
   "pt": "Esc: Sair",
   "ru": "Esc: выход"
+ },
+ "note.shoot_aim": {
+  "en": "Mouse: Aim",
+  "ko": "마우스: 조준",
+  "ja": "マウス: ねらう",
+  "zh-Hans": "鼠标:瞄准",
+  "zh-Hant": "滑鼠:瞄準",
+  "es": "Ratón: Apuntar",
+  "de": "Maus: Zielen",
+  "fr": "Souris : Viser",
+  "pt": "Mouse: Mirar",
+  "ru": "Мышь: прицел"
+ },
+ "note.shoot_fire": {
+  "en": "Left-click: Fire",
+  "ko": "왼쪽 클릭: 쏘기",
+  "ja": "左クリック: うつ",
+  "zh-Hans": "左键:射击",
+  "zh-Hant": "左鍵:射擊",
+  "es": "Clic izquierdo: Disparar",
+  "de": "Linksklick: Schießen",
+  "fr": "Clic gauche : Tirer",
+  "pt": "Clique esquerdo: Atirar",
+  "ru": "Левый клик: огонь"
+ },
+ "note.shoot_reload": {
+  "en": "Right-click: Reload",
+  "ko": "오른쪽 클릭: 장전",
+  "ja": "右クリック: リロード",
+  "zh-Hans": "右键:装弹",
+  "zh-Hant": "右鍵:裝彈",
+  "es": "Clic derecho: Recargar",
+  "de": "Rechtsklick: Nachladen",
+  "fr": "Clic droit : Recharger",
+  "pt": "Clique direito: Recarregar",
+  "ru": "Правый клик: перезарядка"
  },
  "note.gun_aim": {
   "en": "Mouse: Aim",
@@ -2602,17 +2626,5 @@
   "fr": "Les amis venus en visite en envoient parfois une le lendemain",
   "pt": "Amigos que visitaram às vezes enviam uma no dia seguinte",
   "ru": "Друзья, побывавшие в гостях, иногда присылают открытку на следующий день"
- },
- "bk.hearts": {
-  "en": "Friendship",
-  "ko": "우정",
-  "ja": "なかよし度",
-  "zh-Hans": "友情",
-  "zh-Hant": "友情",
-  "es": "Amistad",
-  "de": "Freundschaft",
-  "fr": "Amitié",
-  "pt": "Amizade",
-  "ru": "Дружба"
  }
 }

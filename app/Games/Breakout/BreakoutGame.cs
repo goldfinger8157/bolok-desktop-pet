@@ -52,7 +52,7 @@ sealed class BreakoutGame : IGameMode
         ses.Layer?.HidePointer(); // 쟁반이 커서를 따라다닌다: 커서는 숨긴다 (끝 화면에서 다시 보인다)
         ses.Guide("note.break_mouse", "note.break_click", "note.esc");
         nextProbe = 0;
-        Dbg.Log("break-start", ("field", pick.Field.ToString()), ("boards", string.Join(" ", bo.Boards.Select(r => $"{r.X},{r.Y},{r.Width}x{r.Height}"))), ("tiles", bo.Tiles.Count));
+        Dbg.Log("mode-start", ("id", Id), ("field", pick.Field.ToString()), ("boards", string.Join(" ", bo.Boards.Select(r => $"{r.X},{r.Y},{r.Width}x{r.Height}"))), ("tiles", bo.Tiles.Count));
     }
 
     // 판을 편다 (화면 없는 검사·장면도 같이 쓴다): 볼록이는 모니터 맨 아래 가운데에서 쟁반을 든다
@@ -148,7 +148,7 @@ sealed class BreakoutGame : IGameMode
         return PlateTopAt(b.Y, top, sp.Cell, b.Scale);
     }
 
-    static int PawTop(Sprites sp, string name) => Props.Trim(Props.Solid(sp.Get(name, 0, 1))).Y0;
+    static int PawTop(Sprites sp, string name) => Ui.Opaque(sp.Get(name, 0, 1), 0).Top;
     static double PlateTopAt(double feet, int top, int cell, int k) => feet - (cell - top) * k - 3 * k;
 
     // 한 판의 시간 재기: 규칙(Frame), 다시 칠할 자리(Dirty), 그리기(Draw). 판이 끝나면 break-perf 로 남긴다

@@ -19,7 +19,13 @@ sealed class SceneHost : IGameHost
     public void ShowPet(bool show) { }
     public Sprites? SpritesOf(string species) => null;
     public void Save() { }
-    public bool HitPet(int x, int y) => false;
+    // 본체 창이 없으니 지금 자세의 첫 장으로 본다 (그림 이름은 모습·자세마다 한 번만 만든다)
+    readonly Dictionary<(string Stage, string Pose), string> hitNames = new();
+    public bool HitPet(int x, int y, int pad)
+    {
+        if (!hitNames.TryGetValue((Pet.P.Stage, Pet.Pose), out var name)) hitNames[(Pet.P.Stage, Pet.Pose)] = name = Pet.SpriteName();
+        return Sprites.Near(Sprites.Get(name, 0, 1, Pet.Dir < 0), (x - (Pet.X - Pet.CellPx / 2.0)) / Pet.Scale, (y - (Pet.Y - Pet.CellPx)) / Pet.Scale, pad);
+    }
     public void HideFromCapture(bool on) { }
     public IReadOnlyList<string> Friends => Array.Empty<string>();
     public void Repaint() { }
@@ -28,7 +34,7 @@ sealed class SceneHost : IGameHost
     public Overlay Overlay(IGameMode game)
     {
         var modes = new[] { game };
-        return new(Pet, () => Sprites, () => null, Area) { Modes = () => modes };
+        return new(Pet, () => Sprites, Area) { Modes = () => modes };
     }
 }
 

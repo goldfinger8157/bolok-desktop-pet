@@ -69,8 +69,6 @@ public sealed class Tuning
     public double NapAt { get; set; } = 45;           // 기운이 이 아래면 창 위로 자러 간다
     public double NapChance { get; set; } = .15;      // 혼자 놀다가 낮잠을 잘 확률 (기운 80 이하)
     public double GameLayerOpacity { get; set; } = .01; // 게임판 진하기. 클릭만 받고 눈에는 안 보이게
-    public int GameWindowProps { get; set; } = 8;     // 창 윗변에 앉힐 소품 수 최대
-    public double PreySpeed { get; set; } = 330;      // 총쏘기 게임에서 도망가는 속도 (배율 3 기준)
     public double TossSec { get; set; } = .42;        // 씨앗이 날아오는 시간
     public double ClickHoldSec { get; set; } = 3;     // 누른 뒤 이만큼은 제자리에 있는다 — 움직이면 뒤 창을 누르게 된다
     public double CallEverySec { get; set; } = 30;    // 배고픔·심심함을 그림으로 알리는 간격

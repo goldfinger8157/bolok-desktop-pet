@@ -6,7 +6,7 @@ using Microsoft.Win32;
 
 namespace Bolok;
 
-public sealed record RunRecord(DateTime At, int Level, int Score, int Seeds);
+public sealed record RunRecord(DateTime At, int Level, int Score, int Seeds); // 옛 저장 칸(RunScores)의 한 줄
 
 public sealed class SaveData
 {
@@ -14,7 +14,7 @@ public sealed class SaveData
     public double X { get; set; }
     public double Y { get; set; }
     public List<int[]> Holes { get; set; } = new();
-    public int GameBest { get; set; }
+    public int GameBest { get; set; }                 // 옛 저장 칸: 게임이 모듈이 되기 전 기록 (GameBest·Run…·BreakBest·WormsWins). 읽기만 하고, GameModes.WithLegacy 가 GameData 로 바꿔 넘긴다
     public bool GameSound { get; set; }
     public bool AutoUpdate { get; set; }
     public string Species { get; set; } = Sprites.DefaultSpecies;
@@ -68,12 +68,9 @@ public sealed class PetForm : Form, IGameHost
     readonly List<Overlay> overlays = new();
     readonly ClickPad pad = new();
     readonly List<GameLayer> layers = new();
-    Game? game;
-    bool pointerShown;
-    Cover? clipShown;
+    Region? clipShown;
     bool flashShown;
-    IntPtr gameFocus, gameWindow;
-    int gameBest;
+    IntPtr gameFocus;
     readonly Hud hud;
     readonly ContextMenuStrip menu = new();
     readonly ToolStripMenuItem sleepItem = new();
@@ -127,7 +124,7 @@ public sealed class PetForm : Form, IGameHost
         pad.MouseDown += (_, e) => OnMouseDown(e); // 받침은 볼록이 창과 같은 자리·크기라 좌표가 그대로다
         pad.MouseMove += (_, e) => OnMouseMove(e);
         pad.MouseUp += (_, e) => OnMouseUp(e);
-        hud = new Hud(b, debug ? DebugLine : null) { RunLine = () => string.Join("  ", modes.Select(m => m.HudLine).Where(line => line.Length > 0)) };
+        hud = new Hud(b, debug ? DebugLine : null) { GameLine = () => string.Join("  ", modes.Select(m => m.HudLine).Where(line => line.Length > 0)) };
         hud.SpeciesName = () => b.P.Stage == "egg" ? "" : L.Species(species);
         if (!debug) // 새 버전을 받아 바꿔 두면 메뉴에 알린다. 그냥 둬도 다음에 켤 때 새 버전이다
             Updater.Start(() => autoUpdate, tag => BeginInvoke(() => { updateTag = tag; updateItem.Text = L.T("menu.update", tag); updateItem.Visible = true; settings?.ShowReady(); }));
@@ -195,7 +192,7 @@ public sealed class PetForm : Form, IGameHost
 
     void BuildOverlays()
     {
-        foreach (var s in Screen.AllScreens) overlays.Add(new Overlay(b, () => sprites, () => game, s.Bounds));
+        foreach (var s in Screen.AllScreens) overlays.Add(new Overlay(b, () => sprites, s.Bounds));
     }
 
     void ShowOverlays()
@@ -282,7 +279,6 @@ public sealed class PetForm : Form, IGameHost
             }
             return;
         }
-        gameBest = pendingSave.GameBest;
         Sfx.On = pendingSave.GameSound;
         autoUpdate = pendingSave.AutoUpdate;
         if (pendingSave.Species != species || pendingSave.Variant != variant) SetSpecies(pendingSave.Species, pendingSave.Variant);
@@ -303,7 +299,7 @@ public sealed class PetForm : Form, IGameHost
 
     void Save()
     {
-        var data = new SaveData { Pet = b.P, X = b.X, Y = b.Y, Holes = b.Holes.Select(h => new[] { h.Cx, h.Cy }).ToList(), GameBest = gameBest, GameSound = Sfx.On, AutoUpdate = autoUpdate, Species = species, Met = met.ToList(), Released = released, VisitDay = visitDay, VisitMin = visitMin, LastVisitDay = lastVisitDay, Visits = visits, Language = language, Clover = clover.Snapshot(), Variant = variant, CardVariant = cardVariant,
+        var data = new SaveData { Pet = b.P, X = b.X, Y = b.Y, Holes = b.Holes.Select(h => new[] { h.Cx, h.Cy }).ToList(), GameSound = Sfx.On, AutoUpdate = autoUpdate, Species = species, Met = met.ToList(), Released = released, VisitDay = visitDay, VisitMin = visitMin, LastVisitDay = lastVisitDay, Visits = visits, Language = language, Clover = clover.Snapshot(), Variant = variant, CardVariant = cardVariant,
             GameData = modes.Select(m => (m.Id, Json: m.SaveState())).Where(x => x.Json != null).ToDictionary(x => x.Id, x => x.Json!),
             Gifts = gifts, Album = album, Cards = cards, VisitCounts = visitCounts, CardFrom = cardFrom, CardForm = cardForm, CardDay = cardDay, MorningDay = morningDay, NightDay = nightDay };
         var tmp = savePath + ".tmp";
@@ -322,11 +318,10 @@ public sealed class PetForm : Form, IGameHost
         menu.Items.Add(sleepItem);
         menuTexts.Add((sleepItem, () => L.T(b.P.Asleep ? "menu.wake" : "menu.sleep")));
         menu.Items.Add(new ToolStripSeparator());
-        Add("menu.shoot", () => BeginInvoke(StartGame)); // 메뉴가 닫히고 포커스가 돌아온 뒤에 시작한다
         foreach (var m in modes) // 게임 모듈. 그 게임을 하는 중에 또 고르면 게임에 알린다 (한 발 더 쏘기 같은 것)
         {
             if (m.MenuKey is not { } key) continue;
-            void Go(Action start) => BeginInvoke(() => { if ((!InGame || m.Running) && b.P.Stage != "egg") start(); });
+            void Go(Action start) => BeginInvoke(() => { if ((!InGame || m.Running) && b.P.Stage != "egg") start(); }); // 메뉴가 닫히고 포커스가 돌아온 뒤에 시작한다
             if (m.Choices is not { } choices) { Add(key, () => Go(m.Start)); continue; }
             var parent = new ToolStripMenuItem(); // 하위 메뉴: 시작할 때 하나를 고르는 게임
             menuTexts.Add((parent, () => L.T(key)));
@@ -361,7 +356,11 @@ public sealed class PetForm : Form, IGameHost
     void IGameHost.ShowPet(bool show) { if (show) { Show(); Native.Topmost(Handle); } else Hide(); }
     void IGameHost.Save() => Save();
     Sprites? IGameHost.SpritesOf(string id) => SpritesFor(id);
-    bool IGameHost.HitPet(int x, int y) => HitPet(x, y);
+    bool IGameHost.HitPet(int x, int y, int pad) // 지금 본체 창에 그려진 그림의 픽셀로 본다
+    {
+        var (name, frame, flip, shake) = drawn;
+        return name != null && Sprites.Near(sprites.Get(name, frame, 1, flip), (x - (Left + 8 + shake)) / (double)b.Scale, (y - Top) / (double)b.Scale, pad);
+    }
     void IGameHost.HideFromCapture(bool on)
     {
         Native.HideFromCapture(Handle, on);
@@ -417,32 +416,18 @@ public sealed class PetForm : Form, IGameHost
         PresentTick();
         if (visitor != null) visitor.Update(dt, b.X, b.Y, b.Mode is Mode.Wander or Mode.Anim || b.P.Asleep, b.P.Asleep, b.Area);
         SyncScale();
-        if (game != null)
-        {
-            game.Update(dt, MousePosition, HitPet);
-            SyncCrosshair();
-            if (gameWindow != IntPtr.Zero && game.Stage is Game.Phase.Count or Game.Phase.Play && b.Now > nextWindowCheck)
-            {
-                nextWindowCheck = b.Now + .25;
-                var st = Native.Probe(gameWindow);
-                if (!st.Alive || st.Minimized) { Dbg.Log("game-window-gone"); game.Finish(); } // 게임하던 창이 사라지면 끝
-            }
-            if (game.Stage == Game.Phase.Result && !pointerShown) { pointerShown = true; foreach (var l in layers) l.ShowPointer(); }
-            if (game.Stage == Game.Phase.Done) EndGame();
-        }
-
         var at = new Point((int)b.X - Width / 2, (int)b.Y - Height);
         if (at != Location) Location = at;
 
         string name = b.SpriteName();
-        int ms = b.Mode == Mode.Puppet && b.PuppetMs > 0 ? b.PuppetMs : b.Mode == Mode.Held && b.Pose == "fly" ? 50 : b.Mode == Mode.Prey && b.Pose == "walk" ? 70 : PoseMs.GetValueOrDefault(b.Pose, 600); // 흔들리거나 도망칠 땐 더 빨리
+        int ms = b.Mode == Mode.Puppet && b.PuppetMs > 0 ? b.PuppetMs : b.Mode == Mode.Held && b.Pose == "fly" ? 50 : PoseMs.GetValueOrDefault(b.Pose, 600); // 게임이 정했으면 그대로, 흔들릴 땐 더 빨리
         int frame = (int)(sec * 1000 / ms);
         int shake = b.Now < b.ShakeUntil ? (int)(Math.Sin(b.Now * 40) * 5) : 0;
         var now = (name, frame, b.Dir < 0, shake);
         bool flash = b.Now < b.FlashUntil || b.Blink;
-        if (now != drawn || b.CoverProp != clipShown || flash != flashShown) { drawn = now; clipShown = b.CoverProp; flashShown = flash; Invalidate(); }
+        if (now != drawn || b.PuppetClip != clipShown || flash != flashShown) { drawn = now; clipShown = b.PuppetClip; flashShown = flash; Invalidate(); }
 
-        int want = b.Mode is Mode.Thrown or Mode.Held or Mode.Prey or Mode.Puppet ? 15 : 30; // 빠르게 움직일 때만 자주 그린다
+        int want = b.Mode is Mode.Thrown or Mode.Held or Mode.Puppet ? 15 : 30; // 빠르게 움직일 때만 자주 그린다
         if (timer.Interval != want) timer.Interval = want;
 
         SyncPad();
@@ -459,7 +444,7 @@ public sealed class PetForm : Form, IGameHost
     // 평소엔 맨 앞이고, 일부러 숨을 때만 그 창 바로 아래로 들어간다
     void SyncPad()
     {
-        bool on = b.ClickPadOn && !b.Behind && game == null;
+        bool on = b.ClickPadOn && !b.Behind;
         if (on)
         {
             pad.Bounds = Bounds;
@@ -497,9 +482,9 @@ public sealed class PetForm : Form, IGameHost
     {
         var (name, frame, flip, shake) = drawn;
         if (name == null) return;
-        if (b.CoverProp is { } c) // 소품 뒤로 숨은 부분은 안 그린다
+        if (b.PuppetClip is { } c) // 게임이 가린 부분(창 뒤에 숨은 몸)은 안 그린다
         {
-            using var mask = c.Mask().Clone();
+            using var mask = c.Clone();
             mask.Translate(-Left, -Top);
             e.Graphics.SetClip(mask, CombineMode.Exclude);
         }
@@ -588,12 +573,8 @@ public sealed class PetForm : Form, IGameHost
             "child" => (k.ChildMin - p.AgeMin, (p.AgeMin - k.BabyMin) / (k.ChildMin - k.BabyMin), "adult"),
             _ => ((double?)null, 1.0, (string?)null),
         };
-        string never = L.T("game.never");
         return new PetStatus(species, p.Stage, p.AgeMin, p.Full, p.Mood, p.Energy, p.Asleep, p.Need(k), p.Miss, Math.Max(p.Bites, b.Holes.Count),
-            p.BitesTotal, left is { } l ? Math.Max(0, l) : null, Math.Clamp(frac, 0, 1), to, new GameStat[]
-            {
-                new(L.T("game.shoot"), gameBest > 0 ? L.T("game.shoot_val", gameBest) : never, gameBest > 0),
-            }.Concat(modes.SelectMany(m => m.Stats())).ToList()); // 게임 모듈 기록도
+            p.BitesTotal, left is { } l ? Math.Max(0, l) : null, Math.Clamp(frac, 0, 1), to, modes.SelectMany(m => m.Stats()).ToList()); // 게임 기록은 게임 모듈이 낸다
     }
 
     // 확인은 설정 창 도감 탭에서 받는다. 지금 풀어줄 수 없으면 false
@@ -963,9 +944,10 @@ public sealed class PetForm : Form, IGameHost
 
     bool InGame => Playing || leaving;
 
-    // 게임에 쓸 창(최대화 안 한 창)이 없다: 말 대신 「X 표 창」 그림을 머리 위에 띄우고 고개를 젓는다 (YELL 2026-11-13: 알림 말풍선도 그림으로)
-    void NoWindow() { b.Emote("nowin", 3); b.ShakeUntil = b.Now + .5; }
-    bool Playing => game != null || modes.Any(m => m.Running);
+    bool Playing
+    {
+        get { foreach (var m in modes) if (m.Running) return true; return false; } // 프레임마다 여러 번 묻는다: 메모리를 잡지 않게 돈다
+    }
 
     // ── 보스 키 (YELL 2026-11-13: "게임에서 esc 는 언제나 빠져나가기다!!") ──
     // 어느 창에 초점이 있든(판을 놓쳐 일하는 창을 눌렀어도) Esc 를 누르는 순간 하던 게임을 결과 화면 없이 곧바로 다 끝내고,
@@ -984,7 +966,6 @@ public sealed class PetForm : Form, IGameHost
         Dbg.Log("boss-key");
         quit?.Invoke(); // 판이 알려 준 끝내기 (아래와 겹쳐도 게임마다 한 번만 끝난다)
         foreach (var m in modes) if (m.Running) m.Stop(true);
-        if (game is { } gm) { gm.Finish(); gm.Finish(); EndGame(); } // 결과 화면 없이
         b.Hush();
         foreach (var o in overlays) o.Invalidate();
     }
@@ -1016,129 +997,6 @@ public sealed class PetForm : Form, IGameHost
         if (gameFocus != IntPtr.Zero) Native.SetForegroundWindow(gameFocus); // 하던 일로 돌려준다
         foreach (var o in overlays) o.Invalidate();
         Native.Topmost(Handle);
-    }
-
-    // ── 총쏘기 게임 ──
-
-    public void StartGame() => StartGame(null, null);
-
-    public void StartGame(string? gun, string? theme)
-    {
-        if (InGame || b.P.Stage == "egg") return;
-        gameFocus = Native.GetForegroundWindow();
-        var rng = new Random();
-        var wins = Native.ListWindows();
-        var screens = Screen.AllScreens.Select(s => s.WorkingArea).ToList();
-        // 메뉴를 열기 전에 쓰던 창이 게임판이 된다. 그 창만 꾸미고, 볼록이도 그 안에서만 움직인다
-        var (arena, window) = Game.ChooseArena(Native.Foreground(), wins, b.Area, screens, b.CellPx);
-        gameWindow = window;
-        game = new Game(arena, gameBest, b.Scale, rng, Game.Guns.FirstOrDefault(g => g.Name == gun), theme);
-        game.OnShot = OnShot;
-        pointerShown = false;
-        shownCursor = null;
-        int k = b.Scale;
-        // 총은 그 창 아래 테두리 가운데에 반쯤 걸친다 (총 그림은 손잡이 자리에서 위로 8칸, 아래로 1칸). 화면 밖으로는 안 나간다
-        game.GunPivot = new Point(arena.Left + arena.Width / 2, Math.Min(arena.Bottom + 6 * k, Screen.FromRectangle(arena).Bounds.Bottom - 2 * k));
-
-        var names = Props.Sets[game.Theme];
-        var solids = Props.All.ToDictionary(n => n, n => Props.Solid(sprites.Get(n, 0, 1)));
-        var gunSpot = new Rectangle(game.GunPivot.X - 40 * k * 2, game.GunPivot.Y - 30 * k * 2, 80 * k * 2, 34 * k * 2);
-        var target = wins.Where(w => w.H == window).ToList();
-        game.Decor = Props.OnWindows(target, screens, names, rng, n => solids[n], new List<Rectangle>(), 2)
-            .Concat(Props.OnFloor(arena, names, rng, n => solids[n], new[] { gunSpot, Rectangle.Inflate(game.ExitButton(), 20 * k, 20 * k) }, 2)).ToList();
-        Dbg.Log("game-stage", ("arena", arena.ToString()), ("window", window != IntPtr.Zero), ("decor", game.Decor.Count));
-
-        // 그 창 위에만 판을 깐다. 창 밖은 평소처럼 클릭된다
-        var layer = new GameLayer(arena, b.K.GameLayerOpacity);
-        layer.MouseDown += (_, e) => GameMouse(e.Button == MouseButtons.Right, layer.Left + e.X, layer.Top + e.Y);
-        layer.MouseUp += (_, e) => { if (e.Button == MouseButtons.Left) game?.Release(); };
-        layer.KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) BossKey(); }; // 결과 화면 없이 바로 끝
-        layers.Add(layer);
-        layer.Show();
-        layer.Bounds = arena;
-        Dbg.Log("game", ("gun", game.Gun.Name), ("theme", game.Theme));
-        layer.Activate(); // Esc 를 받으려면 활성 창이어야 한다
-        foreach (var o in overlays) Native.Topmost(o.Handle); // 판 위에 탄흔·시간이 보이게
-        Native.SetClickThrough(Handle, true);
-        Native.Topmost(Handle);
-        pad.Hide();
-        var above = wins.TakeWhile(w => w.H != window).ToList(); // 그 창 위에 겹친 창들 뒤에 숨는다
-        b.StartGame(arena, window == IntPtr.Zero ? Props.Covers(wins, arena, b.CellPx) : Props.Covers(above, arena, b.CellPx));
-    }
-
-    void EndGame()
-    {
-        var gm = game!;
-        game = null;
-        foreach (var l in layers) l.Close();
-        layers.Clear();
-        Native.SetClickThrough(Handle, false);
-        if (gameFocus != IntPtr.Zero) Native.SetForegroundWindow(gameFocus); // 하던 일로 돌려준다
-        gameBest = gm.Best;
-        b.EndGame(gm.Hits);
-        foreach (var o in overlays) o.Invalidate();
-        Native.Topmost(Handle);
-        Save();
-    }
-
-    // 왼쪽 누름은 발사(기관총은 떼기 전까지 연사), 오른쪽은 장전. 디버그 명령도 여기로 들어온다
-    public void GameMouse(bool right, int x, int y)
-    {
-        if (game is not { } gm) return;
-        if (right) { gm.Reload(); return; }
-        string result = gm.Press(x, y, HitPet);
-        if (result is "exit" or "close" or "wait") Dbg.Log("press", ("result", result));
-    }
-
-    public void GameRelease() => game?.Release();
-
-    void OnShot(string result, int x, int y)
-    {
-        var gm = game!;
-        switch (result)
-        {
-            case "hit":
-                b.GameHit(x, y, gm.GunPivot.X, gm.GunPivot.Y);
-                Sfx.Play("hit");
-                break;
-            case "miss":
-                b.NearMiss(x, y);
-                Sfx.Play(gm.Gun.Name);
-                break;
-            case "empty": Sfx.Play("empty"); break;
-            case "reload": Sfx.Play("reload"); break;
-            case "boom": Sfx.Play("boom"); break;
-        }
-        if (result is "hit" or "miss") // 탄피가 총 옆으로 튀어 떨어진다
-        {
-            double a = gm.GunAngle(), len = 12 * b.Scale * 2;
-            double ex = gm.GunPivot.X + Math.Cos(a) * len, ey = gm.GunPivot.Y + Math.Sin(a) * len - 6 * b.Scale;
-            b.Bits.Add(new Bit { X = ex, Y = ey, Vx = -Math.Sign(Math.Cos(a)) * new Random().Next(120, 260) * b.Scale / 3.0, Vy = -new Random().Next(200, 380) * b.Scale / 3.0,
-                G = 1500 * b.Scale / 3.0, Life = .6, C = gm.Gun.Pellets > 1 ? Color.FromArgb(232, 72, 92) : Color.FromArgb(220, 170, 60) }); // 샷건은 빨간 탄피
-        }
-        if (result != "loaded") Dbg.Log("fire", ("result", result), ("x", x), ("y", y), ("ammo", gm.Ammo), ("hits", gm.Hits));
-    }
-
-    Cursor? shownCursor;
-    double nextWindowCheck;
-
-    // 조준경 커서: 퍼진 만큼 십자가 벌어지고, 맞히면 잠깐 빨갛다. 바뀔 때만 갈아 끼운다
-    void SyncCrosshair()
-    {
-        var gm = game!;
-        Cursor? want = gm.Aiming ? Crosshair.Get(Crosshair.Level(gm.Bloom + gm.Gun.Spread * .7), gm.Clock < gm.HitUntil, b.Scale) : null; // 샷건은 처음부터 넓다
-        if (gm.Stage == Game.Phase.Boom && shownCursor != null) { foreach (var l in layers) l.HidePointer(); shownCursor = null; return; }
-        if (want == null || want == shownCursor) return;
-        shownCursor = want;
-        foreach (var l in layers) l.Cursor = want;
-    }
-
-    bool HitPet(int x, int y)
-    {
-        var (name, frame, flip, shake) = drawn;
-        if (name == null || b.Shielded(x, y)) return false; // 창 뒤로 숨은 몸은 안 맞는다
-        var bmp = sprites.Get(name, frame, b.Scale, flip);
-        return Game.HitBitmap(bmp, x - (Left + 8 + shake), y - Top, 3 * b.Scale); // 둘레 9px 까지는 봐준다
     }
 
     // 디버그: 그 자리를 누르면 무엇이 클릭을 받는지

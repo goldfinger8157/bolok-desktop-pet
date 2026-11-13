@@ -11,11 +11,12 @@ enum Sound
     Pick,       // 줍기·레벨 업·다음 판
     Hurt,       // 내가 다침
     Boom,       // 폭발 (진짜 터질 때만. 다친 소리로 쓰지 않는다)
+    Reload,     // 장전 (철컥)
 }
 
 static class Snd
 {
-    static readonly string[] names = { "empty", "pistol", "mg", "shotgun", "hit", "pick", "hurt", "boom" };
+    static readonly string[] names = { "empty", "pistol", "mg", "shotgun", "hit", "pick", "hurt", "boom", "reload" };
 
     public static string Name(Sound s) => names[(int)s];
     public static void Play(Sound s) => Sfx.Play(names[(int)s]);

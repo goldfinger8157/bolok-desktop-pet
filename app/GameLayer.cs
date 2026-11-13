@@ -1,7 +1,7 @@
 namespace Bolok;
 
 // 게임 중 모니터마다 까는 판. 거의 투명해서 작업 화면은 평소 그대로 보이고, 클릭은 전부 여기로 온다.
-// 커서는 숨긴다 — 조준경은 앱이 그린다
+// 커서는 게임이 정한다: 숨기거나(HidePointer), 보통 커서로 두거나(ShowPointer), 조준경 같은 제 커서를 단다
 public sealed class GameLayer : Form
 {
     static Cursor? blank;
