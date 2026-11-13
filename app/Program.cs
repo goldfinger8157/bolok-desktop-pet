@@ -83,42 +83,7 @@ static class Program
             return 0;
         }
 
-        if (args.Length == 2 && args[0] == "--icbm-scene") // ICBM 이 떨어지는 장면과 구멍(크기별)·빼꼼 장면 (화면을 띄우지 않는다)
-        {
-            var sp = Sprites.Embedded();
-            const int k = 3;
-            var ic = new Icbm(new List<Rectangle> { new(0, 0, 1920, 1080) }, 1500, 1000, k, new Random(2)) { Friends = new[] { "hamster" } };
-            ic.Launch();
-            using var bmp = new Bitmap(1920 * 2, 1080);
-            using var g = Graphics.FromImage(bmp);
-            g.Clear(Color.FromArgb(150, 160, 170));
-            using var rim = new SolidBrush(Color.FromArgb(70, 60, 52));
-            using var hole = new SolidBrush(Color.FromArgb(14, 16, 22));
-            foreach (double t in new[] { .2, .55, .95 }) // 떨어지는 세 순간을 한 장에
-            {
-                while (!(ic.Stage == Icbm.Phase.Fall && ic.FallT >= t)) ic.Update(1 / 60.0, null);
-                Overlay.PaintMissile(g, sp, ic, new Point((int)ic.MX, (int)ic.MY), k);
-            }
-            while (ic.Craters.Count == 0) ic.Update(1 / 60.0, null);
-            var cr = ic.Craters[0];
-            g.TranslateTransform(1920, 0);
-            // 위: 친구 구멍 — 터지자마자(아직 안 나옴), 다 올라옴, 눈 깜빡
-            foreach (var (dx, at) in new[] { (-600, double.NaN), (-200, 1.2), (200, .85) })
-            {
-                var c = new Icbm.Crater { X = 960 + dx, Y = 380, R0 = cr.R0, R = cr.R0, Friend = "hamster" };
-                Overlay.PaintCrater(g, c, new Point((int)c.X, (int)c.Y), rim, hole, 3.3, k);
-                if (!double.IsNaN(at)) Overlay.PaintPeek(g, sp, new Icbm.Peek { Hole = c, Species = "hamster", At = 0 }, at == .85 ? 1.95 : at, new Point((int)c.X, (int)c.Y), k);
-            }
-            // 아래: 그냥 검은 구멍, 고치며 줄어드는 친구 구멍
-            foreach (var (dx, frac, friend) in new[] { (-600, 1.0, (string?)null), (-200, .66, "hamster"), (200, .33, "hamster"), (560, 1.0, null) })
-            {
-                var c = new Icbm.Crater { X = 960 + dx + (dx > 300 ? 37 : 0), Y = 820, R0 = cr.R0, R = Math.Ceiling(cr.R0 * frac / Icbm.Cell) * Icbm.Cell, Friend = friend };
-                Overlay.PaintCrater(g, c, new Point((int)c.X, (int)c.Y), rim, hole, 3.3, k);
-            }
-            g.ResetTransform();
-            bmp.Save(args[1]);
-            return 0;
-        }
+        if (args.Length == 2 && args[0] == "--icbm-scene") args = new[] { "--mode-scene", "icbm", args[1] }; // 옛 이름: ICBM 은 게임 모듈이 됐다 (--mode-scene icbm)
 
         if (args.Length >= 2 && args[0] == "--art-all") // 모든 종의 아기·어린이·어른을 한 장으로 (디버그: --art-all 그림.png [자세])
         {

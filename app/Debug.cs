@@ -139,7 +139,6 @@ public sealed class DevLink
             case "visit": form.VisitCommand(a); break;
             case "gesture": b.Gesture(a[1]); break; // 마우스 손짓 반응만: gesture stroke|pat|poke
             case "clover": form.CloverCommand(a); break; // clover (지금 돋기) / clover wear / clover drop / clover off
-            case "icbm": form.IcbmCommand(a); break;
             case "species": form.SetSpecies(a[1], a.Length > 2 ? int.Parse(a[2]) : 0); break; // 예: species fox 2 (2번 색)
             case "release": form.Release(); break;
             case "break": form.BreakCommand(a.Length > 1 ? a[1] : "start", a.Length > 2 ? a[2] : null); break;

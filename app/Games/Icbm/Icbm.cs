@@ -2,13 +2,14 @@ namespace Bolok;
 
 // ICBM (일시키기): 명령하면 볼록이가 빨간 버튼을 누르고, 미사일이 화면 위로 날아갔다가 아무 데나 떨어져 버섯구름을 내며 터진다.
 // 활성 창에는 안 떨어진다. 파인 자리는 볼록이가 달려가 망치로 고친다 (가까운 것부터). 고치기 전에 또 쏠 수 있다 (구멍 다섯까지).
-// 판을 깔지 않아 일하던 창은 그대로 쓴다. 화면과 무관한 규칙이라 --selfcheck 로 검사한다
+// 판을 깔지 않아 일하던 창은 그대로 쓴다. 화면과 무관한 규칙이라 --selfcheck 로 검사한다 (IcbmGame.Check).
+// 프레임마다 새로 잡는 메모리가 없다: 파편·연기는 배열 하나에 담아 다시 쓰고, 목록은 직접 돈다 (2026-11-13)
 public sealed class Icbm
 {
     public sealed class Crater { public double X, Y, R0, R, At, NextPeek; public string? Friend; } // Friend: 떠난 친구가 사는 자연이 보이는 구멍
     public sealed class Peek { public Crater Hole = null!; public string Species = ""; public double At; }
     public sealed class Blast { public double X, Y, At; }
-    public sealed class Bit { public double X, Y, Vx, Vy, Life; public int Size; public bool Smoke; }
+    public struct Bit { public double X, Y, Vx, Vy, Life; public int Size; public bool Smoke; }
     public enum Phase { ToButton, Press, Rise, Away, Fall, Boom, ToCrater, Repair, Done }
 
     // 고치러 갈 땐 뛰지 않는다: 평소 걸음(70)보다 조금 빠르게 (YELL)
@@ -26,7 +27,9 @@ public sealed class Icbm
     public readonly List<Rectangle> Screens;
     public readonly List<Crater> Craters = new();
     public readonly List<Blast> Blasts = new();
-    public readonly List<Bit> Bits = new();
+    Bit[] bits = new Bit[320];
+    int bitCount;
+    public ReadOnlySpan<Bit> Bits => bits.AsSpan(0, bitCount);   // 파편과 연기 (생긴 차례대로)
     public readonly List<Peek> Peeks = new();
     public IReadOnlyList<string> Friends = Array.Empty<string>();   // 자연으로 떠난 친구들 (빼꼼 나오는 아이)
     public readonly int K;
@@ -38,11 +41,13 @@ public sealed class Icbm
     public Action<string>? OnEvent;
     public bool Finished => Stage == Phase.Done && Craters.Count == 0 && Queued == 0;
     readonly Random rng;
-    readonly double sf, cell;
+    readonly double sf, cell, skyTop;                  // skyTop: 모니터들 가운데 가장 높은 위끝
     double phaseAt, puffAt, fallSec = 1;
     Crater? job;
     readonly World world;                              // 모니터 사이 빈 곳으로는 안 간다: 맞닿은 곳(문)으로 건넌다
     readonly List<(double X, double Y)> path = new();
+    Rectangle noWayFrom, noWayTo;                      // 길이 없던 모니터 짝 (프레임마다 다시 찾지 않는다)
+    bool noWay;
 
     public Icbm(IReadOnlyList<Rectangle> screens, double petX, double petY, int k, Random rng)
     {
@@ -50,9 +55,11 @@ public sealed class Icbm
         sf = k / 3.0;
         cell = 40 * k;
         world = new World(Screens);
+        skyTop = Screens[0].Top;
+        foreach (var s in Screens) skyTop = Math.Min(skyTop, s.Top);
     }
 
-    double Top => Screens.Min(s => s.Top);
+    double Top => skyTop;
     void Go(Phase p) => (Stage, phaseAt) = (p, Clock);
     double Since => Clock - phaseAt;
     public double FallT => Stage == Phase.Fall ? Math.Clamp(Since / fallSec, 0, 1) : 0; // 떨어진 정도 0~1
@@ -76,11 +83,17 @@ public sealed class Icbm
 
     void Begin() // 볼록이 옆에 버튼이 솟는다
     {
-        var screen = Screens.OrderBy(s => Dist(Math.Clamp(X, s.Left, s.Right), Math.Clamp(Y, s.Top, s.Bottom), X, Y)).First();
+        var screen = Screens[0]; // 볼록이에게 가장 가까운 모니터
+        double near = double.MaxValue;
+        foreach (var s in Screens)
+        {
+            double d = Dist(Math.Clamp(X, s.Left, s.Right), Math.Clamp(Y, s.Top, s.Bottom), X, Y);
+            if (d < near) (near, screen) = (d, s);
+        }
         if (X + cell * 1.6 > screen.Right) Dir = -1;
         else if (X - cell * 1.6 < screen.Left) Dir = 1;
         (ButtonX, ButtonY, ButtonDown, MissileOn, HasTarget, job) = (X + Dir * cell * .62, Y, false, false, false, null);
-        path.Clear();
+        ClearPath();
         Launched++;
         Go(Phase.ToButton);
     }
@@ -96,7 +109,8 @@ public sealed class Icbm
             for (int i = 0; i < 60; i++)
             {
                 double ang = rng.NextDouble() * Math.PI * 2, d = r * (.5 + rng.NextDouble() * .7), x = petX + Math.Cos(ang) * d, y = petY + Math.Sin(ang) * d;
-                bool fits = screens.Any(s => x >= s.Left + side && x <= s.Right - side && y >= s.Top + top && y <= s.Bottom - r * 1.1);
+                bool fits = false;
+                foreach (var s in screens) fits |= x >= s.Left + side && x <= s.Right - side && y >= s.Top + top && y <= s.Bottom - r * 1.1;
                 if (fits && !zone.Contains((int)x, (int)y)) return new PointF((float)x, (float)y);
             }
             return null;
@@ -118,16 +132,19 @@ public sealed class Icbm
     public void Update(double dt, Rectangle? active)
     {
         Clock += dt;
-        foreach (var b in Bits)
+        int kept = 0;
+        for (int i = 0; i < bitCount; i++) // 움직이고, 다한 것은 빼며 앞으로 당긴다 (차례는 그대로)
         {
+            ref var b = ref bits[i];
             if (!b.Smoke) b.Vy += Gravity * sf * dt;
             b.X += b.Vx * dt;
             b.Y += b.Vy * dt;
             b.Life -= dt;
+            if (b.Life > 0) bits[kept++] = b;
         }
-        Bits.RemoveAll(b => b.Life <= 0);
-        Blasts.RemoveAll(b => Clock - b.At > 1.2);
-        PeekOut(dt);
+        bitCount = kept;
+        for (int i = Blasts.Count - 1; i >= 0; i--) if (Clock - Blasts[i].At > 1.2) Blasts.RemoveAt(i);
+        PeekOut();
 
         switch (Stage)
         {
@@ -184,7 +201,7 @@ public sealed class Icbm
                 for (int i = 0; i < 40; i++)
                 {
                     double a = rng.NextDouble() * Math.PI * 2, v = 600 * sf * (.3 + rng.NextDouble());
-                    Bits.Add(new Bit { X = TX, Y = TY, Vx = Math.Cos(a) * v, Vy = Math.Sin(a) * v - 200 * sf, Life = 1.1, Size = (int)(Cell * (.5 + rng.NextDouble() * .7)) });
+                    AddBit(new Bit { X = TX, Y = TY, Vx = Math.Cos(a) * v, Vy = Math.Sin(a) * v - 200 * sf, Life = 1.1, Size = (int)(Cell * (.5 + rng.NextDouble() * .7)) });
                 }
                 Version++;
                 OnEvent?.Invoke("boom");
@@ -209,11 +226,15 @@ public sealed class Icbm
                 if (path.Count == 0) // 구멍이 다른 모니터에 있으면 맞닿은 곳을 지나서 간다
                 {
                     Rectangle here = world.At(X, Y), dest = world.At(tx, ty);
-                    if (here != dest && world.NextArea(here, dest, (int)cell) is { } next)
+                    if (here != dest && !(noWay && here == noWayFrom && dest == noWayTo))
                     {
-                        var door = world.Door(here, next, X, Y, (int)cell, 50);
-                        path.Add((door.AX, door.AY));
-                        path.Add((door.BX, door.BY));
+                        if (world.NextArea(here, dest, (int)cell) is { } next)
+                        {
+                            var door = world.Door(here, next, X, Y, (int)cell, 50);
+                            path.Add((door.AX, door.AY));
+                            path.Add((door.BX, door.BY));
+                        }
+                        else (noWay, noWayFrom, noWayTo) = (true, here, dest); // 이어지지 않은 모니터: 곧장 간다
                     }
                 }
                 var (gx, gy) = path.Count > 0 ? path[0] : (tx, ty);
@@ -224,7 +245,7 @@ public sealed class Icbm
                 (X, Y) = (gx, gy);
                 if (path.Count > 0) { path.RemoveAt(0); break; }
                 Go(Phase.Repair);
-                Peeks.RemoveAll(p => p.Hole == job); // 고치러 오면 빼꼼하던 친구는 쏙 들어간다
+                for (int i = Peeks.Count - 1; i >= 0; i--) if (Peeks[i].Hole == job) Peeks.RemoveAt(i); // 고치러 오면 빼꼼하던 친구는 쏙 들어간다
                 break;
             }
             case Phase.Repair: // 뚝딱뚝딱. 구멍이 한 칸씩 줄어든다
@@ -249,18 +270,22 @@ public sealed class Icbm
     public void Hold(double x, double y)
     {
         (X, Y) = (x, y);
-        path.Clear();
+        ClearPath();
         if (Stage == Phase.Repair && job != null) { job.R = job.R0; Version++; }
         if (Stage is Phase.ToCrater or Phase.Repair) Go(Phase.ToCrater);
     }
 
     // 친구 구멍에서 친구가 빼꼼: 올라왔다 들어가고, 조금 쉬었다가 또. 고치는 구멍에서는 쏙 들어간다. 처음 나올 때만 알린다 (볼록이가 반가워한다)
-    void PeekOut(double dt)
+    void PeekOut()
     {
-        Peeks.RemoveAll(p => Clock - p.At > PeekSec || !Craters.Contains(p.Hole) || (Stage == Phase.Repair && p.Hole == job));
+        for (int i = Peeks.Count - 1; i >= 0; i--)
+        {
+            var p = Peeks[i];
+            if (Clock - p.At > PeekSec || !Craters.Contains(p.Hole) || (Stage == Phase.Repair && p.Hole == job)) Peeks.RemoveAt(i);
+        }
         foreach (var c in Craters)
         {
-            if (c.Friend == null || Clock < c.NextPeek || (Stage == Phase.Repair && c == job) || Peeks.Any(p => p.Hole == c)) continue;
+            if (c.Friend == null || Clock < c.NextPeek || (Stage == Phase.Repair && c == job) || PeekAt(c) != null) continue;
             bool first = c.NextPeek == c.At + FirstPeek;
             Peeks.Add(new Peek { Hole = c, Species = c.Friend, At = Clock });
             c.NextPeek = Clock + PeekSec + PeekGapMin + rng.NextDouble() * (PeekGapMax - PeekGapMin);
@@ -268,16 +293,37 @@ public sealed class Icbm
         }
     }
 
-    void Next()
+    // 그 구멍에서 지금 빼꼼하는 친구 (없으면 null)
+    public Peek? PeekAt(Crater c)
     {
-        path.Clear();
-        job = Craters.OrderBy(c => Dist(c.X, c.Y, X, Y)).FirstOrDefault();
+        foreach (var p in Peeks) if (p.Hole == c) return p;
+        return null;
+    }
+
+    void ClearPath() { path.Clear(); noWay = false; }
+
+    void Next() // 가장 가까운 구멍부터 (같은 거리면 먼저 난 것)
+    {
+        ClearPath();
+        job = null;
+        double near = double.MaxValue;
+        foreach (var c in Craters)
+        {
+            double d = Dist(c.X, c.Y, X, Y);
+            if (d < near) (near, job) = (d, c);
+        }
         Go(job == null ? Phase.Done : Phase.ToCrater);
+    }
+
+    void AddBit(in Bit b)
+    {
+        if (bitCount == bits.Length) Array.Resize(ref bits, bits.Length * 2);
+        bits[bitCount++] = b;
     }
 
     void Smoke(double x, double y)
     {
-        if (Bits.Count > 260) return;
-        Bits.Add(new Bit { X = x, Y = y, Vx = (rng.NextDouble() - .5) * 40 * sf, Vy = 30 * sf, Life = .7, Size = (int)(Cell * (.6 + rng.NextDouble() * .6)), Smoke = true });
+        if (bitCount > 260) return;
+        AddBit(new Bit { X = x, Y = y, Vx = (rng.NextDouble() - .5) * 40 * sf, Vy = 30 * sf, Life = .7, Size = (int)(Cell * (.6 + rng.NextDouble() * .6)), Smoke = true });
     }
 }
