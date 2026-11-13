@@ -119,7 +119,7 @@ public sealed class PetForm : Form, IGameHost
         Text = L.Name;
         Cursor = Cursors.Hand;
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
-        ClientSize = new Size(b.CellPx + 16, b.CellPx);
+        ClientSize = new Size(b.CellPx + 16, b.CellPx + HeadRoom);
 
         BuildOverlays();
         pad.MouseDown += (_, e) => OnMouseDown(e); // 받침은 볼록이 창과 같은 자리·크기라 좌표가 그대로다
@@ -184,7 +184,7 @@ public sealed class PetForm : Form, IGameHost
         scaledFor = b.Area;
         int s = ScaleFor(b.K, Native.DpiAt(new Point(b.Area.X + 10, b.Area.Y + 10)));
         if (s != b.Scale) { b.Scale = s; drawn = default; Dbg.Log("scale", ("value", s)); }
-        ClientSize = new Size(b.CellPx + 16, b.CellPx);
+        ClientSize = new Size(b.CellPx + 16, b.CellPx + HeadRoom);
     }
 
     static string DescribeScreens() => string.Join(" ", Screen.AllScreens.Select(s =>
@@ -365,7 +365,7 @@ public sealed class PetForm : Form, IGameHost
     bool IGameHost.HitPet(int x, int y, int pad) // 지금 본체 창에 그려진 그림의 픽셀로 본다
     {
         var (name, frame, flip, shake) = drawn;
-        return name != null && Sprites.Near(sprites.Get(name, frame, 1, flip), (x - (Left + 8 + shake)) / (double)b.Scale, (y - Top) / (double)b.Scale, pad);
+        return name != null && Sprites.Near(sprites.Get(name, frame, 1, flip), (x - (Left + 8 + shake)) / (double)b.Scale, (y - Top - HeadRoom) / (double)b.Scale, pad);
     }
     void IGameHost.HideFromCapture(bool on)
     {
@@ -455,7 +455,7 @@ public sealed class PetForm : Form, IGameHost
         bool on = b.ClickPadOn && !b.Behind;
         if (on)
         {
-            pad.Bounds = Bounds;
+            pad.Bounds = new Rectangle(Left, Top + HeadRoom, Width, Height - HeadRoom); // 위 빈자리는 빼고 볼록이 칸만
             if (!pad.Visible) pad.Show();
             Native.PutBelow(pad.Handle, Handle); // 몸통 픽셀은 볼록이 창이, 나머지는 받침이 받는다
         }
@@ -486,14 +486,20 @@ public sealed class PetForm : Form, IGameHost
         }
     }
 
+    // 본체 창 위쪽 빈자리: 머리 장식(해바라기·클로버·낙엽·수면 모자)이 창 밖으로 잘리지 않게 그림을 이만큼 내려 그린다
+    // (YELL 2026-11-13: 해바라기·네잎클로버를 단 채 잡으면 장식 위쪽이 잘린다 — 잡힌 모습은 머리가 칸 맨 위까지 올라간다).
+    // 창 아래 끝은 그대로 발이라 자리 계산(b.X·b.Y)은 바뀌지 않는다. 빈자리는 투명 색이라 클릭은 뒤 창으로 간다
+    int HeadRoom => b.CellPx / 2;
+
     protected override void OnPaint(PaintEventArgs e)
     {
         var (name, frame, flip, shake) = drawn;
         if (name == null) return;
+        e.Graphics.TranslateTransform(0, HeadRoom); // 여기부터 (0, 0) = 볼록이 칸 왼쪽 위 (창 위 빈자리 아래)
         if (b.PuppetClip is { } c) // 게임이 가린 부분(창 뒤에 숨은 몸)은 안 그린다
         {
             using var mask = c.Clone();
-            mask.Translate(-Left, -Top);
+            mask.Translate(-Left, -Top - HeadRoom);
             e.Graphics.SetClip(mask, CombineMode.Exclude);
         }
         var bmp = sprites.Get(name, frame, b.Scale, flip);
@@ -521,7 +527,7 @@ public sealed class PetForm : Form, IGameHost
         {
             pressing = true; moved = false; pressAt = MousePosition;
             float cx = (e.X - 8f) / b.Scale; // 볼록이 칸 안의 자리. 뒤집혀 있으면 좌우를 되돌린다
-            pressCell = new PointF(b.Dir < 0 ? 40 - cx : cx, (float)e.Y / b.Scale);
+            pressCell = new PointF(b.Dir < 0 ? 40 - cx : cx, (e.Y - HeadRoom) / (float)b.Scale);
         }
         else if (e.Button == MouseButtons.Right)
         {
@@ -818,8 +824,8 @@ public sealed class PetForm : Form, IGameHost
         var (name, frame, flip, _) = drawn;
         if (pressing || name == null || !Visible || InGame || b.P.Stage == "egg") { gestures.Reset(); return; }
         var p = Control.MousePosition;
-        int k = b.Scale, px = (int)Math.Floor((p.X - Left - 8.0) / k), py = (int)Math.Floor((double)(p.Y - Top) / k);
-        double cx = (p.X - Left - 8.0) / k, cy = (double)(p.Y - Top) / k;
+        int k = b.Scale, px = (int)Math.Floor((p.X - Left - 8.0) / k), py = (int)Math.Floor((double)(p.Y - Top - HeadRoom) / k);
+        double cx = (p.X - Left - 8.0) / k, cy = (double)(p.Y - Top - HeadRoom) / k;
         if (b.Dir < 0) cx = 40 - cx; // 뒤집혀 있으면 좌우를 되돌린다 (클릭과 같게)
         bool inside = px is >= 0 and < 40 && py is >= 0 and < 40 && sprites.Get(name, frame, 1, flip).GetPixel(px, py).A > 0;
         string zone = inside ? Clicks.Zone(b.P.Stage, cx, cy) : "";
@@ -971,22 +977,26 @@ public sealed class PetForm : Form, IGameHost
         g.DrawImageUnscaled(sprites.Get(item, 0, s, mirror), 8 + shake + spot.X * k - sx * s, spot.Top * k - sy * s + sink); // 줄기 끝만 머리에 닿고 잎은 살짝 떠 있게 (YELL)
     }
 
-    // 밤에 자는 동안 수면 모자 (머리 꼭대기: 몸 가운데 열에서 가장 위 칸)
-    readonly Dictionary<(string, bool), (int X, int Top)> capSpot = new();
+    // 밤에 자는 동안 수면 모자 (머리 꼭대기: 몸 가운데 열에서 가장 위 칸). 프레임마다 자리를 따로 재서 숨 쉬며 들썩이는 머리를 따라간다
+    // (YELL 2026-11-13: 움직임에 따라 같이 — 전에는 처음 본 프레임 자리에 멈춰 있었다).
+    // 머리 장식(클로버·새싹·해바라기·낙엽)을 하고 있으면 모자는 안 쓴다 — 둘 중 하나만 (YELL 2026-11-13)
+    readonly Dictionary<(string, int, bool), (int X, int Top)> capSpot = new();
     public bool ForceNight; // 디버그·시험용
+    bool CapShown => (Night || ForceNight) && b.P.Asleep && b.Pose == "sleep" && clover.State != Clover.Phase.Worn && sprites.Has("game/nightcap");
     void DrawCap(Graphics g, string name, int frame, bool flip, int shake)
     {
-        if (!(Night || ForceNight) || !b.P.Asleep || b.Pose != "sleep" || !sprites.Has("game/nightcap")) return;
-        if (!capSpot.TryGetValue((name, flip), out var spot))
+        if (!CapShown) return;
+        int n = Math.Max(1, sprites.Frames(name)), f = (frame % n + n) % n;
+        if (!capSpot.TryGetValue((name, f, flip), out var spot))
         {
-            var one = sprites.Get(name, frame, 1, flip);
+            var one = sprites.Get(name, f, 1, flip);
             int top = one.Height;
             for (int x = one.Width * 3 / 10; x < one.Width * 6 / 10; x++)
                 for (int y = 0; y < one.Height; y++)
                     if (one.GetPixel(x, y).A > 0) { top = Math.Min(top, y); break; }
             int row = Math.Min(one.Height - 1, top + 4), x0 = one.Width, x1 = 0;
             for (int x = 0; x < one.Width; x++) if (one.GetPixel(x, row).A > 0) (x0, x1) = (Math.Min(x0, x), Math.Max(x1, x));
-            capSpot[(name, flip)] = spot = ((x0 + x1) / 2, top);
+            capSpot[(name, f, flip)] = spot = ((x0 + x1) / 2, top);
         }
         int k = b.Scale;
         g.DrawImageUnscaled(sprites.Get("game/nightcap", 0, k), 8 + shake + (spot.X - 20 - 3) * k, (spot.Top - 23 + 2) * k);
@@ -1056,7 +1066,7 @@ public sealed class PetForm : Form, IGameHost
     void WeatherLayout()
     {
         var (name, frame, flip, shake) = drawn;
-        weather.PlaceLeaf(sprites, name, frame, flip, b.Scale, Left + 8 + shake, Top, b.Now);
+        weather.PlaceLeaf(sprites, name, frame, flip, b.Scale, Left + 8 + shake, Top + HeadRoom, b.Now);
         weather.Layout(weatherShown, b.Now, WeatherZone(), b.Scale, WeatherHidden());
         int look = (weather.Soaked ? 1 + Weather.WetFrame(b.Now) : 0) + (weather.UmbrellaUp ? 4 : 0) + weather.PileShown * 8;
         if (look != weatherLook) { weatherLook = look; Invalidate(); }
@@ -1208,9 +1218,9 @@ public sealed class PetForm : Form, IGameHost
         var (name, frame, flip, _) = drawn;
         if (name != null)
         {
-            g.DrawImageUnscaled(sprites.Get(name, frame, b.Scale, flip), Left - v.X + 8, Top - v.Y);
+            g.DrawImageUnscaled(sprites.Get(name, frame, b.Scale, flip), Left - v.X + 8, Top + HeadRoom - v.Y);
             var at = g.Transform;
-            g.TranslateTransform(Left - v.X, Top - v.Y);
+            g.TranslateTransform(Left - v.X, Top + HeadRoom - v.Y);
             if (!weather.HidesHeadItem) DrawClover(g, name, frame, flip, 0);
             DrawCap(g, name, frame, flip, 0); // 수면 모자도 (본체 창과 같은 자리)
             weather.DrawWet(g, sprites, name, frame, flip, b.Scale, 8, 0, b.Now);
