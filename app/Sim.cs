@@ -774,6 +774,7 @@ static class Sim
         o.WriteLine(PetArt.Check()); // 데이터로 그린 캐릭터
         o.WriteLine(Clover.Check());
         o.WriteLine(Gestures.Check());
+        o.WriteLine(Weather.Check());
         LangChecks();
         MemoryChecks();
         ClickChecks(k);

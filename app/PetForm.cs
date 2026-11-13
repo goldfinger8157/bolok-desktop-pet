@@ -193,7 +193,7 @@ public sealed class PetForm : Form, IGameHost
 
     void BuildOverlays()
     {
-        foreach (var s in Screen.AllScreens) overlays.Add(new Overlay(b, () => sprites, s.Bounds));
+        foreach (var s in Screen.AllScreens) overlays.Add(new Overlay(b, () => sprites, s.Bounds) { Sky = () => weather });
     }
 
     void ShowOverlays()
@@ -415,6 +415,7 @@ public sealed class PetForm : Form, IGameHost
         GestureTick();
         VisitTick();
         PresentTick();
+        WeatherTick();
         if (visitor != null) visitor.Update(dt, b.X, b.Y, b.Mode is Mode.Wander or Mode.Anim || b.P.Asleep, b.P.Asleep, b.Area);
         SyncScale();
         var at = new Point((int)b.X - Width / 2, (int)b.Y - Height);
@@ -427,6 +428,7 @@ public sealed class PetForm : Form, IGameHost
         var now = (name, frame, b.Dir < 0, shake);
         bool flash = b.Now < b.FlashUntil || b.Blink;
         if (now != drawn || b.PuppetClip != clipShown || flash != flashShown) { drawn = now; clipShown = b.PuppetClip; flashShown = flash; Invalidate(); }
+        WeatherLayout();
 
         int want = b.Mode is Mode.Thrown or Mode.Held or Mode.Puppet ? 15 : 30; // 빠르게 움직일 때만 자주 그린다
         if (timer.Interval != want) timer.Interval = want;
@@ -502,8 +504,10 @@ public sealed class PetForm : Form, IGameHost
             e.Graphics.DrawImage(bmp, new Rectangle(8 + shake, 0, bmp.Width, bmp.Height), 0, 0, bmp.Width, bmp.Height, GraphicsUnit.Pixel, white);
         }
         else e.Graphics.DrawImageUnscaled(bmp, 8 + shake, 0);
-        DrawClover(e.Graphics, name, frame, flip, shake);
+        if (!weather.HidesHeadItem) DrawClover(e.Graphics, name, frame, flip, shake); // 우산 잎을 들거나 머리에 눈이 쌓이면 머리 장식은 잠깐 내려 둔다 (겹치지 않게)
         DrawCap(e.Graphics, name, frame, flip, shake);
+        weather.DrawWet(e.Graphics, sprites, name, frame, flip, b.Scale, 8 + shake, 0, b.Now);
+        weather.DrawPile(e.Graphics, sprites, name, frame, flip, b.Scale, 8 + shake, 0);
     }
 
     protected override void OnMouseDown(MouseEventArgs e)
@@ -921,6 +925,55 @@ public sealed class PetForm : Form, IGameHost
         g.DrawImageUnscaled(sprites.Get("game/nightcap", 0, k), 8 + shake + (spot.X - 20 - 3) * k, (spot.Top - 23 + 2) * k);
     }
 
+    // ── 날씨 (규칙은 Weather.cs): 하루 몇 번 볼록이 모니터에 눈·비가 조금. 일하는 창 위엔 안 그린다. 게임·잠·자리 비움엔 멈춘다 ──
+    readonly Weather weather = new();
+    long nextWeatherRoll;
+    bool weatherShown;
+    int weatherLook; // 본체 창에 그린 날씨 모습 (물방울 장·우산): 바뀌면 다시 그린다
+
+    void WeatherTick()
+    {
+        bool quiet = Weather.Quiet(InGame, b.P, Afk());
+        long t = Environment.TickCount64;
+        if (t >= nextWeatherRoll)
+        {
+            nextWeatherRoll = t + 1000;
+            if (weather.Tick(b.Now, DateTime.Now, !quiet && visitor == null && b.Mode == Mode.Wander, Random.Shared) is { } ev)
+                Dbg.Log("weather", ("event", ev), ("sky", weather.Now.ToString()), ("pet", weather.Reaction.ToString()), ("sec", (int)(weather.Until - weather.From)));
+        }
+        weatherShown = weather.On && !quiet;
+        weather.React(b, weatherShown, Random.Shared);
+    }
+
+    // 그림 자리가 정해진 뒤 (본체 창 자리·그림): 우산 잎 자리와 알갱이
+    void WeatherLayout()
+    {
+        var (name, frame, flip, shake) = drawn;
+        weather.PlaceLeaf(sprites, name, frame, flip, b.Scale, Left + 8 + shake, Top, b.Now);
+        weather.Layout(weatherShown, b.Now, b.Area, b.Scale, b.Active is { } w ? w.R : Rectangle.Empty);
+        int look = (weather.Soaked ? 1 + Weather.WetFrame(b.Now) : 0) + (weather.UmbrellaUp ? 4 : 0) + weather.PileShown * 8;
+        if (look != weatherLook) { weatherLook = look; Invalidate(); }
+    }
+
+    // 디버그: weather snow [pile] / weather rain [umbrella|wet|shelter] / weather off (뒤에 초를 붙이면 그만큼, 없으면 3분). weather 만 쓰면 지금 상태를 로그에.
+    //   weather snow pile: 머리에 눈이 바로 다 쌓인다 (가만히 → 털기를 바로 보인다)
+    public void WeatherCommand(string[] a)
+    {
+        string what = a.Length > 1 ? a[1] : "";
+        double sec = a.Length > 2 && double.TryParse(a[^1], out var n) ? n : 180;
+        var cover = a.Length > 2 ? a[2] switch { "umbrella" => Weather.Cover.Umbrella, "wet" => Weather.Cover.Wet, "shelter" => Weather.Cover.Shelter, _ => Weather.Cover.None } : Weather.Cover.None;
+        if (what == "off") weather.Stop(b.Now);
+        else if (what is "snow" or "rain")
+        {
+            bool pile = what == "snow" && a.Length > 2 && a[2] == "pile";
+            if (!pile || weather.Now != Weather.Sky.Snow) weather.Begin(what == "snow" ? Weather.Sky.Snow : Weather.Sky.Rain, b.Now, Random.Shared, cover, sec); // 오던 눈에 pile 만 더하면 그대로
+            if (pile) weather.FillPile();
+        }
+        else if (what != "") throw new ArgumentException("weather snow [pile] | rain [umbrella|wet|shelter] | off");
+        Dbg.Log("weather", ("event", "cmd-" + (what == "" ? "state" : what)), ("sky", weather.Now.ToString()), ("pet", weather.Reaction.ToString()), ("sec", (int)Math.Max(0, weather.Until - b.Now)),
+            ("quiet", Weather.Quiet(InGame, b.P, Afk())), ("asleep", b.P.Asleep), ("game", InGame), ("mode", b.Mode.ToString()));
+    }
+
     // 새 알의 종: 34종 중 아무나 (처음 알도, 풀어준 뒤 오는 알도)
     string RandomSpecies()
     {
@@ -1051,8 +1104,10 @@ public sealed class PetForm : Form, IGameHost
             g.DrawImageUnscaled(sprites.Get(name, frame, b.Scale, flip), Left - v.X + 8, Top - v.Y);
             var at = g.Transform;
             g.TranslateTransform(Left - v.X, Top - v.Y);
-            DrawClover(g, name, frame, flip, 0);
+            if (!weather.HidesHeadItem) DrawClover(g, name, frame, flip, 0);
             DrawCap(g, name, frame, flip, 0); // 수면 모자도 (본체 창과 같은 자리)
+            weather.DrawWet(g, sprites, name, frame, flip, b.Scale, 8, 0, b.Now);
+            weather.DrawPile(g, sprites, name, frame, flip, b.Scale, 8, 0);
             g.Transform = at;
         }
         bmp.Save(path, ImageFormat.Png);
