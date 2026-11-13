@@ -753,36 +753,20 @@ public sealed class Overlay : Form
 
     // 구멍 모양: 동그라미가 아니라 찢긴 모양. 자리마다 다르고(터진 자리로 정한다), 고치며 줄어도 모양은 그대로
     // 칸(12px): Hole = 뻥 뚫린 안쪽, 아니면 그을린 가장자리. 바깥으로 금(6px 칸)이 몇 줄 간다
+    // 모양은 Kit 의 Ragged 가 정한다 (씨와 난수 순서가 전과 같아 같은 자리의 구멍은 전과 같은 모양이다).
+    // 프레임마다 다시 뽑지 않게 구멍마다 들고 있다가 자리·크기가 바뀔 때만 새로 뽑는다 (돌려준 목록은 고치지 않는다)
+    sealed class CraterArt { public (double, double, double, double) Key; public List<(int I, int J, bool Hole)> Cells = new(); public List<(int X, int Y)> Cracks = new(); }
+    static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Icbm.Crater, CraterArt> craterArt = new();
+
     internal static (List<(int I, int J, bool Hole)> Cells, List<(int X, int Y)> Cracks) CraterShape(Icbm.Crater cr)
     {
+        var art = craterArt.GetOrCreateValue(cr);
+        var key = (cr.X, cr.Y, cr.R, cr.R0);
+        if (art.Key == key) return (art.Cells, art.Cracks);
         int c = Icbm.Cell;
-        var cells = new List<(int, int, bool)>();
-        var cracks = new List<(int, int)>();
-        if (cr.R < c) return (cells, cracks);
-        var rng = new Random((int)(cr.X * 7 + cr.Y * 13));
-        double p3 = rng.NextDouble() * 6.3, p5 = rng.NextDouble() * 6.3, p7 = rng.NextDouble() * 6.3, p11 = rng.NextDouble() * 6.3;
-        double F(double a) => 1 + .13 * Math.Sin(3 * a + p3) + .09 * Math.Sin(5 * a + p5) + .07 * Math.Sin(7 * a + p7) + .06 * Math.Sin(11 * a + p11);
-        int n = (int)Math.Ceiling(cr.R * 1.4 / c) + 1;
-        for (int j = -n; j <= n; j++)
-            for (int i = -n; i <= n; i++)
-            {
-                double x = (i + .5) * c, y = (j + .5) * c, d = Math.Sqrt(x * x + y * y), r = cr.R * F(Math.Atan2(y, x));
-                if (d < r - c) cells.Add((i, j, true));
-                else if (d < r) cells.Add((i, j, false));
-            }
-        int h = c / 2, count = 3 + rng.Next(3);
-        for (int m = 0; m < count; m++) // 금: 가장자리에서 바깥으로 지그재그
-        {
-            double a = rng.NextDouble() * Math.PI * 2, r = cr.R * F(a) - h, side = 0;
-            int len = (int)((5 + rng.Next(6)) * cr.R / Math.Max(cr.R0, 1));
-            for (int t = 0; t < len; t++, r += h)
-            {
-                side = Math.Clamp(side + (rng.NextDouble() - .5) * 1.2, -1.5, 1.5);
-                double x = Math.Cos(a) * r - Math.Sin(a) * side * h, y = Math.Sin(a) * r + Math.Cos(a) * side * h;
-                cracks.Add(((int)Math.Floor(x / h) * h, (int)Math.Floor(y / h) * h));
-            }
-        }
-        return (cells, cracks);
+        var shape = Ragged.At(cr.X, cr.Y);
+        (art.Key, art.Cells, art.Cracks) = cr.R < c ? (key, new(), new()) : (key, shape.Cells(cr.R, c), shape.Cracks(cr.R, cr.R0, c / 2));
+        return (art.Cells, art.Cracks);
     }
 
     // 구멍 + 금이 닿을 수 있는 넓이 (다시 칠할 자리)
@@ -793,8 +777,7 @@ public sealed class Overlay : Form
     {
         int c = Icbm.Cell;
         var (cells, cracks) = CraterShape(cr);
-        foreach (var (i, j, inside) in cells) g.FillRectangle(inside && cr.Friend == null ? hole : rim, ctr.X + i * c, ctr.Y + j * c, c, c);
-        foreach (var (x, y) in cracks) g.FillRectangle(rim, ctr.X + x, ctr.Y + y, c / 2, c / 2);
+        BlastArt.Hole(g, cells, cracks, ctr, c, rim, cr.Friend == null ? hole : rim);
         if (cr.Friend == null) return;
         var inner = cells.Where(x => x.Hole).ToList();
         if (inner.Count == 0) return;

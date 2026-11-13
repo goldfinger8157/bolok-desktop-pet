@@ -1006,9 +1006,9 @@ static class Sim
         var bwin = new Win(new IntPtr(2), new Rectangle(1150, 450, 650, 450), false);
         var covered = new Win(new IntPtr(3), new Rectangle(700, 650, 300, 200), false);
         var full = new Win(new IntPtr(4), new Rectangle(0, 0, 1920, 1040), false);
-        var isl = Worms.Islands(a, new[] { a, bwin, covered, full }, field, screens, 120, 4);
+        var isl = WindowPick.Islands(a, new[] { a, bwin, covered, full }, field, screens, 120, 4);
         Expect(isl.Field == field && isl.Wins.Count == 2 && isl.Wins.Contains(a.R) && isl.Wins.Contains(bwin.R), "섬: 가린 창·최대화 창은 빼고 창모드 창들");
-        Expect(Worms.Islands(full, new[] { full }, field, screens, 120, 4).Wins.Count == 0, "창모드 창이 없으면 섬도 없다");
+        Expect(WindowPick.Islands(full, new[] { full }, field, screens, 120, 4).Wins.Count == 0, "창모드 창이 없으면 섬도 없다");
 
         Worms Make(int seed = 1, string gun = "normal") => new(field, new[] { a.R, bwin.R }, 3, new Random(seed), gun, "normal") { Wind = 0 };
         void Tick(Worms w, double sec) { for (double t = 0; t < sec; t += 1 / 60.0) w.Update(1 / 60.0); }

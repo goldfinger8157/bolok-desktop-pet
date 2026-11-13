@@ -4,25 +4,31 @@ namespace Bolok;
 
 // 버그 떼 모듈: 앱에 붙이기(판·조작·볼록이), 그리기, 기록, 자가 검사, 디버그 명령. 규칙은 Swarm.cs
 // 판은 볼록이를 가운데 두고 220×150 칸(배율 3 이면 660×450)만 쓴다. 모서리 표시만 그리고 바탕은 작업 화면 그대로
-// 조작: 방향키(WASD)로 움직이기만 한다. 총·칼은 자동. Esc 끝. 본체 창은 숨기고 작은 볼록이를 판 위에 그린다
+// 조작: 방향키로 움직이기만 한다 (판이 앞 창일 때만 읽는다). 총·칼은 자동. Esc 끝. 본체 창은 숨기고 작은 볼록이를 판 위에 그린다
+// 표시·효과·소리·조작은 공통 도구(app/Games/Kit)를 쓴다
 sealed class SwarmGame : IGameMode
 {
     readonly IGameHost host;
     Swarm? swarm;
-    int bestSec, bestKills, held;
+    Session? ses;
+    int bestSec, bestKills;
     bool auto;
-    double guideUntil;
+    Watch hud;
+
+    static readonly Dictionary<string, Sound> Sounds = new()
+    {
+        ["fire"] = Sound.Shot, ["kill"] = Sound.Hit, ["bigkill"] = Sound.Boom, ["hurt"] = Sound.Hurt, ["over"] = Sound.Hurt,
+        ["level"] = Sound.Pick, ["heart"] = Sound.Pick, ["win"] = Sound.Pick,
+    };
 
     public SwarmGame(IGameHost host) => this.host = host;
     public string Id => "swarm";
     public string MenuKey => "menu.swarm";
     public bool Running => swarm != null;
 
-    static int Bit(Keys c) => c switch { Keys.Left or Keys.A => 1, Keys.Right or Keys.D => 2, Keys.Up or Keys.W => 4, Keys.Down or Keys.S => 8, _ => 0 };
-    int Axis(int minus, int plus) => ((held & plus) != 0 ? 1 : 0) - ((held & minus) != 0 ? 1 : 0);
-
     public void Start()
     {
+        if (Running) return;
         var b = host.Pet;
         var area = b.Area;
         int k = b.Scale, w = Math.Min(area.Width, 220 * k), h = Math.Min(area.Height, 150 * k);
@@ -31,20 +37,13 @@ sealed class SwarmGame : IGameMode
         var s = swarm = new Swarm(field, k, new Random());
         s.OnEvent = e =>
         {
-            switch (e)
-            {
-                case "fire": Sfx.Play("pistol"); break;
-                case "kill": Sfx.Play("hit"); break;
-                case "bigkill": case "hurt": case "over": Sfx.Play("boom"); break;
-                case "level": case "heart": case "win": Sfx.Play("reload"); break;
-            }
+            Snd.Play(Sounds, e);
             if (e is "level" or "hurt" or "big" or "over" or "win") Dbg.Log("swarm", ("event", e), ("sec", (int)s.Time), ("level", s.Level), ("kills", s.Kills), ("lives", s.Lives), ("foes", s.Foes.Count));
         };
-        (held, guideUntil) = (0, 4);
-        var layer = host.OpenLayer(field, (_, _) => { }, (_, _) => { }, () => Stop(true));
-        layer.KeyDown += (_, e) => held |= Bit(e.KeyCode);
-        layer.KeyUp += (_, e) => held &= ~Bit(e.KeyCode);
-        layer.Deactivate += (_, _) => held = 0; // 다른 창으로 넘어가면 누르던 키는 뗀 걸로
+        hud = default;
+        gemRects.Clear();
+        ses = Session.Open(host, field, () => Stop(true));
+        ses.Guide("note.swarm_move", "note.swarm_auto", "note.esc");
         b.StartPuppet();
         host.ShowPet(false);
         Dbg.Log("mode-start", ("id", Id), ("field", field.ToString()));
@@ -52,100 +51,156 @@ sealed class SwarmGame : IGameMode
 
     public void Frame(double dt)
     {
-        var s = swarm!;
+        var (s, io) = (swarm!, ses!);
+        io.Tick();
         if (auto) { var (dx, dy) = s.BotSteer(); s.Steer(dx, dy); }
-        else s.Steer(Axis(1, 2), Axis(4, 8));
+        else s.Steer(io.AxisX, io.AxisY); // 다른 창으로 넘어가면 방향키는 뗀 걸로 읽힌다
         s.Update(dt);
+        Track();
         (host.Pet.X, host.Pet.Y) = (s.X, s.Feet); // 본체는 숨었지만 끝나면 여기서 나타난다
-        if (s.Done) Stop(false);
+        if (s.Done || Ended(s) && s.EndedFor > .8 && io.LeftHit) Stop(false); // 끝 화면은 0.8초 뒤부터 눌러서 닫을 수 있다
     }
 
+    // quit(보스 키·디버그 stop): 결과 화면·표정 없이 바로 끝낸다. 기록은 조용히 남긴다
     public void Stop(bool quit)
     {
         if (swarm is not { } s) return;
         swarm = null;
-        host.CloseLayer();
-        host.ShowPet(true);
         if (!auto) (bestSec, bestKills) = (Math.Max(bestSec, (int)s.Time), Math.Max(bestKills, s.Kills));
-        host.Pet.EndPuppet(s.State == Swarm.Phase.Win || s.Time >= 60, "swarm", ("sec", (int)s.Time), ("kills", s.Kills), ("level", s.Level), ("esc", quit));
+        ses?.Close(host.Pet, quit, s.State == Swarm.Phase.Win || s.Time >= 60, "swarm", ("sec", (int)s.Time), ("kills", s.Kills), ("level", s.Level), ("esc", quit));
+        ses = null;
+        host.ShowPet(true);
         Dbg.Log("mode-end", ("id", Id));
         auto = false;
         host.Save();
     }
 
-    // ── 그리기: 판 모서리, 보석, 벌레, 총알, 칼 자국, 터짐, 작은 볼록이, 하트·남은 시간·레벨 (글자 없이 숫자·그림만) ──
-    string[] Guide => new[] { L.T("note.swarm_move"), L.T("note.swarm_auto"), L.T("note.esc") };
-    static int Small(int k) => Math.Max(1, k - 1);
+    // ── 그리기: 판 모서리, 보석, 벌레, 총알, 칼 자국, 터짐, 작은 볼록이, 남은 시간·레벨·하트 (글자 없이 숫자·그림만) ──
     static bool Ended(Swarm s) => s.State is Swarm.Phase.Win or Swarm.Phase.Over;
+    static int SecLeft(Swarm s) => (int)Math.Ceiling(Swarm.WinSec - s.Time);
+
+    // 자주 찍는 그림은 한 번만 찾아 둔다 (개발 중 그림이 바뀌면 다시)
+    Sprites? artOf;
+    int artK;
+    readonly Stamp[][] foe = new Stamp[4][];   // Swarm.Kind 순서
+    Stamp gem = null!, bigGem = null!, heart = null!, flash = null!, plus = null!;
+    readonly Stamp[] pistol = new Stamp[2];    // 오른쪽·왼쪽
+    readonly Stamp[] upIcon = new Stamp[4];    // Swarm.Up 순서
+
+    void Art(Overlay o, int k)
+    {
+        if (ReferenceEquals(artOf, o.Art) && artK == k) return;
+        var st = Stamps.Of(o.Art);
+        int small = GameHud.Small(k), hs = GameHud.HeartScale(k);
+        (artOf, artK) = (o.Art, k);
+        (foe[(int)Swarm.Kind.Bug], foe[(int)Swarm.Kind.Wasp]) = (st.Row("game/bug", small), st.Row("game/wasp", small));
+        (foe[(int)Swarm.Kind.Beetle], foe[(int)Swarm.Kind.Boss]) = (st.Row("game/beetle", small), st.Row("game/bugboss", small));
+        (gem, bigGem, heart, flash) = (st.Get("game/gem", 0, small), st.Get("game/gem", 0, k), st.Get("icon/heart", 0, hs), st.Get("game/flash", 0, small));
+        (pistol[0], pistol[1], plus) = (st.Get("game/pistol", 0, small), st.Get("game/pistol", 0, small, true), st.Get("num/+", 0, k));
+        (upIcon[(int)Swarm.Up.Rate], upIcon[(int)Swarm.Up.Multi], upIcon[(int)Swarm.Up.Arc], upIcon[(int)Swarm.Up.Heart]) =
+            (st.Get("game/pistol", 0, k), st.Get("game/bullet", 0, k), st.Get("game/sword", 0, k), heart);
+    }
+
+    Stamp FoeArt(Swarm s, Swarm.Foe f)
+    {
+        var row = foe[(int)f.Kind];
+        return row[((int)(s.Clock * (f.Kind == Swarm.Kind.Wasp ? 12 : 5)) + (int)f.Speed) % row.Length];
+    }
+
+    Stamp GemArt(Swarm.Gem m) => m.Heart ? heart : m.Xp > 1 ? bigGem : gem;
+
+    // 레벨(별 + 숫자)과 그 아래 보석 막대: 위쪽 가운데
+    static (int X, int Y) LevelAt(Rectangle f, int k) => (f.Left + f.Width / 2 - 8 * k, f.Top + 7 * k);
+    static Rectangle XpBar(Rectangle f, int k) => new(f.Left + f.Width / 2 - 13 * k, f.Top + 13 * k, 26 * k, 2 * k);
+
+    // 프레임마다 한 번: 표시 값이 바뀌었는지, 보석이 움직이거나 사라졌는지 (가만히 있는 것은 다시 칠하지 않는다)
+    readonly List<Rectangle> gemRects = new();
+
+    void Track()
+    {
+        var s = swarm!;
+        hud.Set(HashCode.Combine(SecLeft(s), s.Lives, s.Level, s.Xp, (int)s.State));
+        gemRects.Clear();
+        if (artOf == null) return; // 아직 한 번도 안 그렸다: 첫 프레임에 판을 통째로 칠한다
+        foreach (var m in s.Gone) if (!double.IsNaN(m.ShownX)) gemRects.Add(Rectangle.Inflate(GemArt(m).Box((int)m.ShownX, (int)m.ShownY), 1, 1));
+        foreach (var m in s.Gems)
+        {
+            if (m.ShownX == m.X && m.ShownY == m.Y) continue;
+            var art = GemArt(m);
+            if (!double.IsNaN(m.ShownX)) gemRects.Add(Rectangle.Inflate(art.Box((int)m.ShownX, (int)m.ShownY), 1, 1));
+            gemRects.Add(Rectangle.Inflate(art.Box((int)m.X, (int)m.Y), 1, 1));
+            (m.ShownX, m.ShownY) = (m.X, m.Y);
+        }
+    }
 
     public void Dirty(Overlay o, List<Rectangle> rs)
     {
         if (swarm is not { } s) return;
-        int k = s.K, cell = 40 * Small(k);
-        foreach (var f in s.Foes) { int half = (f.Kind == Swarm.Kind.Boss ? 20 : 11) * k; rs.Add(o.Client(Overlay.Around(f.X, f.Y, half, half))); }
-        foreach (var t in s.Shots) rs.Add(o.Client(Overlay.Around(t.X, t.Y, 3 * k, 3 * k)));
-        foreach (var m in s.Gems) rs.Add(o.Client(Overlay.Around(m.X, m.Y, 8 * k, 8 * k)));
-        foreach (var p in s.Pops) rs.Add(o.Client(Overlay.Around(p.X, p.Y, p.R + 8 * k, p.R + 8 * k)));
-        rs.Add(o.Client(new Rectangle((int)(s.X - cell / 2.0) - 8 * k, (int)(s.Feet - cell) - 12 * k, cell + 16 * k, cell + 14 * k))); // 볼록이·총·머리 위 그림
-        if (s.Clock - s.SwingAt < Swarm.SwingSec) rs.Add(o.Client(Overlay.Around(s.X, s.Y, s.ReachPx + 3 * k, s.ReachPx + 3 * k)));
+        int k = s.K, small = GameHud.Small(k), cell = o.Art.Cell * small;
         var f0 = s.Field;
-        rs.Add(o.Client(new Rectangle(f0.Left, f0.Top, f0.Width, 18 * k)));                                     // 하트·남은 시간·레벨
-        if (Ended(s)) rs.Add(o.Client(Overlay.Around(f0.Left + f0.Width / 2.0, f0.Top + f0.Height * .4 - 6 * k, 44 * k, 22 * k))); // 끝: 왕관·잡은 수
-        foreach (var c in Corners(f0, k)) rs.Add(o.Client(c));
-        if (s.Clock < guideUntil) rs.Add(o.Client(o.NoteRect(s.X, s.Feet, f0, Guide)));
+        Art(o, k);
+        if (hud.Fresh) rs.Add(o.Client(f0)); // 판이 막 열렸다: 한 번은 통째로
+        foreach (var f in s.Foes) rs.Add(o.Client(Rectangle.Inflate(FoeArt(s, f).Box((int)f.X, (int)f.Y), 2, 2)));
+        foreach (var t in s.Shots) rs.Add(o.Client(Overlay.Around(t.X, t.Y, k + 3, k + 3)));
+        foreach (var r in gemRects) rs.Add(o.Client(r));
+        foreach (var p in s.Pops) rs.Add(o.Client(BlastArt.PopRect(p.X, p.Y, p.R * 1.2, small)));
+        rs.Add(o.Client(new Rectangle((int)(s.X - cell / 2.0) - 8 * k, (int)(s.Feet - cell) - 12 * k, cell + 16 * k, cell + 14 * k))); // 볼록이·총·머리 위 그림
+        if (s.Clock - s.SwingAt < Swarm.SwingSec + .05) rs.Add(o.Client(Overlay.Around(s.X, s.Y, s.ReachPx + 3 * k, s.ReachPx + 3 * k)));
+        if (hud.Changed)
+        {
+            var (lx, ly) = LevelAt(f0, k);
+            rs.Add(o.Client(GameHud.ScoreRect(f0, k)));                                   // 남은 시간
+            rs.Add(o.Client(GameHud.HeartsRect(f0, k)));
+            rs.Add(o.Client(GameHud.StarRect(lx, ly, small)));                            // 레벨
+            rs.Add(o.Client(GameHud.BarRect(XpBar(f0, k), k)));
+            if (Ended(s)) rs.Add(o.Client(GameHud.CenterRect(f0, k)));                    // 끝: 잡은 수·왕관
+        }
+        ses?.DirtyGuide(o, rs, s.Clock, s.X, s.Feet);
     }
 
-    // 판 모서리 네 군데에 작은 ㄱ자 (판이 어디까지인지만 알려 준다)
-    static IEnumerable<Rectangle> Corners(Rectangle f, int k)
-    {
-        int len = 8 * k, t = Math.Max(1, k);
-        yield return new Rectangle(f.Left, f.Top, len, t); yield return new Rectangle(f.Left, f.Top, t, len);
-        yield return new Rectangle(f.Right - len, f.Top, len, t); yield return new Rectangle(f.Right - t, f.Top, t, len);
-        yield return new Rectangle(f.Left, f.Bottom - t, len, t); yield return new Rectangle(f.Left, f.Bottom - len, t, len);
-        yield return new Rectangle(f.Right - len, f.Bottom - t, len, t); yield return new Rectangle(f.Right - t, f.Bottom - len, t, len);
-    }
+    // 아래쪽 벌레가 위에 겹치게 그리는 차례 (프레임마다 목록을 새로 만들지 않는다)
+    readonly List<Swarm.Foe> order = new();
 
     public void Draw(Overlay o, Graphics g)
     {
         if (swarm is not { } s) return;
-        var sp = o.Art;
-        int k = s.K, small = Small(k), hs = Math.Max(1, k / 3);
-        using var dark = new SolidBrush(Color.FromArgb(90, 50, 40));
-        using (var edge = new SolidBrush(Color.FromArgb(150, 165, 190)))
-            foreach (var c in Corners(s.Field, k)) g.FillRectangle(edge, o.Client(c));
+        int k = s.K, small = GameHud.Small(k);
+        var fl = s.Field;
+        Art(o, k);
+        GameHud.Corners(o, g, fl, k);
 
-        foreach (var m in s.Gems) o.Put(g, m.Heart ? sp.Get("icon/heart", 0, hs) : sp.Get("game/gem", 0, m.Xp > 1 ? k : small), (int)m.X, (int)m.Y);
-        foreach (var f in s.Foes.OrderBy(f => f.Y)) // 아래쪽 벌레가 위에 겹치게
+        foreach (var m in s.Gems) GemArt(m).Put(o, g, (int)m.X, (int)m.Y);
+        order.Clear();
+        order.AddRange(s.Foes);
+        for (int i = 1; i < order.Count; i++) // 끼워 넣기 정렬: 같은 높이면 먼저 온 벌레가 아래 (차례가 바뀌어 깜빡이지 않는다)
         {
-            if (s.Clock - f.Hit < .08 && (int)(s.Clock * 40) % 2 == 0) continue; // 맞으면 번쩍
-            string art = f.Kind switch { Swarm.Kind.Boss => "game/bugboss", Swarm.Kind.Beetle => "game/beetle", Swarm.Kind.Wasp => "game/wasp", _ => "game/bug" };
-            o.Put(g, sp.Get(art, ((int)(s.Clock * (f.Kind == Swarm.Kind.Wasp ? 12 : 5)) + (int)f.Speed) % 2, small), (int)f.X, (int)f.Y);
+            var f = order[i];
+            int j = i - 1;
+            for (; j >= 0 && order[j].Y > f.Y; j--) order[j + 1] = order[j];
+            order[j + 1] = f;
         }
-        using (var gold = new SolidBrush(Color.FromArgb(255, 220, 90)))
-            foreach (var t in s.Shots)
-            {
-                var p = o.ToClient(t.X, t.Y);
-                g.FillRectangle(dark, p.X - k - 1, p.Y - k - 1, 2 * k + 2, 2 * k + 2);
-                g.FillRectangle(gold, p.X - k, p.Y - k, 2 * k, 2 * k);
-            }
-        foreach (var p in s.Pops) o.Put(g, sp.Get("game/boom", Math.Min(3, (int)((s.Clock - p.At) / .11)), Math.Max(1, (int)(p.R / 14))), (int)p.X, (int)p.Y);
+        foreach (var f in order)
+            if (!Fx.Flash(s.Clock, f.Hit)) FoeArt(s, f).Put(o, g, (int)f.X, (int)f.Y); // 맞으면 번쩍
+        order.Clear();
+        foreach (var t in s.Shots)
+        {
+            var p = o.ToClient(t.X, t.Y);
+            g.FillRectangle(Pal.Line, p.X - k - 1, p.Y - k - 1, 2 * k + 2, 2 * k + 2);
+            g.FillRectangle(Pal.Shot, p.X - k, p.Y - k, 2 * k, 2 * k);
+        }
+        foreach (var p in s.Pops) BlastArt.Pop(o, g, p.X, p.Y, p.R * 1.2, s.Clock - p.At, small);
 
         // 작은 볼록이: 움직이면 걷고, 맞으면 아파하고 잠깐 깜빡인다. 옆에 총을 들고, 칼은 휘두를 때 자국만 보인다
-        bool blink = s.State == Swarm.Phase.Play && s.Clock < s.SafeUntil && (int)(s.Clock * 10) % 2 == 0;
-        string stage = host.Pet.P.Stage, pose = s.State switch
+        bool blink = s.State == Swarm.Phase.Play && Fx.Blink(s.Clock, s.SafeUntil);
+        string pose = s.State switch { Swarm.Phase.Win => "happy", Swarm.Phase.Over => "sad", _ => Fx.Hurting(s.Clock, s.HurtAt) ? "hurt" : s.Moving ? "walk" : "idle" };
+        int cell = o.Art.Cell * small;
+        if (!blink && s.State != Swarm.Phase.Done)
         {
-            Swarm.Phase.Win => "happy", Swarm.Phase.Over => "sad", _ => s.Clock - s.HurtAt < .5 ? "hurt" : s.Moving ? "walk" : "idle",
-        };
-        string name = $"{stage}/0/{pose}";
-        int cell = 40 * small;
-        if (!blink && host.Sprites.Has(name) && s.State != Swarm.Phase.Done)
-        {
-            var at = o.ToClient(s.X - cell / 2.0, s.Feet - cell);
-            g.DrawImageUnscaled(host.Sprites.Get(name, (int)(s.Clock * 1000 / (pose == "walk" ? 130 : 400)), small, s.Dir < 0), at.X, at.Y);
+            Fx.Pet(o, g, host.Sprites, host.Pet.P.Stage, pose, s.Clock, small, s.X, s.Feet, s.Dir < 0);
             if (s.State == Swarm.Phase.Play)
             {
-                o.Put(g, sp.Get("game/pistol", 0, small, s.AimDir < 0), (int)(s.X + s.AimDir * 8 * k), (int)(s.Y + 2 * k));
-                if (s.Clock - s.FireAt < .07) o.Put(g, sp.Get("game/flash", 0, small), (int)(s.X + s.AimDir * 15 * k), (int)(s.Y + k));
+                pistol[s.AimDir < 0 ? 1 : 0].Put(o, g, (int)(s.X + s.AimDir * 8 * k), (int)(s.Y + 2 * k));
+                if (s.Clock - s.FireAt < .07) flash.Put(o, g, (int)(s.X + s.AimDir * 15 * k), (int)(s.Y + k));
             }
         }
         DrawSwing(o, g, s);
@@ -153,39 +208,17 @@ sealed class SwarmGame : IGameMode
         {
             double rise = Math.Min(1, (s.Clock - s.UpAt) / .25) * 4 * k;
             int ux = (int)s.X + 4 * k, uy = (int)(s.Feet - cell + 5 * k - rise);
-            o.Label(g, "+", ux - 10 * k, uy, k);
-            o.Put(g, up switch
-            {
-                Swarm.Up.Rate => sp.Get("game/pistol", 0, k), Swarm.Up.Multi => sp.Get("game/bullet", 0, k),
-                Swarm.Up.Arc => sp.Get("game/sword", 0, k), _ => sp.Get("icon/heart", 0, hs),
-            }, ux, uy);
+            plus.Put(o, g, ux - 10 * k, uy);
+            upIcon[(int)up].Put(o, g, ux, uy);
         }
 
-        var fl = s.Field;
-        int top = fl.Top + 7 * k, mid = fl.Left + fl.Width / 2;
-        for (int i = 0; i < s.Lives; i++) o.Put(g, sp.Get("icon/heart", 0, hs), fl.Left + (14 + i * 22) * hs + 2 * k, top); // 하트 (왼쪽 위)
-        o.Label(g, Math.Ceiling(Swarm.WinSec - s.Time).ToString(), mid, top, small);                                         // 남은 시간 (가운데 위, 초)
-        o.Put(g, sp.Get("game/star", 0, small), fl.Right - 24 * k, top);                                                     // 레벨: 별 + 숫자, 아래에 보석 막대
-        o.Label(g, s.Level.ToString(), fl.Right - 11 * k, top, small);
-        var bar = o.Client(new Rectangle(fl.Right - 30 * k, fl.Top + 13 * k, 26 * k, 2 * k));
-        using var cyan = new SolidBrush(Color.FromArgb(80, 214, 226));
-        using var back = new SolidBrush(Color.FromArgb(255, 243, 224));
-        g.FillRectangle(dark, Rectangle.Inflate(bar, Math.Max(1, k / 2), Math.Max(1, k / 2)));
-        g.FillRectangle(back, bar);
-        g.FillRectangle(cyan, bar.X, bar.Y, bar.Width * Math.Min(s.Xp, s.Need) / s.Need, bar.Height);
-        if (Ended(s)) // 끝: 상자 안에 벌레 × 잡은 수, 끝까지 버텼으면 그 위에 왕관
-        {
-            string kills = "×" + s.Kills;
-            bool won = s.State == Swarm.Phase.Win;
-            int cy = (int)(fl.Top + fl.Height * .4), big = k + 1, text = kills.Length * 5 * big, left = mid - (14 * k + text) / 2;
-            var box = o.Client(Rectangle.FromLTRB(left - 6 * k, cy - (won ? 24 : 10) * k, left + 14 * k + text + 6 * k, cy + 10 * k));
-            g.FillRectangle(back, Rectangle.Inflate(box, k, k));
-            g.FillRectangle(dark, box);
-            if (won) o.Put(g, sp.Get("game/crown", 0, big), mid, cy - 15 * k);
-            o.Put(g, sp.Get("game/bug", 0, small), left + 7 * k, cy - k);
-            o.Label(g, kills, left + 14 * k + text / 2.0, cy, big);
-        }
-        if (s.Clock < guideUntil) o.DrawNoteAt(g, s.X, s.Feet, fl, Guide);
+        GameHud.Score(o, g, fl, k, SecLeft(s));                                              // 남은 시간 (왼쪽 위, 초)
+        GameHud.Hearts(o, g, fl, k, s.Lives);                                                // 하트 (오른쪽 위)
+        var (lx, ly) = LevelAt(fl, k);
+        GameHud.Star(o, g, lx, ly, small, s.Level);                                          // 레벨: 별 + 숫자, 아래에 보석 막대
+        GameHud.Bar(o, g, XpBar(fl, k), k, Math.Min(s.Xp, s.Need) / (double)s.Need, Pal.Cyan);
+        if (Ended(s)) GameHud.Result(o, g, fl, k, s.Kills, bestKills, s.Kills > bestKills, "game/bug"); // 끝: 벌레 × 잡은 수, 새 기록이면 큰 왕관
+        ses?.DrawGuide(o, g, s.Clock, s.X, s.Feet);
     }
 
     // 칼 자국: 겨눈 쪽 부채꼴 가장자리를 따라 가운데가 두툼한 초승달이 한쪽 끝에서 다른 끝으로 지나간다 (배율 칸에 맞춘 네모들)
@@ -194,8 +227,6 @@ sealed class SwarmGame : IGameMode
         double t = (s.Clock - s.SwingAt) / Swarm.SwingSec;
         if (t is < 0 or >= 1) return;
         int k = s.K, n = Math.Max(8, (int)(4 * s.ArcHalf * s.ReachPx / k));
-        using var edge = new SolidBrush(Color.FromArgb(110, 170, 240));
-        using var core = new SolidBrush(Color.White);
         for (int i = (int)(n * Math.Max(0, t * 2 - 1)); i <= n * Math.Min(1, t * 2); i++)
         {
             double u = (double)i / n, a = s.SwingDir - s.ArcHalf + 2 * s.ArcHalf * u;
@@ -203,7 +234,7 @@ sealed class SwarmGame : IGameMode
             for (int d = 0; d <= deep; d++)
             {
                 var p = o.ToClient(s.X + Math.Cos(a) * (s.ReachPx - d * k), s.Y + Math.Sin(a) * (s.ReachPx - d * k));
-                g.FillRectangle(d == 0 || d == deep ? edge : core, p.X / k * k, p.Y / k * k, k, k);
+                g.FillRectangle(d == 0 || d == deep ? Pal.Slash : Pal.White, p.X / k * k, p.Y / k * k, k, k);
             }
         }
     }
@@ -235,47 +266,35 @@ sealed class SwarmGame : IGameMode
     }
 
     // ── 화면 없이 그려 보기: 자동 조종으로 돌리며 세 장면 (첫 레벨 업, 한창 칼을 휘두를 때, 끝) ──
-    sealed class SceneHost : IGameHost
-    {
-        public SceneHost(Brain b, Sprites s) => (Pet, Sprites) = (b, s);
-        public Brain Pet { get; }
-        public Sprites Sprites { get; }
-        public bool Busy => false;
-        public GameLayer OpenLayer(Rectangle field, MouseEventHandler down, MouseEventHandler up, Action quit) => throw new NotSupportedException();
-        public void CloseLayer() { }
-        public void ShowPet(bool show) { }
-        public Sprites? SpritesOf(string species) => null;
-        public void Save() { }
-    }
+    static readonly Rectangle TestField = FieldAt(3);
+    static Rectangle FieldAt(int k) => new(960 - 110 * k, 540 - 75 * k, 220 * k, 150 * k); // 1920×1080 모니터 한가운데
 
-    static readonly Rectangle TestField = new(630, 315, 660, 450);
-
-    public static void Scene(string path)
+    public static void Scene(string path, int k)
     {
-        var sp = Sprites.Embedded();
-        var area = new Rectangle(0, 0, 1920, 1080);
-        var brain = new Brain(new Pet { Stage = "child" }, new Tuning(), area) { Scale = 3 };
-        var game = new SwarmGame(new SceneHost(brain, sp));
-        var s = game.swarm = new Swarm(TestField, 3, new Random(5));
-        var view = Rectangle.Inflate(TestField, 20, 20);
-        using var ov = new Overlay(brain, () => sp, () => null, area) { Modes = () => new IGameMode[] { game } };
-        using var bmp = new Bitmap((view.Width + 10) * 3 + 10, view.Height + 20);
-        using var g = Graphics.FromImage(bmp);
-        g.Clear(Color.White);
-        for (int shot = 0, i = 0; shot < 3 && i < 60 * 600; i++)
+        var host = new SceneHost(scale: k);
+        var game = new SwarmGame(host);
+        var s = game.swarm = new Swarm(FieldAt(k), k, new Random(5));
+        using var ov = host.Overlay(game);
+        SceneKit.Shots(path, ov, Rectangle.Inflate(s.Field, 20, 20), 3, shot =>
         {
             var (dx, dy) = s.BotSteer();
             s.Steer(dx, dy);
             s.Update(1 / 60.0);
             double swing = (s.Clock - s.SwingAt) / Swarm.SwingSec;
-            bool now = shot switch { 0 => s.Level > 1 && s.Clock - s.UpAt > .4, 1 => s.Clock >= 100 && swing is > .4 and < .6 || Ended(s), _ => Ended(s) && s.Clock - s.Time > 1 };
-            if (!now) continue;
-            using var frame = new Bitmap(area.Width, area.Height);
-            using (var fg = Graphics.FromImage(frame)) { fg.Clear(Color.FromArgb(150, 160, 170)); ov.Render(fg); }
-            g.DrawImage(frame, new Rectangle(shot * (view.Width + 10) + 10, 10, view.Width, view.Height), view, GraphicsUnit.Pixel);
-            shot++;
-        }
-        bmp.Save(path);
+            return shot switch { 0 => s.Level > 1 && s.Clock - s.UpAt > .4, 1 => s.Clock >= 100 && swing is > .4 and < .6 || Ended(s), _ => Ended(s) && s.Clock - s.Time > 1 };
+        });
+    }
+
+    // 속도 재기: 같은 씨로 한 판을 자동 조종으로 (--mode-bench swarm)
+    public static string BenchRun()
+    {
+        var host = new SceneHost();
+        var game = new SwarmGame(host);
+        var s = game.swarm = new Swarm(TestField, 3, new Random(5));
+        game.ses = Session.Fake(TestField);
+        game.ses.Guide("note.swarm_move", "note.swarm_auto", "note.esc");
+        using var ov = host.Overlay(game);
+        return Bench.Run("swarm", ov, game, s.Field, () => { if (s.Done) return false; var (dx, dy) = s.BotSteer(); s.Steer(dx, dy); return true; }, () => { s.Update(1 / 60.0); game.Track(); });
     }
 
     // ── 자가 검사 (화면 없이 규칙만) ──
@@ -390,6 +409,45 @@ sealed class SwarmGame : IGameMode
             (total, maxLevel) = (total + bot.Time, Math.Max(maxLevel, bot.Level));
         }
         Expect(held60 >= seeds - 1, $"자동 조종이 1분은 버틴다: {held60}/{seeds}");
+
+        // 조작: 판이 앞 창일 때만 방향키로 움직인다. 글자 키(WASD)나 다른 창에서 누른 키로는 안 움직인다. 보스 키로 끝내면 티가 나지 않는다
+        var keys = new HashSet<Keys> { Keys.W, Keys.A, Keys.S, Keys.D, Keys.Space };
+        bool front = true;
+        var host = new SceneHost();
+        var game = new SwarmGame(host) { swarm = Empty(7), ses = Session.Fake(TestField, keys.Contains, () => front) };
+        var play = game.swarm;
+        host.Pet.StartPuppet();
+        void Frames(int n) { for (int i = 0; i < n; i++) game.Frame(tick); }
+        var (x0, y0) = (play.X, play.Y);
+        Frames(20);
+        Expect(play.X == x0 && play.Y == y0, "글자 키로는 안 움직인다");
+        keys.UnionWith(new[] { Keys.Left, Keys.Up });
+        Frames(20);
+        Expect(play.X < x0 - 20 && play.Y < y0 - 20, $"← ↑ 로 움직인다: {play.X - x0:0}, {play.Y - y0:0}");
+        (front, x0, y0) = (false, play.X, play.Y);
+        Frames(20);
+        Expect(play.X == x0 && play.Y == y0 && !play.Moving, "다른 창을 쓰는 동안 누른 방향키로는 안 움직인다");
+        game.Stop(true);
+        Expect(!game.Running && host.Pet.Mode == Mode.Wander && !host.Pet.Emoting, "보스 키로 끝내면 결과 화면·표정 없이 바로 끝난다");
+
+        // 다시 칠할 자리: 벌레가 가장 많은 마지막 30초를 자동 조종으로 끝 화면까지. 바뀐 자리만 다시 그려도 화면에 지나간 그림이 남지 않는다
+        var paint = game.swarm = new Swarm(TestField, 3, new Random(5)) { Clock = Swarm.WinSec - 30 };
+        game.ses = Session.Fake(TestField);
+        game.ses.Guide("note.swarm_move", "note.swarm_auto", "note.esc");
+        game.ses.GuideUntil = paint.Clock + 2;
+        game.hud = default;
+        using var ov = host.Overlay(game);
+        var (bad, first) = SceneKit.Repaint(ov, game, TestField, () =>
+        {
+            if (paint.Done) return false;
+            var (dx, dy) = paint.BotSteer();
+            paint.Steer(dx, dy);
+            paint.Update(tick);
+            game.Track();
+            return true;
+        }, 60 * 60);
+        Expect(paint.Done && bad == 0, $"바뀐 자리만 다시 칠해도 화면이 맞다: {bad}번 다름 (처음 {first}프레임), 끝남 {paint.Done}");
+        game.swarm = null;
         return $"버그 떼: 자동 조종 평균 {total / seeds:0}초 버팀, {wins}/{seeds} 끝까지, 가장 높은 레벨 {maxLevel}";
     }
 }

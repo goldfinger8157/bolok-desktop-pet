@@ -292,7 +292,8 @@ public sealed class PetForm : Form, IGameHost
         (visitDay, visitMin, lastVisitDay, visits) = (pendingSave.VisitDay ?? "", pendingSave.VisitMin, pendingSave.LastVisitDay ?? "", pendingSave.Visits ?? new());
         language = pendingSave.Language;
         L.Use(language);
-        foreach (var m in modes) m.LoadState(pendingSave.GameData?.GetValueOrDefault(m.Id));
+        var gameData = GameModes.WithLegacy(pendingSave); // 모듈이 되기 전 기록 칸도 모듈 기록으로 바꿔 넘긴다
+        foreach (var m in modes) m.LoadState(gameData.GetValueOrDefault(m.Id));
         clover.Load(pendingSave.Clover);
         (gifts, album, cards, visitCounts) = (pendingSave.Gifts ?? new(), pendingSave.Album ?? new(), pendingSave.Cards ?? new(), pendingSave.VisitCounts ?? new());
         (cardFrom, cardForm, cardDay, morningDay, nightDay, cardVariant) = (pendingSave.CardFrom, pendingSave.CardForm ?? "child", pendingSave.CardDay ?? "", pendingSave.MorningDay ?? "", pendingSave.NightDay ?? "", pendingSave.CardVariant);
@@ -328,7 +329,16 @@ public sealed class PetForm : Form, IGameHost
         Add("menu.breakout", () => BeginInvoke(StartBreak));
         Add("menu.minigun", () => BeginInvoke(StartMinigun));
         Add("menu.icbm", () => BeginInvoke(StartIcbm));
-        foreach (var m in modes) if (m.MenuKey is { } key) Add(key, () => BeginInvoke(() => { if (!InGame && b.P.Stage != "egg") m.Start(); })); // 게임 모듈
+        foreach (var m in modes) // 게임 모듈. 그 게임을 하는 중에 또 고르면 게임에 알린다 (한 발 더 쏘기 같은 것)
+        {
+            if (m.MenuKey is not { } key) continue;
+            void Go(Action start) => BeginInvoke(() => { if ((!InGame || m.Running) && b.P.Stage != "egg") start(); });
+            if (m.Choices is not { } choices) { Add(key, () => Go(m.Start)); continue; }
+            var parent = new ToolStripMenuItem(); // 하위 메뉴: 시작할 때 하나를 고르는 게임
+            menuTexts.Add((parent, () => L.T(key)));
+            foreach (var c in choices) menuTexts.Add((parent.DropDownItems.Add("", null, (_, _) => Go(c.Start)), c.Text));
+            menu.Items.Add(parent);
+        }
         var cannon = new ToolStripMenuItem(); // 대포를 고르면 체력이 정해진다
         menuTexts.Add((cannon, () => L.T("menu.fortress")));
         foreach (var gun in Worms.Guns)
@@ -365,6 +375,15 @@ public sealed class PetForm : Form, IGameHost
     void IGameHost.ShowPet(bool show) { if (show) { Show(); Native.Topmost(Handle); } else Hide(); }
     void IGameHost.Save() => Save();
     Sprites? IGameHost.SpritesOf(string id) => SpritesFor(id);
+    bool IGameHost.HitPet(int x, int y) => HitPet(x, y);
+    void IGameHost.HideFromCapture(bool on)
+    {
+        Native.HideFromCapture(Handle, on);
+        foreach (var o in overlays) Native.HideFromCapture(o.Handle, on);
+        foreach (var l in layers) Native.HideFromCapture(l.Handle, on);
+    }
+    IReadOnlyList<string> IGameHost.Friends => released.Select(r => PetArt.Key(r.Species, r.Variant)).Distinct().ToList();
+    void IGameHost.Repaint() { foreach (var o in overlays) o.Invalidate(); }
 
     // 디버그 명령 중 게임 모듈 것 (<게임 id> ...)
     public bool ModeCommand(string[] a) => modes.Any(m => m.Command(a));
@@ -437,7 +456,7 @@ public sealed class PetForm : Form, IGameHost
         if (at != Location) Location = at;
 
         string name = b.SpriteName();
-        int ms = b.Mode == Mode.Run && b.Pose == "walk" ? 60 : b.Mode == Mode.Held && b.Pose == "fly" ? 50 : b.Mode == Mode.Prey && b.Pose == "walk" ? 70 : PoseMs.GetValueOrDefault(b.Pose, 600); // 흔들리거나 도망칠 땐 더 빨리
+        int ms = b.Mode == Mode.Puppet && b.PuppetMs > 0 ? b.PuppetMs : b.Mode == Mode.Run && b.Pose == "walk" ? 60 : b.Mode == Mode.Held && b.Pose == "fly" ? 50 : b.Mode == Mode.Prey && b.Pose == "walk" ? 70 : PoseMs.GetValueOrDefault(b.Pose, 600); // 흔들리거나 도망칠 땐 더 빨리
         int frame = (int)(sec * 1000 / ms);
         int shake = b.Now < b.ShakeUntil ? (int)(Math.Sin(b.Now * 40) * 5) : 0;
         var now = (name, frame, b.Dir < 0, shake);
@@ -1138,7 +1157,7 @@ public sealed class PetForm : Form, IGameHost
     }
 
     (Rectangle Field, List<Rectangle> Wins) PickIslands() =>
-        Worms.Islands(Native.Foreground(), Native.ListWindows(), b.Area, Screen.AllScreens.Select(s => s.WorkingArea).ToList(), b.CellPx, 4);
+        WindowPick.Islands(Native.Foreground(), Native.ListWindows(), b.Area, Screen.AllScreens.Select(s => s.WorkingArea).ToList(), b.CellPx, 4);
 
     // ── ICBM: 볼록이가 버튼을 누르면 미사일이 날아갔다가 아무 데나(활성 창은 빼고) 떨어지고, 볼록이가 달려가 고친다 ──
     Icbm? icbm;
@@ -1208,7 +1227,7 @@ public sealed class PetForm : Form, IGameHost
         if (InGame || b.P.Stage == "egg") return;
         gameFocus = Native.GetForegroundWindow();
         var wins = Native.ListWindows();
-        var (field, rects) = Worms.Islands(Native.Foreground(), wins, b.Area, Screen.AllScreens.Select(s => s.WorkingArea).ToList(), b.CellPx, 8, topRoom: 0);
+        var (field, rects) = WindowPick.Islands(Native.Foreground(), wins, b.Area, Screen.AllScreens.Select(s => s.WorkingArea).ToList(), b.CellPx, 8, topRoom: 0);
         if (rects.Count == 0)
         {
             NoWindow();
