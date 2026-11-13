@@ -1,7 +1,7 @@
 namespace Bolok;
 
 // 포트리스 (웜즈·포트리스를 볼록이 식으로): 창모드 창들이 섬이 되고, 볼록이와 라이벌 햄스터가 번갈아 대포를 쏜다.
-// 대포마다 체력이 다르다 (멀티캐논 9발/200, 왕대포/300, 일반대포/400). 바람은 턴마다 바뀌고 모든 포탄에 분다.
+// 대포마다 체력이 다르다 (멀티캐논 9발/200, 왕대포/300, 일반대포/400). 라이벌은 늘 나와 다른 대포를 쓴다. 바람은 턴마다 바뀌고 모든 포탄에 분다.
 // 폭발하면 땅(창 전체)이 들쭉날쭉하게 깎이고(Kit/Ragged), 다 뚫리면 떨어져 화면 아래로 퐁당. 피해와 날아가기는 거리(원)로 따진다: 예측할 수 있어야 공정하다.
 // 라이벌은 바람을 어림하고 흔들려 쏘다가 조금씩 좁혀 온다. 화면과 무관한 규칙이라 --selfcheck 로 검사한다 (FortressGame.Check)
 public sealed class Fortress
@@ -52,6 +52,8 @@ public sealed class Fortress
     public readonly double BodyR;
     public bool MyTurn = true;
     public double Wind, Clock, TurnAt, EndAt, Aim = -Math.PI / 4, CpuAim = -Math.PI * .75, ChargeFrom = -1;
+    public double LastAim, LastPower = -1;        // 내가 지난번에 쏜 각도·힘 (놓은 그대로. 아직 안 쐈으면 힘이 -1). 라이벌이 쏜 것은 적지 않는다
+    public bool HasLast => LastPower >= 0;
     public Phase Stage = Phase.Turn;
     public Action<string>? OnEvent;
     public Hog Active => MyTurn ? Me : Cpu;
@@ -64,14 +66,14 @@ public sealed class Fortress
     int cpuStep;
     (double A, double P) cpuPlan;
 
-    // 내 대포를 고르면 라이벌은 셋 중 아무거나 (cpuGun 으로 정할 수도 있다)
+    // 내 대포를 고르면 라이벌은 나머지 둘 중 아무거나: 둘이 같은 대포를 쓰지 않는다 (YELL 2026-11-13). cpuGun 으로 정하면 그대로 (같은 것도 된다)
     public Fortress(Rectangle field, IReadOnlyList<Rectangle> lands, int k, Random rng, string? myGun = null, string? cpuGun = null)
     {
         (Field, K, this.rng) = (field, k, rng);
         (fx, fy) = (field.Left, field.Top);
         sf = k / 3.0;
         BodyR = 40 * k * .22;
-        (Me.Gun, Cpu.Gun) = (GunOf(myGun), cpuGun != null ? GunOf(cpuGun) : Guns[rng.Next(Guns.Length)]);
+        (Me.Gun, Cpu.Gun) = (GunOf(myGun), cpuGun != null ? GunOf(cpuGun) : OtherGun(GunOf(myGun), rng));
         (Me.Hp, Cpu.Hp) = (Me.Gun.Hp, Cpu.Gun.Hp);
         // 땅은 창 전체 (YELL: "바닥은 창 높이로 해도 좋아"). 끝까지 파면 떨어진다
         Lands = lands.Select(l => Rectangle.Intersect(l, field)).Where(l => !l.IsEmpty).OrderBy(l => l.Left).ToList();
@@ -86,6 +88,13 @@ public sealed class Fortress
         Place(Me, a.Left + a.Width * .2);
         Place(Cpu, b.Left + b.Width * .8);
         NewTurn(true);
+    }
+
+    static Gun OtherGun(Gun mine, Random rng)
+    {
+        int skip = rng.Next(Guns.Length - 1);
+        foreach (var g in Guns) if (!ReferenceEquals(g, mine) && skip-- == 0) return g;
+        return mine;
     }
 
     void Place(Hog h, double x) => (h.X, h.Y) = (x, Floor(x, Field.Top, Field.Height) ?? Field.Bottom);
@@ -174,6 +183,7 @@ public sealed class Fortress
     {
         if (Stage != Phase.Turn) return;
         ChargeFrom = -1;
+        if (h == Me) (LastAim, LastPower) = (angle, Math.Max(0, power)); // 다음 내 차례에 견줘 볼 수 있게 (지난 각도 조준경·힘 막대 위 세모)
         var gun = h.Gun;
         for (int i = 0; i < gun.Shells; i++)
         {

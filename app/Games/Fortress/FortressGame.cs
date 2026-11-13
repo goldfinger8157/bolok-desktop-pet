@@ -86,7 +86,7 @@ sealed partial class FortressGame : IGameMode
         hudMode = -1;
         upWas = true; // 누른 채 시작한 ↑ 로 뛰지 않게
         (fresh, boomsSeen) = (0, 0);
-        (rivalSpot, meSpot, cpuSpot, aimSpot, hudSpot) = (default, default, default, default, default);
+        (rivalSpot, meSpot, cpuSpot, meGunSpot, cpuGunSpot, aimSpot, ghostSpot, hudSpot) = (default, default, default, default, default, default, default, default);
         NewTiles(w);
         DropGuide();
         Sync();
@@ -174,7 +174,7 @@ sealed partial class FortressGame : IGameMode
     const int RocketSteps = 32;             // 포탄이 날아가는 쪽: 미리 돌려 둔 그림 32방향
     Sprites? artOf;
     int artK;
-    Stamp aim = null!, ball = null!, cloud = null!, crown = null!, rocketSmall = null!, rocketBig = null!;
+    Stamp aim = null!, aimGhost = null!, ball = null!, cloud = null!, crown = null!, rocketSmall = null!, rocketBig = null!;
     readonly Stamp?[] rockets = new Stamp?[2 * RocketSteps]; // 보통 포탄(배율 k), 왕대포(배율 2k)
     readonly Dictionary<string, Stamp[]>[] rival = { new(), new() }; // 자세 → 그림 줄 (오른쪽 보기, 왼쪽 보기)
 
@@ -187,7 +187,10 @@ sealed partial class FortressGame : IGameMode
         int small = GameHud.Small(k);
         (aim, ball, cloud, crown) = (st.Get("game/aim", 0, small), st.Get("game/ball", 0, small), st.Get("prop/cloud", 0, Math.Max(1, k / 3)), st.Get("game/crown", 0, small));
         (rocketSmall, rocketBig) = (st.Get("game/rocket", 0, small), st.Get("game/rocket", 0, k));
+        aimGhost?.Bmp.Dispose();
+        aimGhost = Faded(sp.Get("game/aim", 0, small), GhostAlpha);
         for (int i = 0; i < rockets.Length; i++) { rockets[i]?.Bmp.Dispose(); rockets[i] = null; }
+        for (int i = 0; i < gunArt.Length; i++) { gunArt[i]?.Bmp.Dispose(); gunArt[i] = null; }
         rival[0].Clear();
         rival[1].Clear();
     }
@@ -206,6 +209,88 @@ sealed partial class FortressGame : IGameMode
         if (s.Kind == "multi") return ball;
         int big = s.Kind == "giant" ? 1 : 0, step = (int)Math.Round(Math.Atan2(s.Vy, s.Vx) / (2 * Math.PI) * RocketSteps) & (RocketSteps - 1);
         return rockets[big * RocketSteps + step] ??= Turned(artOf!.Get("game/rocket", 0, big == 1 ? w.K * 2 : w.K), step * 360.0 / RocketSteps);
+    }
+
+    // ── 대포 그림 (체력 막대 왼쪽에 작게): 누가 어떤 대포를 쓰는지 (YELL 2026-11-13: 둘이 다른 대포를 쓴다). 글자 없이 모양으로 ──
+    // 멀티캐논 = 가는 포신 셋(포구가 어둡다), 왕대포 = 빨간 띠를 두른 굵은 포신, 일반대포 = 보통 포신. 포구는 상대 쪽을 본다
+    // 칸 12×10, 점 하나가 볼록이 도트 하나 (오른쪽 보기). L 테두리 · h 밝은 쇠 · d 어두운 쇠 · w 바퀴 · R 빨간 띠
+    const int GunW = 12, GunH = 10;
+    static readonly string[] GunMulti =
+    {
+        ".LLLLLLLLL..",
+        "LhhhhhhhddL.",
+        ".LLLLLLLLLL.",
+        "LhhhhhhhhddL",
+        ".LLLLLLLLLL.",
+        "LhhhhhhhddL.",
+        ".LLLLLLLLL..",
+        "...LwwL.....",
+        "...LwwL.....",
+        "....LL......",
+    }, GunGiant =
+    {
+        "...LLLLLLLL.",
+        "..LhhhhhRhhL",
+        ".LhhhhhhRhhL",
+        ".LddddddRddL",
+        ".LddddddRddL",
+        "..LdddddRddL",
+        "...LLLLLLLL.",
+        "...LwwL.....",
+        "...LwwL.....",
+        "....LL......",
+    }, GunNormal =
+    {
+        "............",
+        "............",
+        "........LLL.",
+        ".LLLLLLLLhL.",
+        "LhhhhhhhLhL.",
+        "LdddddddLdL.",
+        ".LLLLLLLLdL.",
+        "...LwwL.LLL.",
+        "...LwwL.....",
+        "....LL......",
+    };
+    readonly Stamp?[] gunArt = new Stamp?[6]; // 대포 셋 × (오른쪽 보기, 왼쪽 보기). 처음 쓸 때 한 번 그려 둔다
+
+    Stamp GunStamp(Fortress w, Fortress.Hog h)
+    {
+        string name = h.Gun.Name;
+        bool left = (h == w.Me ? -Back(w) : Back(w)) < 0; // 상대 쪽을 본다
+        int kind = name == "multi" ? 0 : name == "giant" ? 1 : 2;
+        return gunArt[kind * 2 + (left ? 1 : 0)] ??= GunIcon(kind == 0 ? GunMulti : kind == 1 ? GunGiant : GunNormal, w.K, left);
+    }
+
+    static Stamp GunIcon(string[] rows, int s, bool flip)
+    {
+        using var bmp = new Bitmap(GunW * s, GunH * s, PixelFormat.Format32bppArgb);
+        using (var g = Graphics.FromImage(bmp))
+            for (int y = 0; y < GunH; y++)
+                for (int x = 0; x < GunW; x++)
+                {
+                    Brush? b = rows[y][flip ? GunW - 1 - x : x] switch { 'L' => Pal.Line, 'h' => Pal.Chip, 'd' => Pal.ChipEdge, 'w' => Pal.Gold, 'R' => Pal.Red, _ => null };
+                    if (b != null) g.FillRectangle(b, x * s, y * s, s, s);
+                }
+        return new Stamp(bmp);
+    }
+
+    // 대포 그림 칸의 가운데: 체력 막대 왼쪽, 막대와 같은 높이 (그 위의 힘 막대·지난 힘 세모보다 아래, 볼록이 귀보다 위)
+    (int X, int Y) GunAt(Fortress w, Fortress.Hog h) => ((int)h.X - (12 + GunW / 2) * w.K, BarY(w, h) + w.K);
+    Rectangle GunBox(Fortress w, Fortress.Hog h) { var (x, y) = GunAt(w, h); return GunStamp(w, h).Box(x, y); }
+
+    // 흐리게 만든 그림 (지난 각도 조준경): 한 번 만들어 두고 찍는다. 자르는 자리는 원래 그림과 같다
+    const float GhostAlpha = .4f;
+    static Stamp Faded(Bitmap src, float alpha)
+    {
+        using var bmp = new Bitmap(src.Width, src.Height, PixelFormat.Format32bppArgb);
+        using (var g = Graphics.FromImage(bmp))
+        using (var fade = new ImageAttributes())
+        {
+            fade.SetColorMatrix(new ColorMatrix { Matrix33 = alpha });
+            g.DrawImage(src, new Rectangle(0, 0, src.Width, src.Height), 0, 0, src.Width, src.Height, GraphicsUnit.Pixel, fade);
+        }
+        return new Stamp(bmp);
     }
 
     static Stamp Turned(Bitmap src, double deg)
@@ -383,19 +468,20 @@ sealed partial class FortressGame : IGameMode
     }
     int BarY(Fortress w, Fortress.Hog h) => (int)(h.Y - (h == w.Me ? meHead : cpuHead)) - 7 * w.K; // 체력 막대 윗변: 귀 위로 조금 띄워서
 
-    // 체력 막대 + 숫자 + 그 위 표시(차례 화살표·힘 막대·왕관)가 다 들어가는 자리
+    // 체력 막대 + 숫자 + 그 위 표시(차례 화살표·힘 막대와 지난 힘 세모·왕관)가 다 들어가는 자리. 대포 그림은 그 왼쪽에 따로 (GunBox: 힘이 차는 동안 같이 다시 칠하지 않게)
     Rectangle LabelRect(Fortress w, Fortress.Hog h)
     {
         int k = w.K, small = GameHud.Small(k), x = (int)h.X, y = BarY(w, h);
-        return Rectangle.FromLTRB(x - 11 * k, y - 12 * k, x + 12 * k + 17 * small, y + k + 5 * small);
+        return Rectangle.FromLTRB(x - 13 * k, y - 12 * k, x + 12 * k + 17 * small, y + k + 5 * small);
     }
 
     // 막대 위 표시: 0 없음 · 1 왕관(이긴 쪽) · 100+ 차례 화살표(까딱거림) · 1000+ 힘 막대(찬 px)
+    // 한 번이라도 쏜 뒤에는 내 차례 내내 빈 힘 막대를 보여 준다 (차례 화살표 대신): 지난 힘 세모를 누르기 전부터 볼 수 있게
     static int Mark(Fortress w, Fortress.Hog h)
     {
         if (w.Stage == Fortress.Phase.Won && h == w.Me || w.Stage == Fortress.Phase.Lost && h == w.Cpu) return 1;
         if (w.Stage != Fortress.Phase.Turn || w.Active != h) return 0;
-        if (h == w.Me && w.ChargeFrom >= 0) return 1000 + (int)(20 * w.K * w.Power);
+        if (h == w.Me && (w.ChargeFrom >= 0 || w.HasLast)) return 1000 + (int)(20 * w.K * w.Power);
         return 100 + (int)(Math.Sin(w.Clock * 6) * w.K);
     }
 
@@ -404,12 +490,23 @@ sealed partial class FortressGame : IGameMode
     static (int X, int Y) AimAt(Fortress w)
     {
         var h = w.Active;
-        double a = w.MyTurn ? w.Aim : w.CpuAim, reach = 40 * w.K * .9;
+        return AimAt(w, h, w.MyTurn ? w.Aim : w.CpuAim);
+    }
+
+    static (int X, int Y) AimAt(Fortress w, Fortress.Hog h, double a)
+    {
+        double reach = 40 * w.K * .9;
         return ((int)(h.X + Math.Cos(a) * reach), (int)(w.CenterY(h) + Math.Sin(a) * reach));
     }
 
+    // 지난 각도 조준경 (흐리게): 한 번이라도 쏜 뒤 내 차례 내내, 지금 서 있는 자리에서 지난번에 겨눈 쪽에 (YELL 2026-11-13). 라이벌 차례·포탄이 나는 동안에는 없다
+    static bool GhostOn(Fortress w) => w.HasLast && w.MyTurn && w.Stage == Fortress.Phase.Turn && !w.Me.Dead;
+
+    // 지난 힘 세모의 뾰족한 끝 (힘 막대 왼쪽 끝에서 px): 힘이 그만큼 찼을 때 채워진 끝과 같은 자리
+    static int LastTip(Fortress w) => (int)(20 * w.K * Math.Min(1, w.LastPower));
+
     // ── 다시 칠할 자리: 프레임마다 한 번(Track) 바뀐 것만 모아 두고, 그림 창마다 그대로 넘긴다 ──
-    // 움직이지 않는 것(라이벌·체력 막대·조준경·바람 상자)은 값이 바뀐 프레임에만 옛 자리와 새 자리를 넣는다
+    // 움직이지 않는 것(라이벌·체력 막대·대포 그림·조준경·바람 상자)은 값이 바뀐 프레임에만 옛 자리와 새 자리를 넣는다
     struct Spot
     {
         Rectangle last;
@@ -425,7 +522,7 @@ sealed partial class FortressGame : IGameMode
 
     readonly List<Rectangle> dirty = new(64);
     int fresh, boomsSeen;
-    Spot rivalSpot, meSpot, cpuSpot, aimSpot, hudSpot;
+    Spot rivalSpot, meSpot, cpuSpot, meGunSpot, cpuGunSpot, aimSpot, ghostSpot, hudSpot;
 
     void Track()
     {
@@ -453,20 +550,24 @@ sealed partial class FortressGame : IGameMode
             rivalSpot.Mark(dirty, Rectangle.Inflate(st.Box((int)cpu.X, (int)cpu.Y - 20 * k), 1, 1), RuntimeHelpers.GetHashCode(st));
         }
         if (showMe && !w.Me.Out) dirty.Add(Fx.PetRect(w.Me.X, w.Me.Y, 40 * k));
-        Label(w, w.Me, ref meSpot);
-        Label(w, cpu, ref cpuSpot);
+        Label(w, w.Me, ref meSpot, ref meGunSpot);
+        Label(w, cpu, ref cpuSpot, ref cpuGunSpot);
         if (AimOn(w)) { var (ax, ay) = AimAt(w); aimSpot.Mark(dirty, Rectangle.Inflate(aim.Box(ax, ay), 1, 1), 1); }
         else aimSpot.Mark(dirty, default, 0);
+        if (GhostOn(w)) { var (gx, gy) = AimAt(w, w.Me, w.LastAim); ghostSpot.Mark(dirty, Rectangle.Inflate(aimGhost.Box(gx, gy), 1, 1), 1); }
+        else ghostSpot.Mark(dirty, default, 0);
         foreach (var s in w.Shells) dirty.Add(Rectangle.Inflate(ShellStamp(w, s).Box((int)s.X, (int)s.Y), 1, 1));
         foreach (var bl in w.Blasts) if (w.Clock - bl.At < BlastArt.Sec) dirty.Add(BlastArt.PopRect(bl.X, bl.Y, bl.R, k));
         PlaceHud(w);
         hudSpot.Mark(dirty, HudRect(w), HashCode.Combine((int)Math.Round(w.Wind * 10), (int)Math.Ceiling(w.TimeLeft), w.Active.Gun.Name, w.MyTurn));
     }
 
-    void Label(Fortress w, Fortress.Hog h, ref Spot spot)
+    void Label(Fortress w, Fortress.Hog h, ref Spot spot, ref Spot gun)
     {
         if (h.Out) spot.Mark(dirty, default, 0);
-        else spot.Mark(dirty, LabelRect(w, h), HashCode.Combine(h.Hp, Mark(w, h)));
+        else spot.Mark(dirty, LabelRect(w, h), HashCode.Combine(h.Hp, Mark(w, h), h == w.Me && w.HasLast ? LastTip(w) : -1));
+        if (h.Out) gun.Mark(dirty, default, 0);
+        else { var st = GunStamp(w, h); var (x, y) = GunAt(w, h); gun.Mark(dirty, st.Box(x, y), RuntimeHelpers.GetHashCode(st)); }
     }
 
     public void Dirty(Overlay o, List<Rectangle> rs)
@@ -476,7 +577,7 @@ sealed partial class FortressGame : IGameMode
         if (w.Clock < GuideSec) rs.Add(o.Client(GuideRect(o, w)));
     }
 
-    // ── 그리기: 섬 풀·흙 줄, 구멍, 바람 상자(바람·남은 시간·대포), 라이벌, 체력 막대, 조준경, 포탄, 불덩이, 안내 ──
+    // ── 그리기: 섬 풀·흙 줄, 구멍, 바람 상자(바람·남은 시간·대포), 라이벌, 체력 막대, 지난 각도 조준경(흐리게)·조준경, 포탄, 불덩이, 안내 ──
     // 바람 상자는 볼록이 가까이에 있어서 맨 밑에 깐다: 뛰어오른 볼록이의 체력 막대나 지나가는 포탄·불덩이가 상자에 가리지 않게
     public void Draw(Overlay o, Graphics g)
     {
@@ -508,6 +609,7 @@ sealed partial class FortressGame : IGameMode
         if (showMe && !w.Me.Out) Fx.Pet(o, g, artOf!, host.Pet.P.Stage, w.PoseOf(w.Me), w.Clock, k, w.Me.X, w.Me.Y, w.Me.Dir < 0);
         DrawLabel(o, g, w, w.Me);
         DrawLabel(o, g, w, cpu);
+        if (GhostOn(w)) { var (gx, gy) = AimAt(w, w.Me, w.LastAim); aimGhost.Put(o, g, gx, gy); } // 지금 조준경 밑에 깔린다
         if (AimOn(w)) { var (ax, ay) = AimAt(w); aim.Put(o, g, ax, ay); }
         foreach (var s in w.Shells) ShellStamp(w, s).Put(o, g, (int)s.X, (int)s.Y);
         foreach (var bl in w.Blasts) if (w.Clock - bl.At < BlastArt.Sec) BlastArt.Pop(o, g, bl.X, bl.Y, bl.R, w.Clock - bl.At, k);
@@ -547,15 +649,26 @@ sealed partial class FortressGame : IGameMode
         guideX = double.NaN;
     }
 
-    // 머리 위: 체력 막대와 숫자, 그 위에 차례 화살표(까딱까딱) · 힘 막대(누르고 있는 동안) · 왕관(이긴 쪽)
+    // 머리 위: 대포 그림(막대 왼쪽), 체력 막대와 숫자, 그 위에 차례 화살표(까딱까딱) · 힘 막대(누르고 있는 동안, 한 번 쏜 뒤에는 내 차례 내내) · 왕관(이긴 쪽)
+    // 힘 막대 위에는 지난번에 쏜 힘 자리에 작은 역삼각형 (YELL 2026-11-13): 채워진 끝이 세모 끝에 닿을 때 놓으면 같은 힘
     void DrawLabel(Overlay o, Graphics g, Fortress w, Fortress.Hog h)
     {
         if (h.Out) return;
         int k = w.K, small = GameHud.Small(k), x = (int)h.X, y = BarY(w, h), mark = Mark(w, h);
+        var (gunX, gunY) = GunAt(w, h);
+        GunStamp(w, h).Put(o, g, gunX, gunY);
         GameHud.Bar(o, g, new Rectangle(x - 10 * k, y, 20 * k, 2 * k), k, (double)h.Hp / h.Gun.Hp, h.Hp * 3 < h.Gun.Hp ? Pal.Red : HpGood);
         GameHud.Number(o, g, h.Hp, x + 12 * k + 3 * small, y + k, small, -1);
         if (mark == 1) crown.Put(o, g, x, y - 6 * k);
-        else if (mark >= 1000) GameHud.Bar(o, g, new Rectangle(x - 10 * k, y - 6 * k, 20 * k, 3 * k), k, w.Power, w.Power > .8 ? Pal.Red : Pal.Gold);
+        else if (mark >= 1000)
+        {
+            GameHud.Bar(o, g, new Rectangle(x - 10 * k, y - 6 * k, 20 * k, 3 * k), k, w.Power, w.Power > .8 ? Pal.Red : Pal.Gold);
+            if (!w.HasLast) return;
+            // 도트 세 줄(5·3·1칸)에 갈색 테두리, 끝은 막대 테두리에 붙는다
+            int e = Math.Max(1, k / 2), left = x - 10 * k + LastTip(w) - k / 2 - o.Left, bottom = y - 6 * k - e - o.Top;
+            for (int i = 0; i < 3; i++) g.FillRectangle(Pal.Line, left - i * k - e, bottom - (i + 1) * k - e, (2 * i + 1) * k + 2 * e, k + 2 * e);
+            for (int i = 0; i < 3; i++) g.FillRectangle(Pal.White, left - i * k, bottom - (i + 1) * k, (2 * i + 1) * k, k);
+        }
         else if (mark >= 100 - k) // 아래를 가리키는 세모 (도트 세 줄, 갈색 테두리)
         {
             int e = Math.Max(1, k / 2), cx = x - o.Left, top = y - 6 * k + (mark - 100) - o.Top;

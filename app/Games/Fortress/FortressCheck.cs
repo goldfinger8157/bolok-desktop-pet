@@ -5,7 +5,8 @@ namespace Bolok;
 // 포트리스: 화면 없이 그려 보기(--mode-scene fortress), 속도 재기(--mode-bench fortress), 자가 검사(--selfcheck)
 sealed partial class FortressGame
 {
-    // ── 그려 보기: 시작(안내·차례 화살표·조준경), 힘 모으기, 날아가는 포탄, 불덩이와 새 구멍, 여러 번 터진 뒤 ──
+    // ── 그려 보기: 시작(안내·차례 화살표·조준경), 힘 모으기, 날아가는 포탄, 불덩이와 새 구멍,
+    //    다음 내 차례(힘 막대 위 지난 힘 세모, 지금 조준경 옆에 흐린 지난 각도 조준경), 여러 번 터진 뒤 ──
     // 덧붙이는 값: top = 섬이 화면 위쪽에 붙어 있을 때 (바람 상자가 발 아래로 간다) · edge = 그 섬이 판 왼쪽 끝에 있을 때 (조준경 둘레 아래로)
     public static void Scene(string path, int k)
     {
@@ -23,12 +24,13 @@ sealed partial class FortressGame
         using var ov = host.Overlay(game);
         var seat = new Random(4);
         w.Aim = -.9;
-        SceneKit.Shots(path, ov, field, 5, shot =>
+        SceneKit.Shots(path, ov, field, 6, shot =>
         {
             bool mine = w.MyTurn && w.Stage == Fortress.Phase.Turn;
             if (shot == 1 && mine && w.Clock > 1.2) w.StartCharge();
             if (shot == 2 && mine && w.ChargeFrom >= 0 && w.Power > .68) w.ReleaseCharge();
-            if (shot >= 3 && mine && w.Clock - w.TurnAt > .5) { var (a, p) = w.BotAim(seat); w.Fire(w.Me, a, p); }
+            if (shot == 4 && mine && w.Clock - w.TurnAt > .5) { w.Aim = w.LastAim + .5; w.StartCharge(); } // 지난번보다 조금 낮게 겨누고 다시 힘을 모은다
+            if (shot >= 5 && mine && w.Clock - w.TurnAt > .5) { var (a, p) = w.BotAim(seat); w.Fire(w.Me, a, p); }
             w.Update(1 / 60.0);
             game.Sync();
             game.Track();
@@ -38,6 +40,7 @@ sealed partial class FortressGame
                 1 => w.Power > .55,
                 2 => w.Shells.Count > 0 && w.Shells[0].Vy > -150 * k / 3.0,                             // 꼭대기를 넘어 내려오기 시작
                 3 => w.Blasts.Count > 0 && w.Clock - w.Blasts[^1].At >= BlastArt.Sec * .3,              // 불덩이가 한창
+                4 => mine && w.ChargeFrom >= 0 && w.Power > .4,                                         // 지난 힘 세모까지 아직 덜 찼다
                 _ => w.Done || w.Booms >= 14 && w.Blasts.Count > 0 && w.Clock - w.Blasts[^1].At >= .1,  // 여러 번 터진 뒤 (작은 폭발이 한창일 때)
             };
         });
@@ -223,6 +226,21 @@ sealed partial class FortressGame
             Expect(t.Me.Hp == gun.Hp, $"{gun.Label} 체력 {gun.Hp}");
         }
         Expect(Fortress.Guns.Select(g => g.Hp).SequenceEqual(new[] { 200, 300, 400 }) && Fortress.GunOf("multi").Shells == 9 && Fortress.GunOf(null).Name == "normal", "멀티캐논 9발/200, 왕대포/300, 일반대포/400");
+        // 라이벌 대포: 정해 주지 않으면 내 것이 아닌 둘 중 아무거나 (같은 대포로 맞붙지 않는다), 정해 주면 그대로 (같은 것이어도)
+        foreach (var gun in Fortress.Guns)
+        {
+            var seen = new HashSet<string>();
+            for (int seed = 0; seed < 60; seed++)
+            {
+                var t = new Fortress(field, new[] { a.R, bwin.R }, 3, new Random(seed), gun.Name);
+                Expect(t.Me.Gun == gun && t.Cpu.Gun != gun && t.Cpu.Hp == t.Cpu.Gun.Hp, $"라이벌은 나와 다른 대포를 쓴다 ({gun.Name}, 씨 {seed}): {t.Cpu.Gun.Name}");
+                seen.Add(t.Cpu.Gun.Name);
+            }
+            Expect(seen.Count == Fortress.Guns.Length - 1, $"라이벌 대포는 나머지 둘이 다 나온다 ({gun.Name}): {string.Join(" ", seen)}");
+            foreach (var other in Fortress.Guns)
+                Expect(new Fortress(field, new[] { a.R, bwin.R }, 3, new Random(1), gun.Name, other.Name).Cpu.Gun == other, $"라이벌 대포를 정해 주면 그대로 ({gun.Name} · {other.Name})");
+        }
+        Expect(new Fortress(field, new[] { a.R, bwin.R }, 3, new Random(1)).Cpu.Gun.Name != "normal", "대포를 안 고르면 나는 일반대포, 라이벌은 다른 것");
         (double X, double R) Land(Fortress x, double wind)
         {
             x.Wind = wind;
@@ -267,6 +285,28 @@ sealed partial class FortressGame
         var idle = Make();
         Tick(idle, Fortress.TurnSec + 1.5);
         Expect(!idle.MyTurn, "시간이 다 되면 차례가 넘어간다");
+
+        // 지난 발: 내가 쏜 각도와 힘이 다음 내 차례까지 남는다. 라이벌이 쏜 것은 적지 않고, 새 판은 비어 있다
+        var memo = Make();
+        Expect(!memo.HasLast && !GhostOn(memo) && Mark(memo, memo.Me) is >= 90 and < 1000, "첫 발 전에는 지난 발 표시가 없다 (차례 화살표만)");
+        memo.Fire(memo.Me, -1.25, .62);
+        Expect(memo.HasLast && memo.LastAim == -1.25 && memo.LastPower == .62 && !GhostOn(memo), "쏘면 그 각도와 힘을 적어 둔다 (포탄이 나는 동안에는 안 보인다)");
+        int cpuFired = 0;
+        memo.OnEvent = e => { if (e == "fire") cpuFired++; };
+        for (int i = 0; i < 60 * 8 && memo.MyTurn; i++) memo.Update(1 / 60.0);
+        Expect(!memo.MyTurn && !GhostOn(memo) && Mark(memo, memo.Me) == 0, "라이벌 차례에는 지난 발 표시가 없다");
+        for (int i = 0; i < 60 * 12 && !memo.MyTurn && !memo.Done; i++) memo.Update(1 / 60.0);
+        Expect(cpuFired == 1 && memo.MyTurn && memo.Stage == Fortress.Phase.Turn, $"라이벌이 한 번 쏘고 다시 내 차례: {cpuFired}번, {memo.Stage}");
+        Expect(memo.HasLast && memo.LastAim == -1.25 && memo.LastPower == .62, $"라이벌이 쏴도 지난 발은 내 것 그대로: {memo.LastAim:F2} · {memo.LastPower:F2}");
+        Expect(GhostOn(memo) && Mark(memo, memo.Me) == 1000 && LastTip(memo) == (int)(20 * 3 * .62), "다음 내 차례에는 누르기 전부터 빈 힘 막대와 지난 힘 세모, 흐린 지난 각도 조준경이 보인다");
+        double walkedFrom = memo.Me.X;
+        int ghostFrom = AimAt(memo, memo.Me, memo.LastAim).X;
+        for (int i = 0; i < 30; i++) { memo.Walk(memo.Me, 1, 1 / 60.0); memo.Update(1 / 60.0); }
+        double walked = memo.Me.X - walkedFrom;
+        Expect(walked > 20 && Math.Abs(AimAt(memo, memo.Me, memo.LastAim).X - ghostFrom - walked) <= 1 && memo.LastAim == -1.25, $"걸으면 지난 각도 조준경도 볼록이를 따라온다 (각도는 그대로): {walked:F0}px");
+        memo.Fire(memo.Me, -.7, 1.4); // 디버그 명령으로는 1 넘게도 쏠 수 있다: 적는 것은 그대로, 세모는 막대 끝에
+        Expect(memo.LastAim == -.7 && memo.LastPower == 1.4 && LastTip(memo) == 20 * 3, "다시 쏘면 새 값으로 바뀐다");
+        Expect(!Make().HasLast, "새 판은 지난 발이 없다");
 
         // 라이벌은 볼록이 근처를 노린다 (빗나감 없이 계산하면 가까이 떨어진다)
         int near = 0;
@@ -402,6 +442,17 @@ sealed partial class FortressGame
         Expect(!r.IntersectsWith(game.GuideRect(ov, w)), $"바람 상자가 안내 말풍선과 안 겹친다 ({what}): {r} · {game.GuideRect(ov, w)}");
         int gap = Math.Max(Math.Max(pet.Left - r.Right, r.Left - pet.Right), Math.Max(pet.Top - r.Bottom, r.Top - pet.Bottom));
         Expect(gap <= 40 * k, $"바람 상자는 볼록이 가까이에 있다 ({what}): {gap}px");
+        // 대포 그림: 체력 막대 왼쪽에 따로 있고, 체력 막대·숫자·힘 막대·지난 힘 세모(막대 왼쪽 끝에 있을 때까지)·제 몸과 안 겹친다
+        foreach (var h in new[] { me, w.Cpu })
+        {
+            int e = Math.Max(1, k / 2), x = (int)h.X, y = game.BarY(w, h);
+            var gun = game.GunBox(w, h);
+            var bars = Rectangle.FromLTRB(x - 10 * k - e, y - 6 * k - e, x + 12 * k + 17 * GameHud.Small(k), y + 2 * k + e);  // 힘 막대 윗변부터 체력 막대·숫자까지
+            var tip = Rectangle.FromLTRB(x - 13 * k, y - 10 * k, x + 13 * k + e, y - 6 * k);                                // 지난 힘 세모가 올 수 있는 자리
+            Expect(gun.Right <= x - 10 * k - e && gun.Width >= 9 * k && gun.Height >= 7 * k && !gun.IntersectsWith(bars) && !gun.IntersectsWith(tip), $"대포 그림은 막대 옆에 따로 있다 ({what}): {gun} · {bars} · {tip}");
+            Expect(gun.Bottom <= (int)(h.Y - (h == me ? game.meHead : game.cpuHead)), $"대포 그림이 머리를 가리지 않는다 ({what}): {gun}");
+            Expect(!r.IntersectsWith(gun) || h != me, $"바람 상자가 내 대포 그림과 안 겹친다 ({what}): {r} · {gun}");
+        }
         double keep = w.Aim;
         for (int deg = 0; deg < 360; deg += 2) // 조준경이 도는 둘레 (0° 오른쪽, 90° 아래)
         {
@@ -470,6 +521,7 @@ sealed partial class FortressGame
         ses.Press(MouseButtons.Left, false);
         Frames(1);
         Expect(play.Stage == Fortress.Phase.Flying && play.Shells.Count == 1 && play.ChargeFrom < 0, "놓으면 쏜다");
+        Expect(play.LastAim == play.Aim && play.LastPower is > .4 and < .55, $"놓은 각도와 힘이 지난 발로 남는다: {play.LastPower:F2}");
         ses.Press(MouseButtons.Right, true);
         ses.Press(MouseButtons.Right, false);
         Frames(2);
@@ -489,7 +541,9 @@ sealed partial class FortressGame
         var cmd = New();
         game.Open(cmd, Session.Fake(field), events: false);
         host.Pet.StartPuppet();
+        Expect(!cmd.HasLast, "새 판을 열면 지난 발이 없다");
         Expect(game.Command(new[] { "fortress", "fire", "-60", "0.5" }) && cmd.Stage == Fortress.Phase.Flying && cmd.Shells.Count == 1, "worms fire 로 쏜다");
+        Expect(Math.Abs(cmd.LastAim + Math.PI / 3) < 1e-9 && cmd.LastPower == .5, "worms fire 로 쏜 각도와 힘도 지난 발로 남는다");
         game.Stop(true);
 
         // 기록: 이기면 한 번 더해지고, 옛 저장 칸(WormsWins)도 넘어온다
@@ -510,10 +564,12 @@ sealed partial class FortressGame
         var paint = new Fortress(small, new[] { new Rectangle(60, 300, 340, 240), new Rectangle(560, 270, 340, 270) }, 3, new Random(5), "giant", "multi") { Wind = .4 };
         game.Open(paint, Session.Fake(small), events: false);
         using var ov = host.Overlay(game);
-        int n = 0;
+        int n = 0, ghosts = 0, tips = 0; // 지난 각도 조준경·지난 힘 세모가 보인 프레임 (둘째 내 차례부터: 걷고 뛰는 동안에도 따라다닌다)
         var (bad, first) = SceneKit.Repaint(ov, game, small, () =>
         {
             if (paint.Done || paint.Booms >= 12 && paint.Stage == Fortress.Phase.Turn || ++n > 60 * 80) return false;
+            if (GhostOn(paint)) ghosts++;
+            if (paint.HasLast && Mark(paint, paint.Me) >= 1000) tips++;
             if (paint.MyTurn && paint.Stage == Fortress.Phase.Turn)
             {
                 double t = paint.Clock - paint.TurnAt;
@@ -529,6 +585,7 @@ sealed partial class FortressGame
             return true;
         }, 60 * 90, every: 7);
         Expect(bad == 0 && paint.Booms >= 2, $"바뀐 자리만 다시 칠해도 화면이 맞다: {bad}번 다름 (처음 {first}프레임), 폭발 {paint.Booms}번");
+        Expect(ghosts > 60 && tips > 60, $"그 판에 지난 발 표시(흐린 조준경·힘 세모)도 나왔다: {ghosts}·{tips}프레임");
         int holes = game.tiles.Count(t => t != null);
         var end = new Fortress(small, new[] { new Rectangle(60, 300, 340, 240), new Rectangle(560, 270, 340, 270) }, 3, new Random(6), "normal", "normal");
         game.Open(end, Session.Fake(small), events: false);
@@ -546,6 +603,6 @@ sealed partial class FortressGame
         game.game = null;
         game.DropTiles();
         game.DropGuide();
-        return $"조작은 마우스·←→·↑ 만, 구멍 그림 조각 {holes}장";
+        return $"조작은 마우스·←→·↑ 만, 지난 발(각도·힘)은 내 것만 다음 차례까지 남아 {ghosts}프레임 보임, 구멍 그림 조각 {holes}장";
     }
 }
