@@ -1048,12 +1048,16 @@ public sealed class PetForm : Form, IGameHost
         return Rectangle.Intersect(zone, b.Area);
     }
 
+    // 눈·비도 볼록이와 같은 층 (YELL 2026-11-13: 「펫하고 같은 레벨(z-index)이면 좋겠는데, 활성화된 창에 눈/비가 가려진다」):
+    // 볼록이가 맨 위면 일하는 창 위로도 내리고, 창 뒤에 숨었으면 그 창에 가린다
+    Rectangle WeatherHidden() => b.Behind && b.HideWnd != IntPtr.Zero && Native.Probe(b.HideWnd) is { Alive: true, Minimized: false } s ? s.R : Rectangle.Empty;
+
     // 그림 자리가 정해진 뒤 (본체 창 자리·그림): 우산 잎 자리와 알갱이
     void WeatherLayout()
     {
         var (name, frame, flip, shake) = drawn;
         weather.PlaceLeaf(sprites, name, frame, flip, b.Scale, Left + 8 + shake, Top, b.Now);
-        weather.Layout(weatherShown, b.Now, WeatherZone(), b.Scale, b.Active is { } w ? w.R : Rectangle.Empty);
+        weather.Layout(weatherShown, b.Now, WeatherZone(), b.Scale, WeatherHidden());
         int look = (weather.Soaked ? 1 + Weather.WetFrame(b.Now) : 0) + (weather.UmbrellaUp ? 4 : 0) + weather.PileShown * 8;
         if (look != weatherLook) { weatherLook = look; Invalidate(); }
     }

@@ -8,7 +8,8 @@ namespace Bolok;
 //   언제: 한가한 1분마다 1/120 — 하루(9시간) 평균 세 번쯤, 많아야 네 번. 한 번에 2.5~5.5분, 끝나고 40분은 맑다. 처음·끝 15초는 차츰 늘고 준다.
 //   무엇: 11~2월엔 눈만, 3~10월엔 비만 (YELL 2026-11-13).
 //   어디: 볼록이 머리 위 좁은 구역만 (가로 3칸 × 위로 3칸, 볼록이를 따라다닌다 — YELL 2026-11-13: 화면 전체면 너무 티 난다). 눈 6송이·비 10줄기쯤, 볼록이보다 한 단계 작은 그림.
-//         일하는 창(활성 창) 위에는 한 알도 안 그린다. 우산 잎에 닿은 비는 잎 위에서 튀고 그 아래로는 안 떨어진다.
+//         볼록이와 같은 층 (YELL 2026-11-13): 볼록이가 맨 위면 일하는 창 위로도 내리고, 창 뒤에 숨었으면 그 창에 가린다.
+//         우산 잎에 닿은 비는 잎 위에서 튀고 그 아래로는 안 떨어진다.
 //   멈춤: 게임 중·잠·알·자리 비움에는 시작하지 않고, 오던 것도 그동안 안 보이고 반응도 거둔다 (시간은 그대로 흐른다).
 // 볼록이: 눈이 오면 좋아한다 (처음에 방긋·음표, 가끔 깡충(눈송이 잡기)·하트). 밖에서 눈을 맞으면 머리에 눈이 세 단계로 쌓이고,
 //   다 쌓이면 잠깐 가만히 섰다가 도리도리 털어 낸다 (눈 조각이 날아가고 처음부터 다시). 비가 오면 그때마다 셋 중 하나 —
@@ -250,7 +251,7 @@ public sealed class Weather
     }
 
     // 지금 보일 알갱이를 into 에 채운다 (다시 쓰는 목록: 프레임마다 메모리를 잡지 않는다).
-    // area: 내릴 모니터(작업 영역), avoid: 일하는 창 (닿는 알갱이는 빼다), roof: 우산 잎 (그 아래로는 안 떨어지고 잎 위에서 튄다)
+    // area: 내릴 모니터(작업 영역), avoid: 볼록이가 뒤에 숨은 창 (그 창에 가리니 닿는 알갱이는 뺀다, 숨지 않았으면 빈칸), roof: 우산 잎 (그 아래로는 안 떨어지고 잎 위에서 튄다)
     public static void Fill(List<Drop> into, Sky sky, double t, double density, Rectangle area, int k, Rectangle avoid, Rectangle roof)
     {
         into.Clear();
@@ -465,7 +466,7 @@ public sealed class Weather
         var never = new Weather();
         for (int min = 0; min < 3000; min++) Expect(never.Tick(min * 60, new DateTime(2026, 1, 5, 9, 0, 0).AddMinutes(min), false, rng) == null, "한가하지 않으면 시작하지 않는다");
 
-        // 알갱이: 일하는 창 위에는 하나도 없다, 우산 잎 아래로는 안 떨어진다, 모니터 안
+        // 알갱이: 볼록이가 숨은 창 위에는 하나도 없다(그 창에 가린다), 숨지 않았으면 어느 창 위로도 내린다, 우산 잎 아래로는 안 떨어진다, 모니터 안
         var area = new Rectangle(0, 0, 1920, 1040);
         var avoid = new Rectangle(700, 200, 900, 600);
         var roof = new Rectangle(300, 880, 96, 36);
@@ -479,7 +480,7 @@ public sealed class Weather
                 foreach (var d in list)
                 {
                     var box = Box(d, DropScale(3));
-                    Expect(!box.IntersectsWith(avoid), $"일하는 창 위에 알갱이가 없다 ({box})");
+                    Expect(!box.IntersectsWith(avoid), $"볼록이가 숨은 창 위에 알갱이가 없다 ({box})");
                     Expect(box.Right > area.Left && box.Left < area.Right, "모니터 안에만");
                     Expect(d.Art == 5 || d.X < roof.Left || d.X >= roof.Right || box.Top < roof.Bottom - 2 || d.Y < roof.Top, "우산 잎 아래로는 안 떨어진다 (먼 비는 잎 뒤로 지나간다)");
                     if (d.Art == 4 && d.Y < roof.Bottom) splashes++;
@@ -661,7 +662,7 @@ public sealed class Weather
                 calm.X = cx;
             }
         }
-        return $"날씨: 하루 {perDay:0.0}번(많아야 {most}), 11~2월 눈만 ({snow[11] + snow[12] + snow[1] + snow[2]}번)·3~10월 비만 ({rain.Sum()}번), 일하는 창 위 0알, " +
+        return $"날씨: 하루 {perDay:0.0}번(많아야 {most}), 11~2월 눈만 ({snow[11] + snow[12] + snow[1] + snow[2]}번)·3~10월 비만 ({rain.Sum()}번), 숨은 창 위 0알(맨 위일 땐 일하는 창 위로도), " +
                $"우산·맞기·비 피하기 {string.Join("/", covers.Skip(1))}, 그치면 반응도 끝, 머리 눈 세 단계 → 가만히 → 털기 4분에 {cycles}번 (비·숨기·게임엔 안 쌓임), {frames}프레임 다시 칠하기 맞음";
     }
 
@@ -767,7 +768,7 @@ public sealed class Weather
                 long a0 = GC.GetAllocatedBytesForCurrentThread(), t0 = Stopwatch.GetTimestamp();
                 w.React(b, w.On, rng);
                 w.PlaceLeaf(sp, name, i / 4, flip, b.Scale, ox, oy, b.Now);
-                w.Layout(w.On, b.Now, b.Area, b.Scale, b.Active?.R ?? Rectangle.Empty);
+                w.Layout(w.On, b.Now, b.Area, b.Scale, Rectangle.Empty); // 숨지 않은 볼록이: 일하는 창 위로도 내린다 (PetForm.WeatherHidden)
                 long t1 = Stopwatch.GetTimestamp();
                 var now = ov.Dirty();
                 long t2 = Stopwatch.GetTimestamp(), a1 = GC.GetAllocatedBytesForCurrentThread();
@@ -803,7 +804,7 @@ public sealed class Weather
     }
 
     // ── 화면 없이 그려 보기: Bolok.exe --weather-look 그림.png ──
-    // 위: 모니터 반쪽 크기(960×540) 두 장 — 비(우산)·눈, 오른쪽 흰 창이 일하는 창 (그 위엔 안 내린다).
+    // 위: 모니터 반쪽 크기(960×540) 두 장 — 비(우산)·눈, 오른쪽 흰 창은 일하는 창 (볼록이와 같은 층이라 그 위로도 내린다).
     // 아래: 종·모습마다 머리 눈 1·2·3단계(3단계는 가만히) / 털기 / 우산 / 맞기 / 비 피하기(창 뒤에서 빼꼼), 맨 위 줄은 날씨 그림을 크게
     public static void Look(string path)
     {
@@ -853,7 +854,7 @@ public sealed class Weather
             string name = sky == Sky.Snow ? "child/0/happy" : "child/0/walk";
             int ox = (int)b.X - b.CellPx / 2, oy = (int)b.Y - b.CellPx;
             w.PlaceLeaf(sp, name, 1, false, k, ox, oy, 100);
-            w.Layout(true, 100, half, k, work);
+            w.Layout(true, 100, half, k, Rectangle.Empty);
             using var ov = new Overlay(b, () => sp, half) { Sky = () => w };
             using var frame = new Bitmap(half.Width, half.Height);
             using (var fg = Graphics.FromImage(frame))
