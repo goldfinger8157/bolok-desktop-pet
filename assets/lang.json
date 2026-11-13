@@ -695,6 +695,18 @@
   "pt": "Rabugento",
   "ru": "Ворчун"
  },
+ "stage.adult_playful": {
+  "en": "Rascal",
+  "ko": "장난꾸러기",
+  "ja": "いたずらっ子",
+  "zh-Hans": "调皮鬼",
+  "zh-Hant": "調皮鬼",
+  "es": "Travieso",
+  "de": "Racker",
+  "fr": "Petit coquin",
+  "pt": "Travesso",
+  "ru": "Озорник"
+ },
  "sp.hamster": {
   "en": "Hamster",
   "ko": "햄스터",

@@ -71,6 +71,7 @@ t('stage.child', 'Kid', '어린이')
 t('stage.adult_chubby', 'Chubby', '통통이')
 t('stage.adult_sweet', 'Sweetie', '애교쟁이')
 t('stage.adult_grumpy', 'Grumpy', '심술이')
+t('stage.adult_playful', 'Rascal', '장난꾸러기')
 # 종
 for sp, en, ko in [
     ('hamster', 'Hamster', '햄스터'), ('cat', 'Cat', '고양이'),

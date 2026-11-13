@@ -120,6 +120,7 @@ public static class HideSpots
         };
         if (stage == "adult_sweet" && w.ContainsKey("shy")) w["shy"] += 60;
         if (stage == "adult_grumpy") { w.Remove("shy"); w["angry"] = w.GetValueOrDefault("angry") + 60; }
+        if (stage == "adult_playful") { w.Remove("freeze"); w["chase"] = w.GetValueOrDefault("chase") + 60; } // 장난꾸러기: 들키면 오히려 쫓아온다
         if (mood < 40 && w.ContainsKey("angry")) w["angry"] += 25;
 
         double total = w.Values.Sum(), at = roll * total;

@@ -38,9 +38,9 @@ static class Sim
     static string Row(string name, Result r)
     {
         string first = r.FirstBite is { } f ? (f / 60).ToString("F1") + "시간" : "-";
-        var (c, s, g) = r.P.Growth(new Tuning());
-        double sum = Math.Max(1e-9, c + s + g);
-        return $"{name.PadRight(8)} {r.P.Stage.PadRight(13)} 통통 {c / sum:P0} 애교 {s / sum:P0} 심술 {g / sum:P0} 실수 {r.P.Miss} 누적 {r.P.BitesTotal}입 남은 {r.P.Bites}입 " +
+        var gr = r.P.Growth(new Tuning());
+        double sum = Math.Max(1e-9, gr.Sum());
+        return $"{name.PadRight(8)} {r.P.Stage.PadRight(13)} 통통 {gr[0] / sum:P0} 애교 {gr[1] / sum:P0} 장난 {gr[2] / sum:P0} 심술 {gr[3] / sum:P0} 실수 {r.P.Miss} 누적 {r.P.BitesTotal}입 남은 {r.P.Bites}입 " +
                $"최저 포만 {r.MinFull:F0} 기분 {r.MinMood:F0} 첫 입 {first}";
     }
 
@@ -1601,7 +1601,7 @@ static class Sim
         }
         Expect(Grow(g => g.Feeds = 20) == "adult_chubby", "밥을 많이 주면 통통이");
         Expect(Grow(g => (g.Feeds, g.Pets) = (20, 90)) == "adult_sweet", "밥보다 쓰다듬기가 많으면 애교쟁이");
-        Expect(Grow(g => (g.Feeds, g.Plays, g.Tosses) = (20, 30, 20)) == "adult_sweet", "놀아 주고 살살 던져 주면 애교쟁이");
+        Expect(Grow(g => (g.Feeds, g.Plays, g.Tosses) = (20, 15, 20)) == "adult_playful", "놀아 주고 살살 던져 주면 장난꾸러기");
         Expect(Grow(g => (g.Feeds, g.Pets, g.Rough) = (20, 30, 25)) == "adult_grumpy", "세게 던지고 흔드는 게 가장 많으면 심술이");
         Expect(Grow(g => (g.Feeds, g.Pets, g.Rough) = (20, 30, 5)) == "adult_chubby", "가끔 세게 던져도 비율이 작으면 괜찮다");
         Expect(none.P.Stage == "adult_grumpy" && none.P.Bites == k.MaxBites, "방치하면 심술이");

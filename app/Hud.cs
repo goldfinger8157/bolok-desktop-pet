@@ -11,14 +11,14 @@ public sealed class Hud : Form
 
     public Func<string> RunLine = () => "";
 
-    // 어른이 될 쪽 비율 (아기·어린이 때만): 통56 애44 심0
+    // 어른이 될 쪽 비율 (아기·어린이 때만): 통56 애30 장14 심0
     string Growth()
     {
         var p = b.P;
         if (p.Stage is not ("baby" or "child")) return "";
-        var (c, sw, g) = p.Growth(b.K);
-        double sum = c + sw + g;
-        return sum <= 0 ? "" : $"통{c / sum * 100:F0} 애{sw / sum * 100:F0} 심{g / sum * 100:F0}";
+        var gr = p.Growth(b.K);
+        double sum = gr.Sum();
+        return sum <= 0 ? "" : $"통{gr[0] / sum * 100:F0} 애{gr[1] / sum * 100:F0} 장{gr[2] / sum * 100:F0} 심{gr[3] / sum * 100:F0}";
     }
     public Func<string> SpeciesName = () => "";   // 도감 이름 (알이면 빈칸)
 

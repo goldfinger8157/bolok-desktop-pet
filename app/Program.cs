@@ -138,7 +138,7 @@ static class Program
         {
             ApplicationConfiguration.Initialize();
             var art = Directory.Exists("assets") ? PetArt.FromDir("assets") : PetArt.Embedded;
-            string[] forms = { "baby", "child", "adult_chubby", "adult_sweet", "adult_grumpy" }, poses = { "idle", "happy" };
+            string[] forms = Showcase.Forms, poses = { "idle", "happy" };
             const int k = 3, cell = PetArt.Cell * k;
             using var bmp = new Bitmap(forms.Length * poses.Length * cell + 20, (args.Length - 2) * (cell + 10) + 10);
             using var g = Graphics.FromImage(bmp);
