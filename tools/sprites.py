@@ -185,6 +185,8 @@ GAME = {
     'sword': ('.......ll|......lwl|.....lwl.|o...lwl..|.o.lwl...|..owl....|..boo....|.b...o...|b........', 'b'),
     # 버그 떼: 자석 (주우면 한동안 보석이 다 날아온다). 빨간 말굽에 은빛 끝
     'magnet': ('wl.....wl|ll.....ll|ll.....ll|rr.....rr|rp.....rr|rp.....rr|rrr...rrr|.rrrrrrr.|..rrrrr..', 'b'),
+    # 버그 떼: 신발 (주우면 그 판 내내 빨라진다). 파란 운동화에 흰 밑창·흰 코, 오른쪽을 본다
+    'shoe': ('.uuu......|.uuuu.....|.uuuwu....|.uuuuwuu..|uuuuuuuuww|wwwwwwwwww', 'b'),
     # 밤에 잘 때 쓰는 수면 모자 (끝에 흰 방울)
     'nightcap': ('........ww|.......uww|......uu..|.....uuu..|....uuuu..|...uuuuu..|..uuuuuu..|wwwwwwwwww', 'b'),
 }
