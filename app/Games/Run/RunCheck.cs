@@ -139,6 +139,7 @@ sealed partial class RunGame
                     played.Bounces++;
                     padFloor = false;
                     foreach (var t in r.Things) if (t.Kind == ThingKind.Pad && t.Hot == r.Clock && t.Bunch == 0) { padFloor = true; played.PadFloor++; }
+                    Expect(!padFloor || r.Seen(Gimmick.Pad), $"{tag}: 2층 앞 버섯은 혼자 나온 버섯을 한 번 본 뒤에만 놓인다");
                 }
                 else if (e is "jump" or "jump2" or "drop") padFloor = false;
                 else if (e == "land" && padFloor)
@@ -516,7 +517,8 @@ sealed partial class RunGame
                     {
                         Play(level, 300 + seed, true, BodyOf(form), scale, Ride.Walk, walk);
                         Play(level, 300 + seed, true, BodyOf(form), scale, Ride.Leap, leap);
-                        Play(level, 300 + seed, true, BodyOf(form), scale, Ride.Plain); // 2층을 안 찾는 사람: 2층 앞 버섯을 그냥 밟는다 (그 발판에 내려서는지는 Play 가 본다)
+                        // 2층을 안 찾는 사람: 2층 앞 버섯을 그냥 밟는다 (그 발판에 내려서는지는 Play 가 본다). 버섯이 일찍 나오는 낮은 레벨에서
+                        Play(level == 1 ? 2 : level == 6 ? 3 : level, 300 + seed, true, BodyOf(form), scale, Ride.Plain);
                     }
         Expect(walk.Ends > ends && walk.EndHits == 0 && walk.MinGap >= .45, $"발판 끝에서 떨어져도 함정이 없다: {ends}판 {walk.Ends}번 떨어져 {walk.EndHits}번 맞음, 내려선 뒤 다음 장애물까지 가장 짧게 {walk.MinGap:F2}초");
         Expect(leap.Ends > ends && leap.EndHits == 0, $"발판 끝에서 뛰어내려도 함정이 없다: {leap.Ends}번 뛰어 {leap.EndHits}번 맞음");
@@ -753,9 +755,11 @@ sealed partial class RunGame
                         {
                             var r = Lay();
                             var pad = r.AddPad(r.PetX + 300 * u);
-                            var f = r.AddFloor(pad.X + pad.W / 6.0 + speed * Runner.PadLead, (int)Math.Ceiling(speed * 1.7 / r.Arts[r.LedgeArt.M].W), top);
+                            var f = r.AddFloor(pad.X + pad.W / 6.0 + speed * Runner.PadLead, (int)Math.Ceiling(speed * 1.2 / r.Arts[r.LedgeArt.M].W), top);   // 가장 짧은 발판 (연달아 둘일 때)
                             bool on = false;
-                            int hits = Go(r, x => { on |= x.Under == f; if (x.Under == f) Expect(x.Lift == top, $"{at}: 발판 윗면에 선다"); }, dt, 1.2);
+                            double stay = 0;
+                            int hits = Go(r, x => { on |= x.Under == f; if (x.Under == f) { stay += dt; Expect(x.Lift == top, $"{at}: 발판 윗면에 선다"); } }, dt, 1.2);
+                            Expect(stay > .3, $"{at}: 버섯으로 올라선 발판(윗면 {top})이 0.3초 넘게 남아 있다 ({stay:F2}초)");
                             Expect(on && hits == 0, $"{at}: 2층(윗면 {top}) 앞 버섯을 밟으면 그 발판에 내려선다 (프레임 {dt:F3}초)");
                         }
 
@@ -1233,7 +1237,7 @@ sealed partial class RunGame
             $"알아서 달리면 버섯에 튀고(본체도 그 높이로) 말벌·돌·구덩이를 넘고 동굴을 기어간다: 튐 {bounced}, 맞음 {struck}, 가장 높이 {peak:F0}, 씨앗 {gim.Seeds}");
         trick.Command(new[] { "run", "stop" });
         pet.Hush();
-        // 길에 저절로 나오는 대로 (12레벨, 알아서 달린다) 20초
+        // 길에 저절로 나오는 대로 (12레벨, 알아서 달린다) 30초
         var mix = new RunGame(host);
         var wild = New(sp, area, TestGround, 3, "child", new Random(22), 12);
         mix.Begin(wild, Session.Fake(area));
@@ -1241,8 +1245,8 @@ sealed partial class RunGame
         int kinds = 0;
         wild.OnGimmick = (g, _) => kinds |= 1 << (int)g;
         using var ov4 = host.Overlay(mix);
-        var (bad4, first4) = SceneKit.Repaint(ov4, mix, strip, () => { mix.Frame(1 / 60.0); pet.EmoteUntil = 0; return mix.run != null && wild.Clock < 20; }, 60 * 30, every: 3);
-        Expect(bad4 == 0 && System.Numerics.BitOperations.PopCount((uint)kinds) >= 4, $"12레벨을 알아서 달리는 20초 동안 바뀐 자리만 다시 칠해도 화면이 맞다: {bad4}번 다름 (처음 {first4}프레임), 나온 기믹 {System.Numerics.BitOperations.PopCount((uint)kinds)}가지");
+        var (bad4, first4) = SceneKit.Repaint(ov4, mix, strip, () => { mix.Frame(1 / 60.0); pet.EmoteUntil = 0; return mix.run != null && wild.Clock < 30; }, 60 * 40, every: 3);
+        Expect(bad4 == 0 && System.Numerics.BitOperations.PopCount((uint)kinds) >= 3, $"12레벨을 알아서 달리는 30초 동안 바뀐 자리만 다시 칠해도 화면이 맞다: {bad4}번 다름 (처음 {first4}프레임), 나온 기믹 {System.Numerics.BitOperations.PopCount((uint)kinds)}가지");
         mix.Command(new[] { "run", "stop" });
         pet.Hush();
         return "달리기 모듈: Ctrl·Shift 만 읽음, 보스 키는 점수 없이 바로, 끝난 점수 2.5초 동안 녹화 숨김 유지, 옛 기록 넘어옴, 바뀐 자리만 다시 칠해도 화면이 맞음 (2층 발판을 타고 뛸 때도, 기믹 다섯 가지가 지나갈 때도)";

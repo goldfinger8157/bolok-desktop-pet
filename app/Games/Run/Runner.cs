@@ -62,7 +62,9 @@ public readonly record struct RunArt(string Sprite, int Scale, int W, int H, int
 //   공정하게: 묶음 하나에 기믹 한 가지만. 묶음과 묶음은 볼록이에게 닿는 차례대로 틈(TimeGap 초 이상)을 두고 온다 — 동굴 안·구덩이 위에 2층이 없고,
 //     발판 끝·동굴 끝(떨어지는 시간 + Runway)·버섯으로 튀어 내려설 자리에 다른 것이 없다. 길보다 빠른 말벌·돌은 「같은 때 닿는 가만히 있는 것」의 자리로 셈해서
 //     (화면에서는 그만큼 더 멀리서 출발한다) 앞 묶음을 볼록이 앞에서 앞지르지 않고, 뒤 묶음은 그것이 화면에 들어온 뒤에야 나온다 (겹쳐 지나가지 않는다)
-//   처음: 이 판에서 처음 보이는 기믹은 혼자, 앞(FreshLead 초 더)·뒤(FreshAfter 초 이상)를 비워 나온다. 그 레벨에 새로 열린 기믹은 시작하고(레벨이 오르고) 곧 한 번 나온다
+//     틈·길이를 시간으로 정한 것은 「닿을 때」의 빠르기로 거리를 잰다 (오는 동안에도 길이 빨라진다: 4K 처럼 넓은 화면에서도 닿을 때의 틈이 그 시간이다)
+//   처음: 이 판에서 처음 보이는 기믹은 혼자, 앞(FreshLead 초 더)·뒤(FreshAfter 초 이상)를 비워 나온다. 그 레벨에 새로 열린 기믹은 시작하고(레벨이 오르고) 곧 한 번 나온다.
+//     2층 앞의 버섯도 혼자 나온 버섯을 한 번 본 뒤에만 놓인다
 //   그 뒤: 섞여 나온다. 레벨이 오를수록 기믹 묶음의 몫이 는다 (GimmickShareOf: Lv2 10% → Lv6 38% → Lv12 50%). 어려운 묶음 몫만큼 말벌·돌·구덩이가 둘씩 온다
 public sealed class Runner
 {
@@ -116,7 +118,7 @@ public sealed class Runner
     public Action<Gimmick, bool>? OnGimmick;    // 기믹 묶음이 나왔다 (처음인지)
     public bool Mute;                   // 길에 저절로 나오지 않는다 (자가 검사·장면: 놓아둔 것만 본다)
     // 기믹 치수는 칸px, 시간은 초
-    public const double Bounce = 1150, PadSquash = .18, PadLead = .35, PadFloor = .4,   // 버섯: 튕기는 속도, 눌린 그림 시간, 2층 앞머리보다 얼마나 앞에, 2층 앞에 놓일 몫
+    public const double Bounce = 1150, PadSquash = .18, PadLead = .35, PadFloor = .5,   // 버섯: 튕기는 속도, 눌린 그림 시간, 2층 앞머리보다 얼마나 앞에, 2층 앞에 놓일 몫
         WaspFast = .25, RockFast = .4, MinSee = .9,     // 말벌·돌이 길보다 빠른 정도. 화면에 들어와 닿기까지 MinSee 초는 보이게 (좁은 화면에서는 덜 빠르다)
         WaveLen = 220, WaspLow = 2,                     // 말벌 물결 길이, 맨 아래일 때 땅에서 뜬 높이
         RockSpan = 160, HopSpan = 36, HopUp = 3,        // 높게 튀는 돌의 한 번 튀는 거리, 낮게 튀는 돌의 거리·높이
@@ -494,8 +496,9 @@ public sealed class Runner
     {
         double x = Track.Right + 40, at = x + 40 * sf, step = 34 * sf;
         int count = rng.NextDouble() < HardShareOf(Level) ? 2 : 1;
-        // 버섯 점프대(Lv2 부터): 발판 하나짜리 앞에 가끔 놓인다. 밟으면 튀어서 그 발판에 내려선다. 버섯이 화면 밖에서 들어오게 발판을 그만큼 뒤로
-        bool pad = Level >= 2 && count == 1 && rng.NextDouble() < PadFloor;
+        // 버섯 점프대(Lv2 부터): 2층 앞에 가끔 놓인다. 밟으면 튀어서 (첫) 발판에 내려선다. 버섯이 화면 밖에서 들어오게 발판을 그만큼 뒤로.
+        // 이 판에서 버섯을 (혼자 나온 것으로) 한 번 본 뒤에만: 처음 보는 버섯이 2층·장애물과 함께 나오지 않게
+        bool pad = Level >= 2 && Seen(Gimmick.Pad) && rng.NextDouble() < PadFloor;
         if (pad)
         {
             var p = AddPad(at + Speed * .1);
