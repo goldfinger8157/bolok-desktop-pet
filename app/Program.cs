@@ -138,7 +138,7 @@ static class Program
         {
             ApplicationConfiguration.Initialize();
             var art = Directory.Exists("assets") ? PetArt.FromDir("assets") : PetArt.Embedded;
-            string[] forms = { "baby", "child", "adult_chubby", "adult_sweet", "adult_grumpy" }, poses = { "idle", "happy" };
+            string[] forms = Showcase.Forms, poses = { "idle", "happy" };
             const int k = 3, cell = PetArt.Cell * k;
             using var bmp = new Bitmap(forms.Length * poses.Length * cell + 20, (args.Length - 2) * (cell + 10) + 10);
             using var g = Graphics.FromImage(bmp);
@@ -157,6 +157,12 @@ static class Program
                 }
             }
             bmp.Save(args[1]);
+            return 0;
+        }
+
+        if (args.Length is >= 2 and <= 4 && args[0] == "--run-scene") // 달리기 장면: 형태마다 몸 크기와 판정 (화면을 띄우지 않는다). 뒤에 배율, 형태 하나
+        {
+            Sim.RunScene(args[1], args.Length > 2 ? int.Parse(args[2]) : 3, args.Length > 3 ? args[3] : null);
             return 0;
         }
 

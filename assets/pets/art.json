@@ -1,7 +1,7 @@
 {
   "about": "볼록이 캐릭터 그림 데이터. 앱(app/PetArt.cs)과 생성기(tools/sprites.py)가 둘 다 이 파일로 그린다. 색은 #RRGGBB, 칸은 40px. 종 하나 = species 한 줄",
   "species_rule": "variants 는 색 변형 둘(지금 색이 0번, 알에서 깰 때 셋 중 무작위). 실존 동물과 판타지만. 유명 캐릭터와 겹치는 조합은 피한다 (흰 토끼는 미피 판례로 뺐다). 옷·소품은 안 입힌다. name·note 는 설명일 뿐 그림에 안 쓰인다",
-  "forms_rule": "형태: 체형. 어른 3종은 키운 방식으로 갈린다 (docs/model.md). feature 는 꼬리·뿔·날개 크기(아기 .5 → 어른 1), paw_k 발 크기, tuft 아기 머리털, pear 통통이 서양배 몸, lash 애교쟁이 속눈썹, lid 심술이 반쯤 감은 눈. tints 는 form_colors 가 없는 종에 형태별로 섞는 색",
+  "forms_rule": "형태: 체형. 어른 4종은 키운 방식(돌봄 비율, Pet.Growth)으로 갈린다. feature 는 꼬리·뿔·날개 크기(아기 .5 → 어른 1), paw_k 발 크기, tuft 아기 머리털, pear 통통이 서양배 몸, lash 애교쟁이 속눈썹, lid 심술이 반쯤 감은 눈, tuft·bandaid·grin 장난꾸러기 뻗친 머리털·볼 반창고·한쪽 송곳니 씩 웃음. tints 는 form_colors 가 없는 종에 형태별로 섞는 색",
   "cell": 40,
   "cheeks": 4,
   "colors": {
@@ -24,14 +24,16 @@
   "tints": {
     "baby": ["white", 0.25],
     "adult_grumpy": ["line", 0.18],
-    "adult_sweet": ["#FFC8A0", 0.12]
+    "adult_sweet": ["#FFC8A0", 0.12],
+    "adult_playful": ["#FFD27A", 0.1]
   },
   "forms": {
     "baby": {"rx": 7.2, "ry": 6.8, "ear": 1.9, "eye": 2.6, "eyegap": 4, "feature": 0.5, "paw_k": 0.7, "tuft": true},
     "child": {"rx": 10.5, "ry": 10, "ear": 3, "eye": 2.6, "eyegap": 6, "feature": 0.8},
     "adult_chubby": {"rx": 14, "ry": 12.5, "ear": 3.4, "eye": 2.6, "eyegap": 7, "feature": 1, "pear": true},
     "adult_sweet": {"rx": 12.5, "ry": 12, "ear": 3.6, "eye": 3, "eyegap": 7, "flower": true, "blush": 2, "feature": 1, "lash": true},
-    "adult_grumpy": {"rx": 12.5, "ry": 11.5, "ear": 3.2, "eye": 2.6, "eyegap": 6, "brow": true, "feature": 1, "lid": true}
+    "adult_grumpy": {"rx": 12.5, "ry": 11.5, "ear": 3.2, "eye": 2.6, "eyegap": 6, "brow": true, "feature": 1, "lid": true},
+    "adult_playful": {"rx": 12, "ry": 12, "ear": 3.6, "eye": 3, "eyegap": 6, "feature": 1, "tuft": true, "bandaid": true, "grin": true}
   },
   "poses": {
     "idle": [{}, {"sq": 1}, {}, {"eye": "blink"}],

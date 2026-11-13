@@ -617,7 +617,8 @@ public sealed class PetForm : Form, IGameHost
             var (x0, y0, x1, y1) = Props.Trim(solid);
             return ((x1 - x0 + 1) * scale, (y1 - y0 + 1) * scale, x0 * scale, (y1 + 1) * scale);
         }
-        runner = new Runner(area, area.Bottom - b.K.FloorGap, b.CellPx, new Random(), Measure, runLevel); // 저장된 레벨에서 시작
+        var (rx, ry) = PetArt.Embedded.Size(b.P.Stage); // 판정은 지금 몸 크기대로 (아기는 작게, 어른은 크게)
+        runner = new Runner(area, area.Bottom - b.K.FloorGap, b.CellPx, RunBody.Of(rx, ry), new Random(), Measure, runLevel); // 저장된 레벨에서 시작
         runner.OnEvent = e =>
         {
             switch (e)
@@ -626,7 +627,7 @@ public sealed class PetForm : Form, IGameHost
                 case "seed": Sfx.Play("hit"); break;
                 case "hit": Sfx.Play("pistol"); b.Emote("bang", .5); break;
                 case "heart": b.Emote("heart", .8); break;
-                case "level": b.Emote("star", 1.2); Sfx.Play("reload"); break;
+                case "level": Sfx.Play("reload"); break; // 머리 위 별 + 레벨 숫자는 Overlay.DrawRun 이 그린다
             }
             if (e is "hit" or "heart" or "over" or "level") Dbg.Log("run", ("event", e), ("energy", (int)(runner?.Energy ?? 0)), ("score", runner?.Score));
         };
@@ -649,13 +650,32 @@ public sealed class PetForm : Form, IGameHost
 
     public void StopRun() { if (runner != null) EndRun(false, record: false); } // 디버그 시험 판: 기록에 안 남긴다
 
+    const double RunScoreSec = 2.5;
+    int runEnds; // 끝난 횟수: 늦게 도는 「녹화에 다시 보이기」가 그 사이 새로 시작한 판을 건드리지 않게
+
+    void RunCapture(bool hide)
+    {
+        Native.HideFromCapture(Handle, hide);
+        foreach (var o in overlays) Native.HideFromCapture(o.Handle, hide);
+    }
+
     void EndRun(bool quit, bool record = true)
     {
         var r = runner!;
         runner = null;
         b.EndRun();
-        Native.HideFromCapture(Handle, false);
-        foreach (var o in overlays) { Native.HideFromCapture(o.Handle, false); o.Invalidate(); }
+        int ended = ++runEnds;
+        if (r.Over && !quit) // 끝까지 달렸으면 머리 위에 점수를 잠깐. Esc·Ctrl+Shift 로 숨길 땐 아무것도 안 띄운다
+        {
+            b.EmoteUntil = 0; // 별 말풍선 자리에 점수가 뜬다
+            foreach (var o in overlays) o.ShowRunScore(r.Score, record && r.Score > runBest, RunScoreSec);
+            // 점수가 떠 있는 동안은 화면 공유·녹화에 계속 안 찍히게 둔다
+            var later = new System.Windows.Forms.Timer { Interval = (int)(RunScoreSec * 1000) + 200 };
+            later.Tick += (_, _) => { later.Dispose(); if (ended == runEnds && runner == null) RunCapture(false); };
+            later.Start();
+        }
+        else RunCapture(false);
+        foreach (var o in overlays) o.Invalidate();
         Dbg.Log("run-quit", ("byKeys", quit), ("record", record));
         if (!record) return;
         runLast = r.Score;
@@ -1066,8 +1086,7 @@ public sealed class PetForm : Form, IGameHost
         {
             met.Add(species);
             TakePhoto(b.P.Stage);
-            b.Say(4, L.T("say.hatched", L.With(L.Species(species), "가", "이가")));
-            b.Emote("star", 2);
+            b.Emote("star", 2.5); // 펫은 말하지 않는다 (YELL 2026-11-13): 「태어났어요!」 대신 반짝 별
             BookChanged();
             Save();
         }
@@ -1076,6 +1095,9 @@ public sealed class PetForm : Form, IGameHost
     }
 
     bool InGame => Playing || leaving;
+
+    // 게임에 쓸 창(최대화 안 한 창)이 없다: 말 대신 「X 표 창」 그림을 머리 위에 띄우고 고개를 젓는다 (YELL 2026-11-13: 알림 말풍선도 그림으로)
+    void NoWindow() { b.Emote("nowin", 3); b.ShakeUntil = b.Now + .5; }
     bool Playing => game != null || runner != null || breakout != null || worms != null || minigun != null || icbm != null || modes.Any(m => m.Running);
 
     // ── 보스 키 (YELL 2026-11-13: "게임에서 esc 는 언제나 빠져나가기다!!") ──
@@ -1091,7 +1113,7 @@ public sealed class PetForm : Form, IGameHost
 
     public void BossKey(Action? quit = null)
     {
-        if (!Playing) return;
+        if (!Playing) { foreach (var o in overlays) o.HideAfterGame(); return; } // 끝난 뒤 잠깐 뜨는 점수도 Esc 면 바로 숨긴다
         Dbg.Log("boss-key");
         quit?.Invoke(); // 판이 알려 준 끝내기 (아래와 겹쳐도 게임마다 한 번만 끝난다)
         foreach (var m in modes) if (m.Running) m.Stop(true);
@@ -1158,7 +1180,7 @@ public sealed class PetForm : Form, IGameHost
                 case "peek": b.Emote("heart", 1.6); Dbg.Log("icbm-peek", ("friend", ic.Peeks.LastOrDefault()?.Species)); break; // 옛 친구를 알아본다
                 case "boom": Sfx.Play("boom"); b.Emote("bang", 1); break;
                 case "blown": b.Throw(ic.BlownVx, ic.BlownVy, hard: true); break; // 어지러워하다가 거기서부터 고치러 간다
-                case "nowhere": b.Say(3, L.T("say.nowhere")); break;
+                case "nowhere": b.Emote("ask", 2); break; // 떨어뜨릴 곳이 없다: 갸웃 (말 대신 그림)
                 case "repaired": b.P.Energy = Math.Max(0, b.P.Energy - 4); b.Emote("spark", .8); break; // 일은 기운이 든다
             }
             if (e is "boom" or "nowhere" or "repaired") Dbg.Log("icbm", ("event", e), ("craters", ic.Craters.Count), ("x", (int)ic.TX), ("y", (int)ic.TY));
@@ -1208,7 +1230,7 @@ public sealed class PetForm : Form, IGameHost
         var (field, rects) = WindowPick.Islands(Native.Foreground(), wins, b.Area, Screen.AllScreens.Select(s => s.WorkingArea).ToList(), b.CellPx, 8, topRoom: 0);
         if (rects.Count == 0)
         {
-            b.Say(3.5, L.T("say.no_gun"), L.T("say.open_window"));
+            NoWindow();
             Dbg.Log("gun-none");
             return;
         }
@@ -1290,7 +1312,7 @@ public sealed class PetForm : Form, IGameHost
         var (field, wins) = PickIslands();
         if (wins.Count == 0)
         {
-            b.Say(3.5, L.T("say.no_islands"), L.T("say.open_window"));
+            NoWindow();
             Dbg.Log("worms-none");
             return;
         }
@@ -1370,7 +1392,7 @@ public sealed class PetForm : Form, IGameHost
         var screens = Screen.AllScreens.Select(s => s.WorkingArea).ToList();
         if (Breakout.Pick(Native.Foreground(), Native.ListWindows(), b.Area, screens, b.CellPx) is not { } pick)
         {
-            b.Say(3.5, L.T("say.no_break"), L.T("say.open_window")); // 창모드 창이 없다
+            NoWindow(); // 창모드 창이 없다
             Dbg.Log("break-none");
             return;
         }

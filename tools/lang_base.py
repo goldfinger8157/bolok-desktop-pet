@@ -39,12 +39,6 @@ t('gun.multi', 'Multi-cannon', '멀티캐논')
 t('gun.giant', 'Giant cannon', '왕대포')
 t('gun.normal', 'Cannon', '일반대포')
 # 말풍선
-t('say.hatched', '{0} hatched!', '{0} 태어났어요!')
-t('say.nowhere', 'Nowhere to drop it', '떨어뜨릴 곳이 없어요')
-t('say.no_break', 'No window to make bricks from', '벽돌로 만들 창이 없어요')
-t('say.no_gun', 'No window to smash', '부술 창이 없어요')
-t('say.no_islands', 'No window to use as islands', '섬이 될 창이 없어요')
-t('say.open_window', "Open a window that isn't maximized", '최대화 안 한 창을 하나 띄워 주세요')
 # 게임 안내 (처음 몇 초)
 t('note.run_level', 'Lv.{0}  Goal {1}', 'Lv.{0}  목표 {1}')
 t('note.run_jump', 'Ctrl: Jump', 'Ctrl: 점프')
@@ -71,6 +65,7 @@ t('stage.child', 'Kid', '어린이')
 t('stage.adult_chubby', 'Chubby', '통통이')
 t('stage.adult_sweet', 'Sweetie', '애교쟁이')
 t('stage.adult_grumpy', 'Grumpy', '심술이')
+t('stage.adult_playful', 'Rascal', '장난꾸러기')
 # 종
 for sp, en, ko in [
     ('hamster', 'Hamster', '햄스터'), ('cat', 'Cat', '고양이'),

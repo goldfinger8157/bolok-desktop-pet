@@ -33,10 +33,12 @@ public sealed class Tuning
     // 어른 모습은 아기·어린이 때 받은 돌봄의 비율로 정한다 (YELL 2026-11-13: "12번 넘으면 심술이" 같은 횟수 기준이 아니라
     // 밥·쓰다듬기·던지기·놀아주기를 모두 놓고 비율로). 돌봄마다 점수를 매겨 가장 큰 쪽으로 자란다 (Growth):
     //   통통이 ← 밥 1번 1점
-    //   애교쟁이 ← 쓰다듬기 3번 1점 (연타는 1.5초에 한 번만 센다), 놀아주기·살살 던지기 2번 1점
+    //   애교쟁이 ← 쓰다듬기 3번 1점 (연타는 1.5초에 한 번만 센다)
+    //   장난꾸러기 ← 놀아주기·게임 1판 1점, 살살 던지기 2번 1점 (YELL 2026-11-13: 장난꾸러기 추가)
     //   심술이 ← 세게 던지기·흔들기 1번 1점, 귀찮게 찌르기 3번 1점, 배고픈 채로 둔 1시간 1점
     public double PetPoint { get; set; } = 1 / 3.0;
-    public double PlayPoint { get; set; } = .5;
+    public double PlayPoint { get; set; } = 1;
+    public double TossPoint { get; set; } = .5;
     public double AnnoyPoint { get; set; } = 1 / 3.0;
     public double HungryHourPoint { get; set; } = 1;
 
@@ -117,16 +119,24 @@ public sealed class Pet
     public int Rough { get; set; }          // 세게 던지기·흔들기
     public int Annoys { get; set; }         // 귀찮게 찌르기 (연타로 삐치게 하기·찌르기 손짓)
 
-    // 어른이 될 쪽 점수: 통통이·애교쟁이·심술이 (위 「어른 모습」 참고). 셋을 더한 것 중 비율이 가장 큰 쪽으로 자란다
-    public (double Chubby, double Sweet, double Grumpy) Growth(Tuning k) =>
-        (Feeds, Pets * k.PetPoint + (Plays + Tosses) * k.PlayPoint, Rough + Annoys * k.AnnoyPoint + HungryMin / 60 * k.HungryHourPoint);
+    // 어른이 될 쪽 점수 (위 「어른 모습」 참고). 넷을 더한 것 중 비율이 가장 큰 쪽으로 자란다. 비기면 앞쪽 (통통이 → 애교쟁이 → 장난꾸러기 → 심술이)
+    public static readonly string[] Adults = { "adult_chubby", "adult_sweet", "adult_playful", "adult_grumpy" };
+    public double[] Growth(Tuning k) => new[]
+    {
+        Feeds,
+        Pets * k.PetPoint,
+        Plays * k.PlayPoint + Tosses * k.TossPoint,
+        Rough + Annoys * k.AnnoyPoint + HungryMin / 60 * k.HungryHourPoint,
+    };
 
     static double Clamp(double v) => Math.Clamp(v, 0, 100);
 
     string AdultForm(Tuning k)
     {
-        var (c, s, g) = Growth(k);
-        return g > c && g > s ? "adult_grumpy" : s > c ? "adult_sweet" : "adult_chubby"; // 비기면 통통이
+        var g = Growth(k);
+        int best = 0;
+        for (int i = 1; i < g.Length; i++) if (g[i] > g[best]) best = i;
+        return Adults[best];
     }
 
     // m 활동 분이 지났다. afk 면 자리 비움. 일어난 일을 돌려준다

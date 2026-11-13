@@ -86,19 +86,16 @@ public sealed class Overlay : Form
     // 이번 프레임에 그릴 것들의 자리. 지난 프레임 자리와 함께 다시 칠한다
     List<Rectangle> Dirty()
     {
-        var r = new List<Rectangle>();
+        var r = dirtySpare; // 지지난 프레임 목록을 다시 쓴다 (Sync 가 last 와 바꿔 준다)
+        r.Clear();
         int s = sprites().Cell;
         foreach (var f in b.Bits) { var p = ToClient(f.X, f.Y); r.Add(new Rectangle(p.X, p.Y, 8, 8)); }
         foreach (var h in b.Hearts) { var p = ToClient(h.X, h.Y); r.Add(new Rectangle(p.X - s, p.Y - s * 2, s * 2, s * 2)); }
         foreach (var seed in b.Foods) { var p = ToClient(seed.X, seed.Y); r.Add(new Rectangle(p.X - s, p.Y - s, s * 2, s * 2)); }
         if (b.Emoting) r.Add(EmoteRect());
         if (b.Saying) r.Add(Client(NoteRect(b.X, b.Y, b.Area, b.SayLines!)));
-        if (Runner() is { } run)
-        {
-            foreach (var t in run.Things) if (!t.Gone) r.Add(Client(Rectangle.Inflate(t.Box, 8, 8)));
-            r.Add(Client(EnergyRect(run)));
-            if (NoteLines(run) is { } note) r.Add(Client(NoteRect(run.PetX, run.Ground, run.Track, note)));
-        }
+        if (Runner() is { } run) RunDirty(run, r);
+        else RunIdle(r);
         if (IcbmGame() is { } ic)
         {
             int k = b.Scale;
@@ -170,7 +167,8 @@ public sealed class Overlay : Form
             gameSeen = seen;
         }
         var now = Dirty();
-        var once = new List<Rectangle>();
+        var once = dirtyOnce;
+        once.Clear();
         if (Break() is { } bo) // 새 판이면 창 자리 전체를, 그다음엔 새로 깨진 조각 자리만 한 번 다시 칠한다
         {
             if (bo != breakSeen) { (breakSeen, brokenSeen) = (bo, 0); once.AddRange(bo.Boards.Select(r => Client(Rectangle.Inflate(r, 2, 2)))); }
@@ -212,33 +210,46 @@ public sealed class Overlay : Form
                 once.Add(Client(Rectangle.Inflate(new Rectangle((int)bl.X, (int)bl.Y, 0, 0), (int)bl.R + 4, (int)bl.R + 4)));
             }
         }
-        InvalidateMerged(last.Concat(now).Concat(once));
-        last = now;
+        InvalidateMerged(last, now, once);
+        (dirtySpare, last) = (last, now);
     }
 
     // 다시 칠할 곳을 64px 칸으로 모아 이어진 칸은 한 줄로 알린다. 작은 사각형을 수백 개 따로 알리면
-    // 윈도우가 합치느라 한 프레임이 100ms 까지 늘었다 (벽돌깨기 불공, 2026-11-04)
+    // 윈도우가 합치느라 한 프레임이 100ms 까지 늘었다 (벽돌깨기 불공, 2026-11-04).
+    // 칸 표와 목록은 다시 쓴다: 프레임마다 새로 잡는 메모리가 없다 (2026-11-13, 전에는 프레임마다 3KB)
     const int DirtyCell = 64;
-    readonly HashSet<(int X, int Y)> dirtyCells = new();
-    void InvalidateMerged(IEnumerable<Rectangle> rects)
+    List<Rectangle> dirtySpare = new();
+    readonly List<Rectangle> dirtyOnce = new();
+    bool[] dirtyGrid = Array.Empty<bool>();
+    void InvalidateMerged(List<Rectangle> a, List<Rectangle> b2, List<Rectangle> c)
     {
         var area = ClientRectangle;
-        dirtyCells.Clear();
-        foreach (var r0 in rects)
+        int cols = (area.Width + DirtyCell - 1) / DirtyCell, rows = (area.Height + DirtyCell - 1) / DirtyCell;
+        if (dirtyGrid.Length != cols * rows) dirtyGrid = new bool[cols * rows];
+        int top = rows, bottom = -1;
+        void Mark(List<Rectangle> rects)
         {
-            var r = Rectangle.Intersect(r0, area); // 다른 모니터 것은 버린다
-            if (r.IsEmpty) continue;
-            for (int y = r.Top / DirtyCell; y <= (r.Bottom - 1) / DirtyCell; y++)
-                for (int x = r.Left / DirtyCell; x <= (r.Right - 1) / DirtyCell; x++) dirtyCells.Add((x, y));
-        }
-        foreach (var row in dirtyCells.GroupBy(c => c.Y))
-        {
-            var xs = row.Select(c => c.X).Order().ToList();
-            for (int i = 0, j; i < xs.Count; i = j + 1)
+            foreach (var r0 in rects)
             {
-                for (j = i; j + 1 < xs.Count && xs[j + 1] == xs[j] + 1; j++) { }
-                Invalidate(new Rectangle(xs[i] * DirtyCell, row.Key * DirtyCell, (xs[j] - xs[i] + 1) * DirtyCell, DirtyCell));
+                var r = Rectangle.Intersect(r0, area); // 다른 모니터 것은 버린다
+                if (r.IsEmpty) continue;
+                int y0 = r.Top / DirtyCell, y1 = (r.Bottom - 1) / DirtyCell, x0 = r.Left / DirtyCell, x1 = (r.Right - 1) / DirtyCell;
+                (top, bottom) = (Math.Min(top, y0), Math.Max(bottom, y1));
+                for (int y = y0; y <= y1; y++) Array.Fill(dirtyGrid, true, y * cols + x0, x1 - x0 + 1);
             }
+        }
+        Mark(a); Mark(b2); Mark(c);
+        for (int y = top; y <= bottom; y++)
+        {
+            int row = y * cols;
+            for (int x = 0; x < cols; x++)
+            {
+                if (!dirtyGrid[row + x]) continue;
+                int from = x;
+                while (x + 1 < cols && dirtyGrid[row + x + 1]) x++;
+                Invalidate(new Rectangle(from * DirtyCell, y * DirtyCell, (x - from + 1) * DirtyCell, DirtyCell));
+            }
+            Array.Clear(dirtyGrid, row, cols);
         }
     }
 
@@ -294,6 +305,7 @@ public sealed class Overlay : Form
         if (b.Saying) DrawNoteAt(g, b.X, b.Y, b.Area, b.SayLines!);
         if (game() is { } gm) DrawGame(g, gm);
         if (Runner() is { } run) DrawRun(g, run);
+        else if (b.Now < runScoreUntil) DrawRunScore(g);
         if (Break() is { } bo) DrawBreak(g, bo);
         if (WormsGame() is { } wm) DrawWorms(g, wm);
         if (MinigunGame() is { } mg) DrawMinigun(g, mg);
@@ -412,33 +424,172 @@ public sealed class Overlay : Form
     }
 
     // ── 쿠키런 모드: 점수판 없이 길 위의 것과 발밑의 가는 체력 막대만 ──
+    // 그림에는 글자를 쓰지 않는다: 레벨은 별 + 숫자, 끝난 점수는 숫자만 (새 기록이면 왕관). 글자는 처음 4초 안내 말풍선뿐 (YELL 이 달라고 함)
+    const double GuideSec = 4, LevelSec = 1.6;
+    static readonly string[] NumNames = { "num/0", "num/1", "num/2", "num/3", "num/4", "num/5", "num/6", "num/7", "num/8", "num/9" };
+    Runner? runSeen;
+    Sprites? runPicsFrom;
+    Bitmap?[] runPics = Array.Empty<Bitmap?>();     // 길 위 그림 (Runner.Arts 순서): 그려진 부분만 잘라 둔 것. 프레임마다 이름으로 찾지 않고, 빈 칸까지 칠하지 않는다
+    Bitmap? runGuide;                               // 안내 말풍선: 4초 동안 안 바뀌니 한 번만 그려 둔다
+    Rectangle runGuideRect;
+    bool runGuideOn;
+    int runBar = -1;
+    readonly Dictionary<string, Rectangle> runCrops = new();
+    int runScore;
+    bool runScoreBest;
+    double runScoreUntil;
+
+    // 판이 끝났다: 볼록이 머리 위에 점수를 잠깐 (새 기록이면 왕관과 함께)
+    public void ShowRunScore(int score, bool best, double sec = 2.5) => (runScore, runScoreBest, runScoreUntil) = (score, best, b.Now + sec);
+    public void HideAfterGame() { if (b.Now < runScoreUntil) { runScoreUntil = 0; Invalidate(); } } // 보스 키: 게임이 끝난 뒤 남은 점수도 바로 지운다
+
+    void RunSee(Runner? run)
+    {
+        if (run == runSeen) return;
+        runSeen = run;
+        runGuide?.Dispose();
+        (runGuide, runGuideOn, runBar) = (null, false, -1);
+        RunPicsFor(null, 0);
+    }
+
+    void RunPicsFor(Sprites? sp, int count)
+    {
+        foreach (var pic in runPics) pic?.Dispose();
+        (runPicsFrom, runPics) = (sp, count == 0 ? Array.Empty<Bitmap?>() : new Bitmap?[count]);
+    }
+
+    // 칸 그림에서 그려진 부분만 (미리 곱한 알파라 칠하기도 빠르다)
+    static Bitmap RunPic(Sprites sp, Thing t)
+    {
+        var pic = new Bitmap(t.W, t.H, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+        using var g = Graphics.FromImage(pic);
+        g.DrawImage(sp.Get(t.Sprite, 0, t.Scale), new Rectangle(0, 0, t.W, t.H), new Rectangle(t.Ox, t.Oy - t.H, t.W, t.H), GraphicsUnit.Pixel);
+        return pic;
+    }
+
+    // 달리는 모니터의 창만 그린다 (옆 모니터 창에는 들어오기 전·나간 뒤의 것이 보이면 안 된다)
+    bool RunHere(Runner run) => Bounds.IntersectsWith(run.Track);
+
     Rectangle EnergyRect(Runner run)
     {
-        int w = 20 * b.Scale;
-        return new Rectangle((int)run.PetX - w / 2, (int)run.Ground + 4, w, 2 * b.Scale);
+        int w = 20 * run.PetScale;
+        return new Rectangle((int)run.PetX - w / 2, (int)run.Ground + 4, w, 2 * run.PetScale);
+    }
+
+    static int EnergyFill(Runner run, int width) => (int)(width * run.Energy / 100);
+
+    (Bitmap Pic, Rectangle Rect) RunGuide(Runner run)
+    {
+        if (runGuide == null)
+        {
+            var lines = new[] { L.T("note.run_level", run.Level, Bolok.Runner.GoalOf(run.Level)), L.T("note.run_jump"), L.T("note.run_duck"), L.T("note.esc") };
+            runGuideRect = NoteRect(run.PetX, run.Ground, run.Track, lines);
+            runGuide = new Bitmap(runGuideRect.Width, runGuideRect.Height, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+            using var g = Graphics.FromImage(runGuide);
+            DrawNote(g, new Rectangle(0, 0, runGuideRect.Width, runGuideRect.Height), lines, runGuideRect.X < run.PetX);
+        }
+        return (runGuide, runGuideRect);
+    }
+
+    // 그림 하나(없어도 된다) + 숫자 한 줄. (cx, cy) 는 가운데 (화면 좌표)
+    Rectangle BadgeRect(string? icon, int n, double cx, double cy, int k)
+    {
+        int w = BadgeWidth(icon, n, k, out _, out var crop);
+        int h = Math.Max(crop.Height, 7) * k;
+        return new Rectangle((int)cx - w / 2 - k, (int)cy - h / 2 - k, w + 2 * k, h + 2 * k);
+    }
+
+    int BadgeWidth(string? icon, int n, int k, out int digits, out Rectangle crop)
+    {
+        digits = 1;
+        for (int v = n; v >= 10; v /= 10) digits++;
+        crop = default;
+        if (icon != null && !runCrops.TryGetValue(icon, out crop)) runCrops[icon] = crop = Ui.Opaque(sprites().Get(icon, 0, 1), 0);
+        return (icon == null ? 0 : (crop.Width + 1) * k) + digits * 5 * k;
+    }
+
+    void DrawBadge(Graphics g, string? icon, int n, double cx, double cy, int k)
+    {
+        var sp = sprites();
+        int w = BadgeWidth(icon, n, k, out int digits, out var crop);
+        var at = ToClient(cx - w / 2, cy);
+        int x = at.X;
+        if (icon != null)
+        {
+            g.DrawImageUnscaled(sp.Get(icon, 0, k), x - crop.X * k, at.Y - (crop.Y * 2 + crop.Height) * k / 2);
+            x += (crop.Width + 1) * k;
+        }
+        int cell = sp.Cell * k;
+        for (int i = digits - 1, v = n; i >= 0; i--, v /= 10) // 숫자 칸은 5칸px 간격, 그림은 칸 가운데에 있다
+            g.DrawImageUnscaled(sp.Get(NumNames[v % 10], 0, k), x + i * 5 * k + (5 * k - cell) / 2, at.Y - cell / 2);
+    }
+
+    // 레벨이 오르면 머리 위에 별 + 레벨 숫자 (뛰면 같이 올라간다)
+    (double X, double Y) LevelAt(Runner run) => (run.PetX, run.Ground - run.Lift - run.StandPx - 9 * run.PetScale);
+
+    // 끝난 점수: 머리 위. 말풍선 그림이 떠 있으면 그 위로
+    (double X, double Y) ScoreAt() => (b.X, b.HeadY - (b.Emoting ? 26 : 6) * b.Scale);
+    int ScoreK => Math.Max(1, b.Scale - 1);
+
+    void RunDirty(Runner run, List<Rectangle> r)
+    {
+        RunSee(run);
+        if (!RunHere(run)) return;
+        int right = run.Track.Right;
+        foreach (var t in run.Things) if (!t.Gone && t.X < right) r.Add(Client(Rectangle.Inflate(t.Box, 1, 1))); // 지난 자리는 지난 프레임 목록이 지운다
+        // 체력 막대와 안내 말풍선은 바뀔 때만 다시 칠한다 (전에는 프레임마다 칠했다)
+        var e = EnergyRect(run);
+        int fill = EnergyFill(run, e.Width) + (run.Energy < 25 ? 1 << 20 : 0);
+        if (fill != runBar) { runBar = fill; r.Add(Client(Rectangle.Inflate(e, 1, 1))); }
+        bool guide = run.Clock < GuideSec;
+        if (guide != runGuideOn) { runGuideOn = guide; r.Add(Client(RunGuide(run).Rect)); }
+        if (run.Clock - run.LevelAt < LevelSec) { var (x, y) = LevelAt(run); r.Add(Client(BadgeRect("game/star", run.Level, x, y, run.PetScale))); }
+    }
+
+    // 달리기가 없을 때: 지난 판의 것을 치우고, 끝난 점수가 떠 있으면 그 자리
+    void RunIdle(List<Rectangle> r)
+    {
+        RunSee(null);
+        if (b.Now < runScoreUntil) { var (x, y) = ScoreAt(); r.Add(Client(BadgeRect(runScoreBest ? "game/crown" : null, runScore, x, y, ScoreK))); }
+    }
+
+    void DrawRunScore(Graphics g)
+    {
+        var (x, y) = ScoreAt();
+        DrawBadge(g, runScoreBest ? "game/crown" : null, runScore, x, y, ScoreK);
     }
 
     void DrawRun(Graphics g, Runner run)
     {
+        RunSee(run);
+        if (!RunHere(run)) return;
         var sp = sprites();
+        if (runPicsFrom != sp || runPics.Length < run.Arts.Count) RunPicsFor(sp, run.Arts.Count);
+        var clip = Rectangle.Ceiling(g.ClipBounds);
+        int right = run.Track.Right;
         foreach (var t in run.Things)
         {
-            if (t.Gone) continue;
-            var p = ToClient(t.X - t.Ox, t.Y - t.Oy);
-            g.DrawImageUnscaled(sp.Get(t.Sprite, 0, t.Scale), p.X, p.Y);
+            if (t.Gone || t.X >= right) continue; // 아직 화면 밖
+            var box = Client(t.Box);
+            if (!box.IntersectsWith(clip)) continue; // 다시 칠하는 곳 밖은 건너뛴다
+            g.DrawImageUnscaled(runPics[t.Art] ??= RunPic(sp, t), box.X, box.Y);
         }
         var e = Client(EnergyRect(run));
         g.FillRectangle(barLine, e.X - 1, e.Y - 1, e.Width + 2, e.Height + 2);
         g.FillRectangle(barBack, e);
-        g.FillRectangle(run.Energy < 25 ? redFill : barFill, e.X, e.Y, (int)(e.Width * run.Energy / 100), e.Height);
-        if (NoteLines(run) is { } note) DrawNoteAt(g, run.PetX, run.Ground, run.Track, note);
+        g.FillRectangle(run.Energy < 25 ? redFill : barFill, e.X, e.Y, EnergyFill(run, e.Width), e.Height);
+        if (run.Clock < GuideSec)
+        {
+            var (pic, rect) = RunGuide(run);
+            var at = Client(rect);
+            if (at.IntersectsWith(clip)) g.DrawImageUnscaled(pic, at.X, at.Y);
+        }
+        else if (run.Clock - run.LevelAt < LevelSec)
+        {
+            var (x, y) = LevelAt(run);
+            DrawBadge(g, "game/star", run.Level, x, y, run.PetScale);
+        }
     }
-
-    // 처음 4초는 조작 안내, 레벨이 오르면 잠깐 「Lv.N!」. 글자 말풍선은 이것뿐이다 (YELL 이 달라고 함)
-    const double GuideSec = 4;
-    static string[]? NoteLines(Runner run) =>
-        run.Clock < GuideSec ? new[] { L.T("note.run_level", run.Level, Bolok.Runner.GoalOf(run.Level)), L.T("note.run_jump"), L.T("note.run_duck"), L.T("note.esc") }
-        : run.Clock - run.LevelAt < 1.6 ? new[] { $"Lv.{run.Level}!" } : null;
 
     Font? noteFont;
     int noteFontScale;

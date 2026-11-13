@@ -50,6 +50,12 @@ public static class Clicks
                 w["love"] = w.GetValueOrDefault("love") + 40;
                 w["wink"] = w.GetValueOrDefault("wink") + 25;
             }
+            if (stage == "adult_playful") // 장난꾸러기: 누르면 폴짝·빙글·킥킥
+            {
+                w["hop"] = w.GetValueOrDefault("hop") + 35;
+                w["spin"] = w.GetValueOrDefault("spin") + 25;
+                w["giggle"] = w.GetValueOrDefault("giggle") + 20;
+            }
             if (grumpy)
             {
                 w.Remove("love");

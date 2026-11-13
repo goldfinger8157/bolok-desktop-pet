@@ -6,7 +6,7 @@ namespace Bolok;
 // 게임 모듈 틀(IGameMode)로 그리기·프레임만 빌려 쓴다 — 메뉴는 디버그일 때 PetForm 이 Menu() 로 단다
 sealed class Showcase : IGameMode
 {
-    public static readonly string[] Forms = { "baby", "child", "adult_chubby", "adult_sweet", "adult_grumpy" };
+    public static readonly string[] Forms = { "baby", "child", "adult_chubby", "adult_sweet", "adult_playful", "adult_grumpy" };
     const double PoseSec = 3.2, WalkSec = 6;
 
     sealed class Actor { public string Form = ""; public double X, Home; public int Dir = 1; }

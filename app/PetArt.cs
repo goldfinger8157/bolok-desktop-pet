@@ -497,7 +497,7 @@ public sealed class PetArt
                 case "under": foreach (int s in Sides) Stamp(g, art, fx + .5 + s * (gap + st.N("dx")), ey + 3 + st.N("dy"), pal, s > 0, true); break; // 눈 밑 (레서판다 눈물 무늬)
             }
         }
-        if (F.T("tuft") && !HeadMark(S)) // 아기: 정수리에 털 한 가닥 (머리에 갓·갈기·뿔이 있는 종은 빼고)
+        if (F.T("tuft") && !HeadMark(S)) // 아기·장난꾸러기: 정수리에 털 한 가닥 (머리에 갓·갈기·뿔이 있는 종은 빼고)
         {
             int top = (int)Math.Ceiling(cy - ry - .5) - 1; // 윤곽선 줄
             g.Pix(c["line"], (fx, top - 1), (fx, top - 2), (fx + 1, top - 3), (fx + 2, top - 2));
@@ -532,6 +532,12 @@ public sealed class PetArt
             }
             else if (face == "frog" && mk == "w") // 개구리: 넓게 웃는 입
                 g.Pix(c["line"], Enumerable.Range(-4, 9).Select(i => ((double)(fx + i), (double)(my + (Math.Abs(i) < 3 ? 1 : 0)))).ToArray());
+            else if (F.T("grin") && !f.Has("mouth")) // 장난꾸러기: 한쪽만 올라간 씩 웃음에 송곳니 하나
+            {
+                g.Pix(c["line"], (fx - 3, my + 1), (fx - 2, my + 2), (fx - 1, my + 2), (fx, my + 2), (fx + 1, my + 2), (fx + 2, my + 1), (fx + 3, my), (fx + 4, my - 1));
+                g.Pix(c["white"], (fx + 1, my + 3));
+                g.Pix(c["line"], (fx + 1, my + 4), (fx, my + 3), (fx + 2, my + 3));
+            }
             else Mouth(g, mk, fx, my, S.Has("mouth_in") ? new Dictionary<string, uint>(c) { ["red"] = Col(S, "mouth_in") } : c);
             if (nose == "snoot") Nose(g, nose, fx, my, c); // 돼지 코는 입보다 앞에 (입을 벌려도 코가 보이게)
             if (S.T("tongue") && mk == "w") // 시바: 살짝 내민 분홍 혀
@@ -619,6 +625,15 @@ public sealed class PetArt
                 int x = R(cx + Math.Cos(a) * (rx - 1)), y = R(cy - ry - 1 + Math.Sin(a) * 3);
                 foreach (var (u, v) in new[] { (0, 0), (-1, 0), (1, 0), (0, -1), (0, 1) }) g.Put(x + u, y + v, Rgb(255, 214, 80));
             }
+        if (F.T("bandaid") && !lying) // 장난꾸러기: 한쪽 볼(눈 아래 바깥)에 반창고 (뛰어놀다 긁혔다). 밝은 띠에 가운데 패드, 둘레를 둘러 털색에 안 묻히게
+        {
+            int x = fx - gap - 1, y = ey + 4;
+            uint band = Rgb(255, 228, 196), pad = Rgb(232, 172, 124), edge = Mix(band, c["line"], .55);
+            string[] art = { ".eeeee.", "ebbpbbe", "ebbpbbe", ".eeeee." };
+            for (int j = 0; j < art.Length; j++)
+                for (int i = 0; i < art[j].Length; i++)
+                    if (art[j][i] != '.') g.Put(x - 3 + i, y - 1 + j, art[j][i] switch { 'e' => edge, 'p' => pad, _ => band }, true);
+        }
         if (F.T("flower")) // 애교쟁이: 귀에 꽃
         {
             int x = R(earX[1]), y = R(cy - ry * .95);
