@@ -129,7 +129,7 @@ public sealed class PetForm : Form, IGameHost
         hud.SpeciesName = () => b.P.Stage == "egg" ? "" : L.Species(species);
         if (!debug) // 새 버전을 받아 바꿔 두면 메뉴에 알린다. 그냥 둬도 다음에 켤 때 새 버전이다
             Updater.Start(() => autoUpdate, tag => BeginInvoke(() => { updateTag = tag; updateItem.Text = L.T("menu.update", tag); updateItem.Visible = true; settings?.ShowReady(); }));
-        foreach (var o in overlays) { o.Guest = () => visitor; o.GuestSprites = () => visitorSprites; o.Present = () => present; o.Clover = () => clover.State == Clover.Phase.Ground ? (clover.Kind, clover.X, clover.Y) : null; o.Dreams = Dreams; o.Modes = () => modes; }
+        foreach (var o in overlays) { o.Guest = () => visitor; o.GuestSprites = () => visitorSprites; o.Present = () => present; o.Clover = CloverShown; o.Dreams = Dreams; o.Modes = () => modes; }
         hud.PlaceAt(area);
         if (runDir != null) dev = new DevLink(runDir, assetsDir!, b, this);
 
@@ -831,6 +831,12 @@ public sealed class PetForm : Form, IGameHost
         if (clover.Wilt(Today, now)) { Changed("wilt"); return; }
         if (b.Mode == Mode.Thrown && clover.Drop(b.X, ground, now)) { Changed("drop"); return; } // 던져지면 머리에서 떨어진다
         bool free = b.Mode == Mode.Wander && !b.P.Asleep && !InGame && !b.Behind && b.P.Stage != "egg" && !leaving;
+        if (clover.State == Clover.Phase.Falling) // 낙엽이 내려오는 중: 다 내려오면 머리 위에 살포시 (날아가는 중이면 바닥에)
+        {
+            bool onHead = b.Mode is not (Mode.Thrown or Mode.Held) && !b.Behind && !InGame;
+            if (clover.Land(now, onHead, b.X, ground)) { if (clover.State == Clover.Phase.Worn) b.Emote("heart", 1.4); Changed(clover.State == Clover.Phase.Worn ? "land" : "fell"); }
+            return;
+        }
         if (clover.State == Clover.Phase.Ground)
         {
             if (free && clover.TryPick(b.X, b.Y, b.CellPx)) { b.Greet("happy", 1.6); b.Emote("heart", 1.6); Changed("pick"); }
@@ -841,11 +847,21 @@ public sealed class PetForm : Form, IGameHost
         if (clover.State == Clover.Phase.None && free && t > nextCloverRoll)
         {
             nextCloverRoll = t + 60_000;
-            if (clover.TrySprout(Today, now, b.X, b.Dir, ground, b.CellPx, b.Area, Random.Shared)) { b.Emote("bang", 1.2); Changed("sprout"); }
+            if (clover.TrySprout(Today, now, b.X, b.Dir, ground, b.CellPx, b.Area, Random.Shared, headY: b.HeadY)) { if (clover.State != Clover.Phase.Falling) b.Emote("bang", 1.2); Changed(clover.State == Clover.Phase.Falling ? "fall" : "sprout"); }
         }
     }
 
-    // 디버그: clover [clover|sprout] (지금 돋기) / clover wear [종류] (바로 머리에) / clover drop / clover off
+    // 바닥에 있거나 내려오는 중인 머리 장식 (Overlay 가 그린다)
+    (string Kind, double X, double Y, bool Falling, bool Flip)? CloverShown()
+    {
+        if (clover.State == Clover.Phase.Ground) return (clover.Kind, clover.X, clover.Y, false, false);
+        if (clover.State != Clover.Phase.Falling) return null;
+        double now = Environment.TickCount64 / 1000.0;
+        var (x, y) = clover.FallPos(now, b.X, b.HeadY, b.CellPx);
+        return (clover.Kind, x, y, true, clover.Flip(now));
+    }
+
+    // 디버그: clover [clover|sprout|sunflower|leaf] (지금 돋기, 낙엽은 내려오기) / clover wear [종류] (바로 머리에) / clover drop / clover off
     public void CloverCommand(string[] a)
     {
         double now = Environment.TickCount64 / 1000.0, ground = b.Area.Bottom - b.K.FloorGap;
@@ -856,9 +872,8 @@ public sealed class PetForm : Form, IGameHost
         else
         {
             clover.Force(Clover.Phase.None, 0, 0, "", now);
-            clover.TrySprout(Today, now, b.X, b.Dir, ground, b.CellPx, b.Area, Random.Shared, 1);
-            if (Clover.Kinds.Contains(what)) clover.Kind = what;
-            b.Emote("bang", 1.2);
+            clover.TrySprout(Today, now, b.X, b.Dir, ground, b.CellPx, b.Area, Random.Shared, 1, b.HeadY, Clover.Kinds.Contains(what) ? what : null);
+            if (clover.State != Clover.Phase.Falling) b.Emote("bang", 1.2);
         }
         Dbg.Log("clover", ("event", "cmd-" + (what is "" or "clover" or "sprout" ? "sprout" : what)), ("kind", clover.Kind), ("x", (int)clover.X), ("y", (int)clover.Y), ("petX", (int)b.X), ("petY", (int)b.Y));
         Invalidate();
@@ -873,7 +888,7 @@ public sealed class PetForm : Form, IGameHost
     {
         string item = "item/" + clover.Kind;
         if (clover.State != Clover.Phase.Worn || b.Pose is "fly" or "roll" or "flop" || !sprites.Has(item) || name.StartsWith("egg")) return;
-        int n = sprites.Frames(name), f = (frame % n + n) % n, side = clover.Kind == "sprout" ? 0 : -4;
+        int n = sprites.Frames(name), f = (frame % n + n) % n, side = clover.Kind is "sprout" or "leaf" ? 0 : -4; // 새싹·낙엽은 정수리 가운데, 네잎클로버·해바라기는 옆
         if (!cloverSpot.TryGetValue((name, f, flip, side), out var spot))
         {
             var one = sprites.Get(name, f, 1, flip);
@@ -897,7 +912,8 @@ public sealed class PetForm : Form, IGameHost
         }
         int k = b.Scale, s = Clover.Scale(k);
         var (sx, sy) = stem;
-        g.DrawImageUnscaled(sprites.Get(item, 0, s), 8 + shake + spot.X * k - sx * s, spot.Top * k - sy * s); // 줄기 끝만 머리에 닿고 잎은 살짝 떠 있게 (YELL)
+        int sink = clover.Kind == "leaf" ? 2 * k : 0; // 낙엽은 꽂지 않고 머리 위에 얹는다 (YELL 2026-11-13): 꼭지가 머리에 살짝 묻히게
+        g.DrawImageUnscaled(sprites.Get(item, 0, s), 8 + shake + spot.X * k - sx * s, spot.Top * k - sy * s + sink); // 줄기 끝만 머리에 닿고 잎은 살짝 떠 있게 (YELL)
     }
 
     // 밤에 자는 동안 수면 모자 (머리 꼭대기: 몸 가운데 열에서 가장 위 칸)

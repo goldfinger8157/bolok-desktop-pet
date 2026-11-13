@@ -202,6 +202,8 @@ ITEMS = {
     'berry': ('...v...|..vv...|.rrrrr.|rrrrrrr|rrwrrrr|rrrrrrr|.rrrrr.', 'b'),
     'clover': ('...vv.vv.....|..vvvvvvv....|...vvvvv.....|vv..vvv..vv..|vvvv.v.vvvv..|.vvvveevvv...|vvvv.v.vvvv..|vv..vvv..vv..|...vvvvvv....|..vvvvvv.v...|...vv.vv..v..|..........v..|..........v..|..........v..', 'e'),  # 하트 잎 넷이 십자로, 긴 줄기 (YELL: 하트처럼 보였다 → 줄기를 더 길게)
     'sprout': ('.........vv..|.......vvvvv.|......vvvvevv|......vvvevvv|vvv..vvvevvv.|vvvv.vvevvv..|.veev.vevv...|...vvv.v.....|......v......|......v......|.....v.......|.....v.......|......v......', 'e'),  # 새싹: 왼쪽 작은 잎·오른쪽 둥근 큰 잎을 V로 떼고 잎맥, 휜 줄기 (YELL 이 보낸 그림을 참고)
+    'sunflower': ('...y.y.y.....|..yyyyyyy....|.yyyobobyy...|yyyobobobyy..|.yybobobyy...|yyyobobobyy..|.yyyobobyy...|..yyyyyyy....|...y.y.y.....|.....v.......|.....v.vv....|......vve....|......v......|......v......', 'b'),  # 해바라기: 노란 꽃잎 고리에 갈색 씨 가운데, 잎 달린 줄기 (YELL 2026-11-13)
+    'leaf': ('....n....|...nnn...|.n.nrn.n.|nnnnrnnnn|.nnnrnnn.|..nrrrn..|...nrn...|....r....|....b....', 'b'),  # 낙엽(단풍잎): 하늘에서 팔랑 내려와 머리 위에 얹힌다 (YELL 2026-11-13)
     'basket': ('...nnn...|..n...n..|.n.....n.|ooooooooo|onononono|ooooooooo|.ononono.|..ooooo..', 'b'),  # 먹이 바구니 (밥을 줄 때 잠깐 나와 씨앗을 던진다)
 }
 def bug(i, boss=False):
