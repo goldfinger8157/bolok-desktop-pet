@@ -353,7 +353,7 @@ public sealed class Weather
     }
     public static bool HasLeaf(Sprites sp) => ArtOf(sp).HasLeaf;
 
-    const int LeafStemX = 20, LeafDome = 22; // 잎 그림에서 줄기가 붙는 자리 (sprites.py weather_leaf: cx, base + 1)
+    const int LeafStemX = 5, LeafDome = 19, LeafMidX = 19; // 잎 그림: 줄기가 붙는 밑동(왼쪽 끝)과 머리 위에 올 가운데 (sprites.py weather_leaf: 베지어 밑동·가운데)
 
     // 우산 잎 자리. ox·oy: 볼록이 그림 칸의 왼쪽 위 (화면 좌표). 잎은 덮는 열들의 가장 위 칸보다 한 칸 위에 (귀·뿔과 안 겹친다),
     // 줄기는 머리 가운데 열을 따라 머리 꼭대기 밑까지 — 잎·줄기는 볼록이 창 뒤(Overlay)에 그려서 머리 뒤로 들어간 것처럼 보인다
@@ -371,10 +371,10 @@ public sealed class Weather
         if (!UmbrellaUp || name == null || !art.HasLeaf) return;
         var h = HeadNow(sp, name, frame, flip);
         var r = art.Leaf;
-        int rx = flip ? PetArt.Cell - r.Right : r.X, sx = flip ? PetArt.Cell - 1 - LeafStemX : LeafStemX;
+        int rx = flip ? PetArt.Cell - r.Right : r.X, sx = flip ? PetArt.Cell - 1 - LeafMidX : LeafMidX; // 잎 가운데를 머리 위에
         int cx = h.Col - sx, high = PetArt.Cell;
         for (int x = Math.Max(0, cx + rx); x < Math.Min(PetArt.Cell, cx + rx + r.Width); x++) high = Math.Min(high, h.Tops[x]);
-        int cy = high - 1 - r.Bottom, stemTop = cy + LeafDome - 1;
+        int cy = high - 1 - r.Bottom, stemTop = cy + LeafDome;
         LeafAt = new Point(ox + cx * k, oy + cy * k);
         Leaf = new Rectangle(LeafAt.X + rx * k, LeafAt.Y + r.Y * k, r.Width * k, r.Height * k);
         int sd = flip ? 1 : -1, ex = h.Col; // 잎이 높은 쪽 몸 옆에서 든다

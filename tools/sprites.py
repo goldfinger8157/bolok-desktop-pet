@@ -831,33 +831,48 @@ def weather_art(rows):
 
 
 def weather_leaf(drip):
-    """큰 잎 우산 (YELL 2026-11-13 이 보낸 그림 참고): 넓고 둥근 연잎을 비스듬히 (왼쪽이 높고 오른쪽이 낮게) 들고, 양끝이 아래로 처진다.
-    줄기는 앱이 몸 옆(손)에서 잎 가운데 밑까지 비스듬히 잇는다. drip: 처진 끝에서 빗물이 똑 (0: 오른쪽 끝, 1: 왼쪽 끝)"""
+    """나뭇잎 우산 (YELL 2026-11-13 이 보낸 그림): 길쭉한 잎 하나를 머리 위로 아치처럼 휘게. 밑동(왼쪽)은 앱이 몸 옆까지 줄기로 잇고,
+    끝(오른쪽)은 아래로 처져 빗물이 맺혀 떨어진다 (drip 0: 끝에 맺힘, 1: 떨어지는 중). 잎 위에 이슬 한 방울, 가운데 잎맥과 옆맥"""
     g = Canvas()
-    leaf, dark, light, water = (110, 190, 110), (58, 126, 70), (170, 224, 150), (150, 190, 235)
-    cx, base, w, h, tilt = 20, 21, 15.5, 7.5, .2
-    for x in range(CELL):
-        dx = x + .5 - cx
-        if abs(dx) > w:
-            continue
-        u = abs(dx) / w
-        top = base - h * math.sqrt(1 - u * u) + tilt * dx
-        bot = base + 2.6 * u ** 3 + tilt * dx  # 양끝이 아래로 처진다
-        for y in range(CELL):
-            if top <= y + .5 <= bot + .5:
-                g.p[y][x] = leaf
-    for dxv in (-12, -6, 0, 6, 12):  # 잎맥: 줄기 붙는 곳에서 퍼진다
-        ty = base - h * math.sqrt(max(0, 1 - (dxv / w) ** 2)) * .8 + tilt * dxv
-        for k in range(1, 9):
-            g.put(round(cx + dxv * k / 8), round(base + (ty - base) * k / 8), dark, True)
-    g.pix(light, (cx - 8, base - 6), (cx - 7, base - 7), (cx - 5, base - 8), (cx - 9, base - 5))  # 빛
+    leaf, dark, light, dew, dewl, water = (120, 196, 96), (52, 120, 60), (176, 226, 140), (120, 196, 230), (235, 248, 255), (150, 196, 240)
+    bx, by, qx, qy, tx, ty = 5.0, 19.0, 17.0, 1.0, 35.0, 23.0   # 밑동 → (휘는 곳) → 끝 (2차 베지어)
+
+    def at(s):
+        return ((1 - s) ** 2 * bx + 2 * (1 - s) * s * qx + s * s * tx, (1 - s) ** 2 * by + 2 * (1 - s) * s * qy + s * s * ty)
+
+    pts = [at(n / 200) for n in range(201)]
+    for y in range(CELL):
+        for x in range(CELL):
+            px, py = x + .5, y + .5
+            best, bs = 99.0, 0.0
+            for n, (cx, cy) in enumerate(pts):
+                d = math.hypot(px - cx, py - cy)
+                if d < best:
+                    best, bs = d, n / 200
+            half = 5.6 * math.sin(math.pi * min(1, max(0, bs))) ** .75
+            if best <= half:
+                g.p[y][x] = light if best > half * .45 and py < at(bs)[1] else leaf  # 윗면 쪽은 밝게
+    for n in range(4, 197):  # 가운데 잎맥
+        cx, cy = at(n / 200)
+        g.put(round(cx - .5), round(cy - .5), dark, True)
+    for s in (.22, .36, .5, .64, .78):  # 옆맥: 잎맥에서 끝 쪽으로 비스듬히
+        (x0, y0), (x1, y1) = at(s), at(s + .02)
+        nx, ny = -(y1 - y0), x1 - x0
+        ln = math.hypot(nx, ny)
+        nx, ny = nx / ln, ny / ln
+        for side in (1, -1):
+            for k in range(1, 4):
+                g.put(round(x0 + side * nx * k + (x1 - x0) * k * 2 - .5), round(y0 + side * ny * k + (y1 - y0) * k * 2 - .5), dark, True)
     g.outline(dark)
-    if drip == 0:  # 낮은 오른쪽 끝에서 똑
-        tx, ty = round(cx + w - 1), round(base + 2.6 + tilt * w)
-        g.pix(water, (tx, ty + 2), (tx, ty + 3))
-    else:          # 높은 왼쪽 끝에서 똑
-        tx, ty = round(cx - w), round(base + 2.6 - tilt * w)
-        g.pix(water, (tx, ty + 2), (tx, ty + 3))
+    ex, ey = at(.42)  # 잎 위 이슬 한 방울
+    ex, ey = round(ex) - 1, round(ey) - 3
+    g.pix(dew, (ex, ey), (ex + 1, ey), (ex, ey + 1), (ex + 1, ey + 1))
+    g.pix(dewl, (ex, ey))
+    tipx, tipy = round(tx) - 1, round(ty)
+    if drip == 0:  # 끝에 맺힌 물방울
+        g.pix(water, (tipx, tipy + 1), (tipx, tipy + 2), (tipx - 1, tipy + 2), (tipx + 1, tipy + 2))
+    else:          # 떨어지는 물방울
+        g.pix(water, (tipx, tipy + 1), (tipx, tipy + 4), (tipx, tipy + 5))
     return g
 
 
