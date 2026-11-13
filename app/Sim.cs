@@ -69,6 +69,14 @@ static class Sim
         Expect(HideSpots.Find(new[] { new Win(new IntPtr(2), area, false), new Win(a, mid, false) }, one, cell, .64, rng).Count == 0, "더 위의 창에 덮인 자리는 안 쓴다");
         var corner = new Rectangle(0, 0, 900, 600);
         Expect(HideSpots.Find(new[] { new Win(a, corner, false) }, one, cell, .64, rng).All(p => p.E == Edge.Right), "화면에 붙은 쪽 가장자리는 못 쓴다");
+        foreach (var sp in PetArt.Embedded.Species) // 창 위 빼꼼: 나와 있으면 눈이 다 보이고, 들어가면 눈이 다 숨는다 (창 가장자리가 눈을 안 가로지름)
+            foreach (var form in Showcase.Forms)
+            {
+                var (top, bottom) = PetArt.Embedded.EyeRows(sp, form);
+                var (show, duck) = Brain.TopPeek(sp, form);
+                double edgeOut = show * PetArt.Cell, edgeIn = (show - duck) * PetArt.Cell;
+                Expect(edgeOut >= bottom && edgeIn <= top && edgeIn > 0, $"{sp} {form}: 빼꼼 높이가 눈을 가로지른다 (눈 {top}~{bottom}, 나옴 {edgeOut:F1}, 들어감 {edgeIn:F1})");
+            }
 
         foreach (var roll in Enumerable.Range(0, 100).Select(i => i / 100.0))
         {

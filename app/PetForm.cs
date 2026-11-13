@@ -103,6 +103,7 @@ public sealed class PetForm : Form, IGameHost
         memDir = Path.Combine(dataDir, "memories");
         var area = Screen.PrimaryScreen!.WorkingArea;
         b = new Brain(LoadPet(k), k, new World(Screen.AllScreens.Select(s => s.WorkingArea)), area) { Scale = ScaleFor(k) };
+        b.SpeciesKey = () => species; // 창 위 빼꼼 높이를 그 종의 눈 높이로
         modes = GameModes.Create(this); // 게임 모듈 (app/Games): 기록을 읽기 전에 만든다
         if (debug) modes.Add(showcase = new Showcase(this, PoseMs)); // 디버그 앱: 캐릭터 확인 (모든 종의 아기·어린이·어른)
         b.Windows = Native.ListWindows;

@@ -148,6 +148,20 @@ public sealed class PetArt
     public (double Rx, double Ry) Size(string form) => forms.FirstOrDefault(f => f.Name == form).F is { } F ? (F.N("rx"), F.N("ry")) : (10.5, 10);
 
     // 발에서 머리 위(말풍선 자리)까지 칸 높이의 몇 배인지
+    // 눈이 차지하는 줄 (칸 0~40, 서 있는 기본 자세 — 속눈썹·반짝임까지 위아래 3줄). 창 위에서 빼꼼할 때
+    // 창 가장자리가 눈을 가로지르지 않게 쓴다 (YELL 2026-11-13). Pet() 의 cy·ey 계산과 같은 식
+    public (double Top, double Bottom) EyeRows(string id, string form)
+    {
+        var S = Find(id) ?? Find("hamster")!;
+        var F = forms.FirstOrDefault(f => f.Name == form).F ?? forms.First(f => f.Name == "child").F;
+        double wide = S.N("wide", 1), ry = F.N("ry") / Math.Sqrt(wide), cy = 37 - ry - 1;
+        string body = S.S("body", "");
+        if (body == "ghost") cy -= 2;
+        if (body == "orb") cy -= 1.5;
+        int ey = S.S("face", "") == "frog" ? R(cy - ry * .78) : R(cy - ry * .24) - (int)S.N("eye_up");
+        return (ey - 3, ey + 3);
+    }
+
     public double HeadRatio(string form) => form == "egg" ? .68 : (2 * Size(form).Ry + 1) / Cell + .075;
     public IEnumerable<string> Poses => poses.Select(p => p.Name);
     public bool Can(string id) => Find(id) is { } s && s.Keys.All(Known.Contains);
