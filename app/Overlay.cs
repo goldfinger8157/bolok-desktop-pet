@@ -11,7 +11,8 @@ public sealed class Overlay : Form
     public Func<(string Kind, string From, double X, double Y, double At)?> Present = () => null; // 친구가 두고 간 선물
     public Func<(string Kind, double X, double Y, bool Falling, bool Flip)?> Clover = () => null; // 바닥에 돋은 네잎클로버·새싹·해바라기, 내려오는 낙엽
     public Func<(double X, double Y, int Seed)?> LeafPile = () => null; // 땅에 쌓인 낙엽 더미 (YELL 2026-11-13: 쌓인 낙엽에서 줍는 느낌, 던져서 떨궜을 때도)
-    static readonly string[] PileKinds = { "item/fallen_lie", "item/ginkgo_lie", "item/maple_lie" };
+    static readonly string[] PileKinds = { "item/fallen", "item/ginkgo", "item/maple" };
+    static readonly string[] PileTurns = { "", "_r1", "_r2", "_r3", "_lie", "_lie2", "_lie3" }; // 세움·90°씩 돌림·누움·비스듬히 — 장마다 제각각 (YELL: 다 같은 방향이면 어색)
     static readonly (double Dx, double Dy)[] PileAt = { (-1.15, .1), (1.0, 0), (-.5, .35), (.55, .3), (.05, -.05) };
     public Func<IReadOnlyList<string>> Dreams = () => Array.Empty<string>();                     // 꿈 말풍선 그림들
     internal Func<IReadOnlyList<IGameMode>> Modes = () => Array.Empty<IGameMode>();               // 게임 모듈 (app/Games)
@@ -191,8 +192,9 @@ public sealed class Overlay : Form
             for (int i = 0; i < PileAt.Length; i++)
             {
                 var (dx, dy) = PileAt[i];
-                string kind = PileKinds[(lp.Seed + i * 7) % PileKinds.Length];
-                if (sp.Has(kind)) Put(g, sp.Get(kind, 0, s, (lp.Seed + i) % 2 == 0), (int)(lp.X + dx * b.CellPx * .5), (int)(lp.Y - 3 * s + dy * b.CellPx * .25));
+                int h = (lp.Seed * 31 + i * 17) & 0xffff;
+                string kind = PileKinds[h % PileKinds.Length] + PileTurns[h / 3 % PileTurns.Length];
+                if (sp.Has(kind)) Put(g, sp.Get(kind, 0, s, h / 21 % 2 == 0), (int)(lp.X + dx * b.CellPx * .5), (int)(lp.Y - 3 * s + dy * b.CellPx * .25));
             }
         }
         if (Clover() is { } cl) // 네잎클로버·새싹: 바닥에서 살랑, 가끔 반짝 (줄기 끝이 땅에)

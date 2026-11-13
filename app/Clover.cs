@@ -21,6 +21,8 @@ public sealed class Clover
     public static readonly string[] Kinds = { "clover", "sprout", "sunflower", "fallen", "ginkgo", "maple" };
     public static bool Falls(string kind) => kind is "fallen" or "ginkgo" or "maple"; // 낙엽: 땅에 안 돋고 하늘에서 내려와 머리에 얹힌다 (선물의 초록 잎 item/leaf 와는 다른 그림)
     public const double FallSec = 3.2; // 낙엽이 머리까지 내려오는 시간
+    public int Look; // 머리에 누운 낙엽의 모양 0~5 (누움·비스듬히 둘 × 좌우) — 내려앉거나 주울 때마다 무작위 (YELL 2026-11-13)
+    void NewLook() => Look = Random.Shared.Next(6);
     double groundAt, fallAt, fallX0, fallY0;
 
     // 무엇이 돋을지 — 계절마다 다르게 (YELL 2026-11-13: 해바라기·낙엽 추가). 가을엔 낙엽, 여름엔 해바라기가 잦다
@@ -89,7 +91,7 @@ public sealed class Clover
     public bool Land(double now, bool onHead, double x, double ground)
     {
         if (State != Phase.Falling || now - fallAt < FallSec) return false;
-        if (onHead) State = Phase.Worn;
+        if (onHead) { State = Phase.Worn; NewLook(); }
         else Put(x, ground, now);
         return true;
     }
@@ -101,6 +103,7 @@ public sealed class Clover
     {
         if (State != Phase.Ground || Math.Abs(petX - X) > cell * .45 || Math.Abs(petY - Y) > cell * .6) return false;
         State = Phase.Worn;
+        NewLook();
         return true;
     }
 
@@ -121,7 +124,7 @@ public sealed class Clover
         return true;
     }
 
-    public void Force(Phase p, double x, double y, string today, double now, string? kind = null) { (X, Y, Day, groundAt, fallAt, fallX0, fallY0) = (x, y, today, now, now, x, y); State = p; if (kind != null && Kinds.Contains(kind)) Kind = kind; } // 디버그
+    public void Force(Phase p, double x, double y, string today, double now, string? kind = null) { (X, Y, Day, groundAt, fallAt, fallX0, fallY0) = (x, y, today, now, now, x, y); State = p; NewLook(); if (kind != null && Kinds.Contains(kind)) Kind = kind; } // 디버그
 
     // ── 자가 검사 ──
     public static string Check()

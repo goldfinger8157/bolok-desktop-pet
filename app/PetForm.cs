@@ -897,7 +897,9 @@ public sealed class PetForm : Form, IGameHost
     {
         string item = "item/" + clover.Kind;
         bool lie = Clover.Falls(clover.Kind) && sprites.Has(item + "_lie"); // 낙엽은 머리에 누워 내려앉는다 (꽂지 않는다)
-        if (lie) item += "_lie";
+        bool mirror = lie && clover.Look >= 3;                                  // 누움·비스듬히 둘 × 좌우, 내려앉을 때마다 무작위
+        if (lie) item += (clover.Look % 3) switch { 1 => "_lie2", 2 => "_lie3", _ => "_lie" };
+        if (lie && !sprites.Has(item)) item = "item/" + clover.Kind + "_lie";
         if (clover.State != Clover.Phase.Worn || b.Pose is "fly" or "roll" or "flop" || !sprites.Has(item) || name.StartsWith("egg")) return;
         int n = sprites.Frames(name), f = (frame % n + n) % n, side = clover.Kind == "sprout" ? 0 : Clover.Falls(clover.Kind) ? 3 : -4; // 새싹은 정수리 가운데, 네잎클로버·해바라기는 왼쪽 옆, 낙엽은 가운데에서 살짝 오른쪽 (YELL: 한가운데는 어색 → 6칸은 너무 치우침, 낙엽 폭 절반만큼 안으로)
         if (!cloverSpot.TryGetValue((name, f, flip, side), out var spot))
@@ -913,9 +915,10 @@ public sealed class PetForm : Form, IGameHost
             for (int y = 0; y < one.Height; y++) if (one.GetPixel(col, y).A > 0) { surface = y; break; }
             cloverSpot[(name, f, flip, side)] = spot = (col, surface);
         }
-        if (!cloverStem.TryGetValue(item, out var stem)) // 그림의 줄기 끝 (가장 아래 칸). 누운 낙엽은 맨 아래 줄의 가운데
+        string stemKey = mirror ? item + "|m" : item;
+        if (!cloverStem.TryGetValue(stemKey, out var stem)) // 그림의 줄기 끝 (가장 아래 칸). 누운 낙엽은 맨 아래 줄의 가운데
         {
-            var icon1 = sprites.Get(item, 0, 1);
+            var icon1 = sprites.Get(item, 0, 1, mirror);
             stem = (20, 23);
             for (int y = icon1.Height - 1, found = 0; y >= 0 && found == 0; y--)
             {
@@ -923,12 +926,12 @@ public sealed class PetForm : Form, IGameHost
                 for (int x = 0; x < icon1.Width; x++) if (icon1.GetPixel(x, y).A > 0) { if (x0 < 0) x0 = x; x1 = x; }
                 if (x0 >= 0) { stem = (lie ? (x0 + x1) / 2 : x0, y); found = 1; }
             }
-            cloverStem[item] = stem;
+            cloverStem[stemKey] = stem;
         }
         int k = b.Scale, s = Clover.Scale(k);
         var (sx, sy) = stem;
         int sink = lie ? k : 0; // 누운 낙엽: 잎몸 아랫줄이 머리에 한 칸 묻혀 얹힌 듯
-        g.DrawImageUnscaled(sprites.Get(item, 0, s), 8 + shake + spot.X * k - sx * s, spot.Top * k - sy * s + sink); // 줄기 끝만 머리에 닿고 잎은 살짝 떠 있게 (YELL)
+        g.DrawImageUnscaled(sprites.Get(item, 0, s, mirror), 8 + shake + spot.X * k - sx * s, spot.Top * k - sy * s + sink); // 줄기 끝만 머리에 닿고 잎은 살짝 떠 있게 (YELL)
     }
 
     // 밤에 자는 동안 수면 모자 (머리 꼭대기: 몸 가운데 열에서 가장 위 칸)

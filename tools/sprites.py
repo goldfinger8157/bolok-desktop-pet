@@ -210,16 +210,33 @@ ITEMS = {
 }
 
 
-# 머리에 내려앉은 낙엽: 세운 그림을 옆으로 눕혀 잎몸이 머리에 닿게 (YELL 2026-11-13: 꼭지가 꽂힌 느낌보다 내려앉은 느낌)
-def _rot_ccw(rows):  # 왼쪽으로 90° (꼭지가 오른쪽으로 간다)
+# 머리에 내려앉은 낙엽: 꼭지가 머리에 꽂힌 느낌보다 누워 내려앉은 느낌 (YELL 2026-11-13). 누운 그림 + 비스듬히 누운 그림 둘,
+# 땅의 낙엽 더미는 세운 그림을 90°씩 돌린 것까지 섞어 제각각 흩어 놓는다 (YELL: 다 같은 방향이면 어색, 무작위로)
+def _rot_cw(rows):  # 오른쪽으로 90°
     r = rows.split('|')
     h, w = len(r), len(r[0])
-    return '|'.join(''.join(r[y][w - 1 - x] for y in range(h)) for x in range(w))
+    return '|'.join(''.join(r[h - 1 - y][x] for y in range(h)) for x in range(w))
+
+
+def _shear(rows, k):  # 줄마다 옆으로 밀어 비스듬히 (돌리면 도트가 뭉개져서 기울이기만)
+    r = rows.split('|')
+    h, w = len(r), len(r[0])
+    shifts = [round((y - (h - 1) / 2) * k) for y in range(h)]
+    lo = -min(shifts)
+    width = w + max(shifts) - min(shifts)
+    return '|'.join(('.' * (lo + s) + row).ljust(width, '.') for row, s in zip(r, shifts))
 
 
 ITEMS['ginkgo_lie'] = ('yyyyy.......|yyyyyyyy....|.yyyyyyyoooo|yyyyyyyy....|yyyyy.......', 'o')  # 누운 은행잎: 부채가 왼쪽, 가운데 홈, 꼭지는 오른쪽으로 납작하게
 ITEMS['maple_lie'] = ('.n..n..n...|nnnnnnnnn..|.nrrrrrrnnb|nnnnnnnnn..|.n..n..n...', 'b')  # 누운 단풍잎: 갈래가 위아래로 보이게 납작하게, 꼭지는 오른쪽
 ITEMS['fallen_lie'] = ('....yyyyyy...|b.yyyyyyyyyy.|.byoooooooyyy|..yyyyyyyyyy.|....oooooo...', 'b')  # 누운 잎맥 잎: 가로로 길게, 꼭지는 왼쪽
+for _n in ('fallen', 'ginkgo', 'maple'):
+    _art, _line = ITEMS[_n]
+    ITEMS[_n + '_r1'] = (_rot_cw(_art), _line)
+    ITEMS[_n + '_r2'] = (_rot_cw(_rot_cw(_art)), _line)
+    ITEMS[_n + '_r3'] = (_rot_cw(_rot_cw(_rot_cw(_art))), _line)
+    ITEMS[_n + '_lie2'] = (_shear(ITEMS[_n + '_lie'][0], .6), _line)
+    ITEMS[_n + '_lie3'] = (_shear(ITEMS[_n + '_lie'][0], -.6), _line)
 def bug(i, boss=False):
     """버그 습격: 편대로 날아드는 「화면 버그」. 동글한 보라 딱정벌레, 다리 꼼지락 두 장 (i).
     보스는 칸을 꽉 채우고 눈썹이 성났다. 머리가 아래(볼록이 쪽)를 본다"""
