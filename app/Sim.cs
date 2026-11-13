@@ -69,6 +69,14 @@ static class Sim
         Expect(HideSpots.Find(new[] { new Win(new IntPtr(2), area, false), new Win(a, mid, false) }, one, cell, .64, rng).Count == 0, "더 위의 창에 덮인 자리는 안 쓴다");
         var corner = new Rectangle(0, 0, 900, 600);
         Expect(HideSpots.Find(new[] { new Win(a, corner, false) }, one, cell, .64, rng).All(p => p.E == Edge.Right), "화면에 붙은 쪽 가장자리는 못 쓴다");
+        foreach (var sp in PetArt.Embedded.Species) // 창 위 빼꼼: 나와 있으면 눈이 다 보이고, 들어가면 눈이 다 숨는다 (창 가장자리가 눈을 안 가로지름)
+            foreach (var form in Showcase.Forms)
+            {
+                var (top, bottom) = PetArt.Embedded.EyeRows(sp, form);
+                var (show, duck) = Brain.TopPeek(sp, form);
+                double edgeOut = show * PetArt.Cell, edgeIn = (show - duck) * PetArt.Cell;
+                Expect(edgeOut >= bottom && edgeIn <= top && edgeIn > 0, $"{sp} {form}: 빼꼼 높이가 눈을 가로지른다 (눈 {top}~{bottom}, 나옴 {edgeOut:F1}, 들어감 {edgeIn:F1})");
+            }
 
         foreach (var roll in Enumerable.Range(0, 100).Select(i => i / 100.0))
         {
@@ -87,7 +95,7 @@ static class Sim
         for (int i = 0; i < 1200 && b.Mode != Mode.Hiding; i++) b.Update(1 / 60.0, false);
         Expect(b.Mode == Mode.Hiding && b.Behind && b.HideWnd == a, "창 뒤로 들어간다");
         var near = Math.Min(Math.Abs(b.X - rect.Left), Math.Abs(b.X - rect.Right));
-        Expect(near < 8 || Math.Abs(b.Y - (rect.Top + cell * .36)) < 8, "가장자리에서 내다본다");
+        Expect(near < 8 || Math.Abs(b.Y - (rect.Top + cell * (1 - Brain.TopPeek(b.SpeciesKey(), "child").Shown))) < 8, "가장자리에서 내다본다"); // 위 가장자리는 눈 높이로 (Brain.TopPeek)
         rect.Offset(300, 200);
         for (int i = 0; i < 60 && b.Behind; i++) b.Update(1 / 60.0, false);
         Expect(!b.Behind && b.Mode != Mode.Hiding, "창을 치우면 앞으로 나온다");

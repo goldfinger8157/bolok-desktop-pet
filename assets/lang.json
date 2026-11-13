@@ -335,6 +335,54 @@
   "pt": "Canhão",
   "ru": "Пушка"
  },
+ "gun.bounce": {
+  "en": "Bounce shell",
+  "ko": "튕김탄",
+  "ja": "バウンド弾",
+  "zh-Hans": "弹跳弹",
+  "zh-Hant": "彈跳彈",
+  "es": "Bala rebotadora",
+  "de": "Prallgeschoss",
+  "fr": "Obus rebondissant",
+  "pt": "Bala saltitante",
+  "ru": "Прыгающий снаряд"
+ },
+ "gun.cluster": {
+  "en": "Cluster shell",
+  "ko": "집속탄",
+  "ja": "クラスター弾",
+  "zh-Hans": "集束弹",
+  "zh-Hant": "集束彈",
+  "es": "Bomba de racimo",
+  "de": "Streubombe",
+  "fr": "Bombe à fragmentation",
+  "pt": "Bomba de fragmentação",
+  "ru": "Кассетный снаряд"
+ },
+ "gun.drill": {
+  "en": "Drill shell",
+  "ko": "드릴탄",
+  "ja": "ドリル弾",
+  "zh-Hans": "钻地弹",
+  "zh-Hant": "鑽地彈",
+  "es": "Bala taladro",
+  "de": "Bohrgeschoss",
+  "fr": "Obus foreur",
+  "pt": "Bala broca",
+  "ru": "Буровой снаряд"
+ },
+ "gun.push": {
+  "en": "Push shell",
+  "ko": "밀치기탄",
+  "ja": "ふっとばし弾",
+  "zh-Hans": "冲击弹",
+  "zh-Hant": "衝擊彈",
+  "es": "Bala de empuje",
+  "de": "Stoßgeschoss",
+  "fr": "Obus pousseur",
+  "pt": "Bala de empurrão",
+  "ru": "Толкающий снаряд"
+ },
  "note.run_level": {
   "en": "Lv.{0}  Goal {1}",
   "ko": "Lv.{0}  목표 {1}",

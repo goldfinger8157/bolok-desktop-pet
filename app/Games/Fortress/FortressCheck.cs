@@ -5,10 +5,16 @@ namespace Bolok;
 // 포트리스: 화면 없이 그려 보기(--mode-scene fortress), 속도 재기(--mode-bench fortress), 자가 검사(--selfcheck)
 sealed partial class FortressGame
 {
-    // ── 그려 보기: 시작(안내·차례 화살표·조준경), 힘 모으기, 날아가는 포탄, 불덩이와 새 구멍, 여러 번 터진 뒤 ──
+    // ── 그려 보기: 시작(안내·차례 화살표·조준경), 힘 모으기, 날아가는 포탄, 불덩이와 새 구멍,
+    //    다음 내 차례(힘 막대 위 지난 힘 세모, 지금 조준경 옆에 흐린 지난 각도 조준경), 여러 번 터진 뒤 ──
     // 덧붙이는 값: top = 섬이 화면 위쪽에 붙어 있을 때 (바람 상자가 발 아래로 간다) · edge = 그 섬이 판 왼쪽 끝에 있을 때 (조준경 둘레 아래로)
+    //             guns = 새 대포 네 가지가 쏘는 모습 (SceneGuns) · storm = 파워업 폭풍 (SceneStorm)
+    //             check = 그림 대신 포트리스 자가 검사만 돌려 결과를 찍는다 (고치는 동안 빨리 볼 때)
     public static void Scene(string path, int k)
     {
+        if (GameModes.SceneArg == "guns") { SceneGuns(path, k); return; }
+        if (GameModes.SceneArg == "storm") { SceneStorm(path, k); return; }
+        if (GameModes.SceneArg == "check") { Console.WriteLine(Check()); return; } // 그림 없이 포트리스 자가 검사만 (전체 --selfcheck 는 몇 분 걸린다)
         var host = new SceneHost(scale: k);
         var game = new FortressGame(host) { showMe = true };
         int fw = Math.Min(1920, 1280 * k / 3), fh = Math.Min(1040, 720 * k / 3);
@@ -23,12 +29,14 @@ sealed partial class FortressGame
         using var ov = host.Overlay(game);
         var seat = new Random(4);
         w.Aim = -.9;
-        SceneKit.Shots(path, ov, field, 5, shot =>
+        SceneKit.Shots(path, ov, field, 6, shot =>
         {
             bool mine = w.MyTurn && w.Stage == Fortress.Phase.Turn;
             if (shot == 1 && mine && w.Clock > 1.2) w.StartCharge();
             if (shot == 2 && mine && w.ChargeFrom >= 0 && w.Power > .68) w.ReleaseCharge();
-            if (shot >= 3 && mine && w.Clock - w.TurnAt > .5) { var (a, p) = w.BotAim(seat); w.Fire(w.Me, a, p); }
+            if (shot == 4 && !w.MyTurn && w.Stage == Fortress.Phase.Turn) (w.MyTurn, mine) = (true, true); // 라이벌 차례는 건너뛴다 (이 장이 라이벌 솜씨에 달리지 않게)
+            if (shot == 4 && mine && w.Clock - w.TurnAt > .5 && w.Clock > GuideSec + .2) { w.Aim = w.LastAim + .5; w.StartCharge(); } // 안내 말풍선이 걷힌 뒤, 지난번보다 조금 낮게 겨누고 다시 힘을 모은다
+            if (shot >= 5 && mine && w.Clock - w.TurnAt > .5) { var (a, p) = w.BotAim(seat); w.Fire(w.Me, a, p); }
             w.Update(1 / 60.0);
             game.Sync();
             game.Track();
@@ -38,9 +46,134 @@ sealed partial class FortressGame
                 1 => w.Power > .55,
                 2 => w.Shells.Count > 0 && w.Shells[0].Vy > -150 * k / 3.0,                             // 꼭대기를 넘어 내려오기 시작
                 3 => w.Blasts.Count > 0 && w.Clock - w.Blasts[^1].At >= BlastArt.Sec * .3,              // 불덩이가 한창
+                4 => mine && w.ChargeFrom >= 0 && w.Power > .4 || w.Stage is Fortress.Phase.Won or Fortress.Phase.Lost, // 지난 힘 세모까지 아직 덜 찼다 (첫 발에 판이 끝났으면 그 모습으로)
                 _ => w.Done || w.Booms >= 14 && w.Blasts.Count > 0 && w.Clock - w.Blasts[^1].At >= .1,  // 여러 번 터진 뒤 (작은 폭발이 한창일 때)
             };
         });
+    }
+
+    // ── 새 대포 네 가지 (--mode-scene fortress 그림.png guns): 튕김탄(한 번 튕겨 다시 나는 중) · 집속탄(막 넷으로 갈라짐) · 드릴탄(땅속을 파고드는 중) · 밀치기탄(라이벌이 밀려 날아감) ──
+    // 장마다 새 판이고 볼록이가 그 대포를 쓴다 (라이벌은 다른 새 대포: 머리 위 대포 그림 넷이 다 나온다). 라이벌 가까이에 떨어지는 각도와 힘은 미리 날려 보고 고른다
+    static void SceneGuns(string path, int k)
+    {
+        var host = new SceneHost(scale: k);
+        var game = new FortressGame(host) { showMe = true };
+        int fw = Math.Min(1920, 1280 * k / 3), fh = Math.Min(1040, 720 * k / 3);
+        var field = new Rectangle(0, 0, fw, fh);
+        var lands = new[] { new Rectangle((int)(fw * .06), (int)(fh * .52), (int)(fw * .36), (int)(fh * .38)), new Rectangle((int)(fw * .58), (int)(fh * .46), (int)(fw * .36), (int)(fh * .44)) };
+        string[] mine = { "bounce", "cluster", "drill", "push" }, theirs = { "drill", "push", "bounce", "cluster" };
+        double sf = k / 3.0;
+        Fortress New(int n)
+        {
+            var w = new Fortress(field, lands, k, new Random(9), mine[n], theirs[n]) { Wind = 0 };
+            for (int i = 0; i < 60 * GuideSec + 20; i++) w.Update(1 / 60.0); // 안내 말풍선이 걷힌 뒤에 쏜다
+            return w;
+        }
+        bool Seen(Fortress w) => w.Shells.All(s => s.Y > field.Top + 30 * sf && s.X > field.Left && s.X < field.Right); // 포탄이 다 그림 안에 있다
+        bool Now(Fortress w, int n) => n switch
+        {
+            0 => w.Shells.Count == 1 && w.Shells[0].Bounces == 1 && w.Shells[0].Fuse < Fortress.BounceFuse - .2 && Seen(w),
+            1 => w.Shells.Count == 4 && w.Shells[0].Vy > 200 * sf && Seen(w),
+            2 => w.Shells.Count == 1 && w.Shells[0].DrillLeft >= 0 && w.Shells[0].DrillLeft < w.Shells[0].Drill * .35,
+            _ => w.Blasts.Count > 0 && w.Cpu.Air && w.Clock - w.Blasts[^1].At >= .22,
+        };
+        (double A, double P) Find(int n)
+        {
+            var (best, at) = (double.MaxValue, (-1.0, .6));
+            for (double deg = -80; deg <= -20; deg += 3)
+                for (double p = .35; p <= 1; p += .05)
+                {
+                    var w = New(n);
+                    bool seen = false;
+                    double near = double.MaxValue;
+                    w.OnEvent = e => { if (e == "boom") near = Math.Min(near, Math.Sqrt(Math.Pow(w.Blasts[^1].X - w.Cpu.X, 2) + Math.Pow(w.Blasts[^1].Y - w.CenterY(w.Cpu), 2))); };
+                    w.Fire(w.Me, deg * Math.PI / 180, p);
+                    for (int i = 0, after = 30; i < 600 && (w.Stage == Fortress.Phase.Flying || after-- > 0); i++) { w.Update(1 / 60.0); seen |= Now(w, n); }
+                    if (seen && near < best) (best, at) = (near, (deg * Math.PI / 180, p));
+                }
+            return at;
+        }
+        var was = L.Code;
+        L.Use("ko");
+        Fortress? play = null;
+        int cur = -1, frames = 0;
+        using var ov = host.Overlay(game);
+        SceneKit.Shots(path, ov, field, mine.Length, shot =>
+        {
+            if (cur != shot)
+            {
+                var (a, p) = Find(cur = shot);
+                play = New(shot);
+                game.Open(play, Session.Fake(field), events: false);
+                play.Aim = a;
+                play.Fire(play.Me, a, p);
+                frames = 0;
+            }
+            play!.Update(1 / 60.0);
+            game.Sync();
+            game.Track();
+            return Now(play, shot) || ++frames > 600; // 못 찾았으면 그 장은 쏜 뒤 모습으로
+        });
+        L.Use(was);
+    }
+
+    // ── 파워업 폭풍 (--mode-scene fortress 그림.png storm): 둘 사이 하늘의 노란 폭풍(겨누는 중) · 폭풍을 지나 세진 포탄(노란 빛과 꼬리) · 1.5배로 커진 폭발 · 견줘 볼 보통 폭발 ──
+    // 라이벌 가까이에 떨어지는 길을 먼저 찾고, 그 길 꼭대기쯤에 폭풍을 둔다. 마지막 장은 같은 발을 폭풍 없이 쏜 것
+    static void SceneStorm(string path, int k)
+    {
+        var host = new SceneHost(scale: k);
+        var game = new FortressGame(host) { showMe = true };
+        int fw = Math.Min(1920, 1280 * k / 3), fh = Math.Min(1040, 720 * k / 3);
+        var field = new Rectangle(0, 0, fw, fh);
+        var lands = new[] { new Rectangle((int)(fw * .06), (int)(fh * .52), (int)(fw * .36), (int)(fh * .38)), new Rectangle((int)(fw * .58), (int)(fh * .46), (int)(fw * .36), (int)(fh * .44)) };
+        Fortress New()
+        {
+            var w = new Fortress(field, lands, k, new Random(9), "normal", "cluster") { Wind = 0 };
+            for (int i = 0; i < 60 * GuideSec + 20; i++) w.Update(1 / 60.0); // 안내 말풍선이 걷힌 뒤에
+            return w;
+        }
+        // 라이벌에 가장 가까이 떨어지는 발과, 그 길의 가운데쯤(폭풍을 둘 수 있는 자리)
+        var (best, shotA, shotP, stormX, stormY) = (double.MaxValue, -1.0, .6, 0.0, 0.0);
+        for (double deg = -70; deg <= -35; deg += 2.5)
+            for (double p = .4; p <= 1; p += .025)
+            {
+                var w = New();
+                var way = new List<(double X, double Y)>();
+                w.Fire(w.Me, deg * Math.PI / 180, p);
+                for (int i = 0; i < 600 && w.Stage == Fortress.Phase.Flying; i++) { w.Update(1 / 60.0); if (w.Shells.Count == 1) way.Add((w.Shells[0].X, w.Shells[0].Y)); }
+                if (w.Blasts.Count == 0 || way.Count < 20) continue;
+                double near = Math.Sqrt(Math.Pow(w.Blasts[^1].X - w.Cpu.X, 2) + Math.Pow(w.Blasts[^1].Y - w.CenterY(w.Cpu), 2));
+                var mid = way[way.Count * 2 / 5];
+                if (near < best && w.StormFits(mid.X, mid.Y, Fortress.StormSize * k / 3.0)) (best, shotA, shotP, stormX, stormY) = (near, deg * Math.PI / 180, p, mid.X, mid.Y);
+            }
+        var was = L.Code;
+        L.Use("ko");
+        Fortress? play = null;
+        int cur = -1, frames = 0;
+        using var ov = host.Overlay(game);
+        SceneKit.Shots(path, ov, field, 4, shot =>
+        {
+            if (cur != shot && shot is 0 or 3) // 첫 장과 마지막 장(폭풍 없이 같은 발)은 새 판
+            {
+                play = New();
+                game.Open(play, Session.Fake(field), events: false);
+                play.Aim = shotA;
+                if (shot == 0) play.PlaceStorm(stormX, stormY);
+                else play.Fire(play.Me, shotA, shotP);
+            }
+            if (cur != shot && shot == 1) play!.Fire(play.Me, shotA, shotP);
+            if (cur != shot) (cur, frames) = (shot, 0);
+            play!.Update(1 / 60.0);
+            game.Sync();
+            game.Track();
+            return ++frames > 600 || shot switch
+            {
+                0 => frames > 30,
+                1 => play.Shells.Count == 1 && play.Shells[0].Boost && Math.Abs(play.Shells[0].X - play.StormX) > play.StormR + 22 * k,
+                _ => play.Blasts.Count > 0 && play.Clock - play.Blasts[^1].At >= BlastArt.Sec * .55,
+            };
+        });
+        L.Use(was);
     }
 
     // ── 속도 재기 (--mode-bench fortress): 같은 씨의 한 판을 양쪽 다 자동으로 끝까지 ──
@@ -55,11 +188,12 @@ sealed partial class FortressGame
         return true;
     }
 
-    static (SceneHost, FortressGame, Fortress) BenchGame()
+    // 씨는 판이 길게 가는 것으로 골랐다 (파워업 폭풍이 여러 번 뜨고 쓰인다)
+    static (SceneHost, FortressGame, Fortress) BenchGame(string mine = "normal", string cpu = "normal", int seed = 5)
     {
         var host = new SceneHost();
         var game = new FortressGame(host);
-        var w = new Fortress(TestField, TestLands, 3, new Random(9), "normal", "normal") { Wind = 0 };
+        var w = new Fortress(TestField, TestLands, 3, new Random(seed), mine, cpu) { Wind = 0 };
         game.Open(w, Session.Fake(TestField), events: false);
         return (host, game, w);
     }
@@ -70,13 +204,13 @@ sealed partial class FortressGame
         var seat = new Random(4);
         using var ov = host.Overlay(game);
         string whole = Bench.Run("fortress", ov, game, w.Field, () => Bot(w, seat), () => { w.Update(1 / 60.0); game.Sync(); game.Track(); }, 60 * 900);
-        return whole + $" · 폭발 {w.Booms}번, {w.Clock:0}초에 {(w.Stage == Fortress.Phase.Won ? "볼록이" : "라이벌")} 승\n" + BenchClip();
+        return whole + $" · 폭발 {w.Booms}번, {w.Clock:0}초에 {(w.Stage == Fortress.Phase.Won ? "볼록이" : "라이벌")} 승\n" + BenchClip() + "\n" + BenchClip("cluster", "drill", 8) + "\n" + BenchClip("bounce", "push", 4); // 새 대포 판도 긴 것으로
     }
 
     // 실제 창처럼: 바뀐 자리(지난 프레임·이번 프레임, 64px 칸으로 모아)만 잘라서 그릴 때 걸리는 시간. 규칙이 가장 오래 걸린 프레임도 잰다
-    static string BenchClip()
+    static string BenchClip(string mine = "normal", string cpu = "normal", int seed = 5)
     {
-        var (host, game, w) = BenchGame();
+        var (host, game, w) = BenchGame(mine, cpu, seed);
         var seat = new Random(4);
         using var ov = host.Overlay(game);
         using var bmp = new Bitmap(ov.Width, ov.Height);
@@ -126,7 +260,7 @@ sealed partial class FortressGame
         for (int i = 0; i < 30 && Bot(w, seat); i++) Step(false);
         while (frames < 60 * 900 && Bot(w, seat)) Step(true);
         double Us(long ticks) => ticks * 1e6 / Stopwatch.Frequency / Math.Max(1, frames);
-        return $"fortress (바뀐 자리만 그리기): {frames}프레임, 규칙 {Us(tUpdate):0.0}µs (가장 느린 프레임 {worstUpdate * 1e3 / Stopwatch.Frequency:0.00}ms), 칠할 자리 {Us(tDirty):0.0}µs ({(double)rects / Math.Max(1, frames):0.0}곳), 그리기 {Us(tDraw):0.0}µs (가장 느린 프레임 {worstDraw * 1e3 / Stopwatch.Frequency:0.00}ms, {worstAt:0.0}초), " +
+        return $"fortress ({(mine == "normal" ? "" : $"{Fortress.GunOf(mine).KoLabel} · {Fortress.GunOf(cpu).KoLabel}, ")}바뀐 자리만 그리기): {frames}프레임, 규칙 {Us(tUpdate):0.0}µs (가장 느린 프레임 {worstUpdate * 1e3 / Stopwatch.Frequency:0.00}ms), 칠할 자리 {Us(tDirty):0.0}µs ({(double)rects / Math.Max(1, frames):0.0}곳), 그리기 {Us(tDraw):0.0}µs (가장 느린 프레임 {worstDraw * 1e3 / Stopwatch.Frequency:0.00}ms, {worstAt:0.0}초), " +
                $"메모리 {bytes / Math.Max(1, frames)}B/프레임, 다시 칠한 넓이 {dirtyCells * 64.0 * 64 / Math.Max(1, frames) / 1000:0.0}천px²/프레임";
     }
 
@@ -222,7 +356,27 @@ sealed partial class FortressGame
             var t = Make(gun: gun.Name);
             Expect(t.Me.Hp == gun.Hp, $"{gun.Label} 체력 {gun.Hp}");
         }
-        Expect(Fortress.Guns.Select(g => g.Hp).SequenceEqual(new[] { 200, 300, 400 }) && Fortress.GunOf("multi").Shells == 9 && Fortress.GunOf(null).Name == "normal", "멀티캐논 9발/200, 왕대포/300, 일반대포/400");
+        Expect(Fortress.Guns.Select(g => g.Hp).SequenceEqual(new[] { 200, 300, 400, 350, 250, 350, 300 }) && Fortress.GunOf("multi").Shells == 9 && Fortress.GunOf(null).Name == "normal",
+            "멀티캐논 9발/200, 왕대포/300, 일반대포/400, 튕김탄/350, 집속탄/250, 드릴탄/350, 밀치기탄/300");
+        Expect(GunRows.Length == Fortress.Guns.Length && GunRows.All(r => r.Length == GunH && r.All(line => line.Length == GunW)) && GunRows.Select(r => string.Concat(r)).Distinct().Count() == GunRows.Length,
+            "대포마다 제 그림이 있다 (12×10, 서로 다르다)");
+        string guns = NewGunChecks(field, a.R, bwin.R);
+        string storm = StormChecks(field, a.R, bwin.R);
+        // 라이벌 대포: 정해 주지 않으면 내 것이 아닌 둘 중 아무거나 (같은 대포로 맞붙지 않는다), 정해 주면 그대로 (같은 것이어도)
+        foreach (var gun in Fortress.Guns)
+        {
+            var seen = new HashSet<string>();
+            for (int seed = 0; seed < 60; seed++)
+            {
+                var t = new Fortress(field, new[] { a.R, bwin.R }, 3, new Random(seed), gun.Name);
+                Expect(t.Me.Gun == gun && t.Cpu.Gun != gun && t.Cpu.Hp == t.Cpu.Gun.Hp, $"라이벌은 나와 다른 대포를 쓴다 ({gun.Name}, 씨 {seed}): {t.Cpu.Gun.Name}");
+                seen.Add(t.Cpu.Gun.Name);
+            }
+            Expect(seen.Count == Fortress.Guns.Length - 1, $"라이벌 대포는 나머지 둘이 다 나온다 ({gun.Name}): {string.Join(" ", seen)}");
+            foreach (var other in Fortress.Guns)
+                Expect(new Fortress(field, new[] { a.R, bwin.R }, 3, new Random(1), gun.Name, other.Name).Cpu.Gun == other, $"라이벌 대포를 정해 주면 그대로 ({gun.Name} · {other.Name})");
+        }
+        Expect(new Fortress(field, new[] { a.R, bwin.R }, 3, new Random(1)).Cpu.Gun.Name != "normal", "대포를 안 고르면 나는 일반대포, 라이벌은 다른 것");
         (double X, double R) Land(Fortress x, double wind)
         {
             x.Wind = wind;
@@ -267,6 +421,28 @@ sealed partial class FortressGame
         var idle = Make();
         Tick(idle, Fortress.TurnSec + 1.5);
         Expect(!idle.MyTurn, "시간이 다 되면 차례가 넘어간다");
+
+        // 지난 발: 내가 쏜 각도와 힘이 다음 내 차례까지 남는다. 라이벌이 쏜 것은 적지 않고, 새 판은 비어 있다
+        var memo = Make();
+        Expect(!memo.HasLast && !GhostOn(memo) && Mark(memo, memo.Me) is >= 90 and < 1000, "첫 발 전에는 지난 발 표시가 없다 (차례 화살표만)");
+        memo.Fire(memo.Me, -1.25, .62);
+        Expect(memo.HasLast && memo.LastAim == -1.25 && memo.LastPower == .62 && !GhostOn(memo), "쏘면 그 각도와 힘을 적어 둔다 (포탄이 나는 동안에는 안 보인다)");
+        int cpuFired = 0;
+        memo.OnEvent = e => { if (e == "fire") cpuFired++; };
+        for (int i = 0; i < 60 * 8 && memo.MyTurn; i++) memo.Update(1 / 60.0);
+        Expect(!memo.MyTurn && !GhostOn(memo) && Mark(memo, memo.Me) == 0, "라이벌 차례에는 지난 발 표시가 없다");
+        for (int i = 0; i < 60 * 12 && !memo.MyTurn && !memo.Done; i++) memo.Update(1 / 60.0);
+        Expect(cpuFired == 1 && memo.MyTurn && memo.Stage == Fortress.Phase.Turn, $"라이벌이 한 번 쏘고 다시 내 차례: {cpuFired}번, {memo.Stage}");
+        Expect(memo.HasLast && memo.LastAim == -1.25 && memo.LastPower == .62, $"라이벌이 쏴도 지난 발은 내 것 그대로: {memo.LastAim:F2} · {memo.LastPower:F2}");
+        Expect(GhostOn(memo) && Mark(memo, memo.Me) == 1000 && LastTip(memo) == (int)(20 * 3 * .62), "다음 내 차례에는 누르기 전부터 빈 힘 막대와 지난 힘 세모, 흐린 지난 각도 조준경이 보인다");
+        double walkedFrom = memo.Me.X;
+        int ghostFrom = AimAt(memo, memo.Me, memo.LastAim).X;
+        for (int i = 0; i < 30; i++) { memo.Walk(memo.Me, 1, 1 / 60.0); memo.Update(1 / 60.0); }
+        double walked = memo.Me.X - walkedFrom;
+        Expect(walked > 20 && Math.Abs(AimAt(memo, memo.Me, memo.LastAim).X - ghostFrom - walked) <= 1 && memo.LastAim == -1.25, $"걸으면 지난 각도 조준경도 볼록이를 따라온다 (각도는 그대로): {walked:F0}px");
+        memo.Fire(memo.Me, -.7, 1.4); // 디버그 명령으로는 1 넘게도 쏠 수 있다: 적는 것은 그대로, 세모는 막대 끝에
+        Expect(memo.LastAim == -.7 && memo.LastPower == 1.4 && LastTip(memo) == 20 * 3, "다시 쏘면 새 값으로 바뀐다");
+        Expect(!Make().HasLast, "새 판은 지난 발이 없다");
 
         // 라이벌은 볼록이 근처를 노린다 (빗나감 없이 계산하면 가까이 떨어진다)
         int near = 0;
@@ -316,12 +492,311 @@ sealed partial class FortressGame
             mostBlasts = Math.Max(mostBlasts, duel.Blasts.Count);
         }
         Expect(duel.Done, $"한 판이 끝난다: 나 {duel.Me.Hp}, 라이벌 {duel.Cpu.Hp}, {duel.Clock:F0}초");
-        Expect(duel.Booms >= 8 && mostBlasts <= 9, $"터진 자리 목록은 쌓이지 않는다: {duel.Booms}번 터지는 동안 가장 많을 때 {mostBlasts}개");
+        Expect(duel.Booms >= 4 && mostBlasts <= 9, $"터진 자리 목록은 쌓이지 않는다: {duel.Booms}번 터지는 동안 가장 많을 때 {mostBlasts}개 (나 {duel.Me.Hp}{(duel.Me.Out ? " 퐁당" : "")}, 라이벌 {duel.Cpu.Hp}{(duel.Cpu.Out ? " 퐁당" : "")}, {duel.Turns}차례)");
 
         string play = ModuleChecks(field, a.R, bwin.R);
         string hud = HudChecks();
         return $"포트리스 라이벌: 계산만 하면 6번 중 {near}번 70px 안, 실제 첫 발은 12번 중 {firstNear}번, 시험 대결 {duel.Clock:F0}초에 {(duel.Stage == Fortress.Phase.Won ? "볼록이" : "라이벌")} 승, " +
-               $"깎인 넓이는 원과 {worstArea:P0} 안, {play}, {hud}";
+               $"깎인 넓이는 원과 {worstArea:P0} 안, {guns}, {storm}, {play}, {hud}";
+    }
+
+    // 파워업 폭풍 (YELL 2026-11-13): 폭풍을 지난 포탄만 세지고(폭발·피해 1.5배, 드릴 길이 1.5배, 밀치기 1.3배, 새끼 탄은 물려받는다), 그 발이 끝나면 폭풍도 사라진다.
+    // 폭풍은 셋째 차례부터 가끔 둘 사이 하늘에 뜨고(섬·햄스터와 안 겹친다) 두 차례 뒤에는 없다. 새 판에는 없다. 라이벌은 폭풍을 지나는 길이 쓸 만하면 그리로 쏜다
+    static string StormChecks(Rectangle field, Rectangle landA, Rectangle landB)
+    {
+        Fortress Make(string mine, string cpu = "normal", int seed = 1) => new(field, new[] { landA, landB }, 3, new Random(seed), mine, cpu) { Wind = 0 };
+        const double deg = Math.PI / 180;
+        (List<Fortress.Blast> Blasts, int Powers, Fortress.Shell? Hot, Fortress W) Shoot(string gun, (double X, double Y)? stormAt)
+        {
+            var w = Make(gun);
+            var blasts = new List<Fortress.Blast>();
+            int powers = 0;
+            Fortress.Shell? hot = null;
+            if (stormAt is { } at) Expect(w.PlaceStorm(at.X, at.Y) && w.StormOn && w.StormLeft == Fortress.StormTurns, $"폭풍을 둘 수 있는 자리다 ({gun}): {at}");
+            w.OnEvent = e =>
+            {
+                if (e == "boom") blasts.Add(w.Blasts[^1]);
+                if (e == "power") { powers++; hot ??= w.Shells.First(s => s.Boost); Expect(w.StormUsed, "세지게 한 폭풍은 다 쓴 것으로 표시된다"); }
+            };
+            w.Fire(w.Me, -70 * deg, Power(gun));
+            for (int i = 0; i < 60 * 10 && w.Stage == Fortress.Phase.Flying; i++) w.Update(1 / 60.0);
+            return (blasts, powers, hot, w);
+        }
+        static double Power(string gun) => gun == "bounce" ? .4 : .6; // 제 섬 위에 떨어지게 (튕김탄은 튕겨서 더 가니 약하게)
+        foreach (var gun in Fortress.Guns)
+        {
+            // 폭풍 없이 쏜 길에서 폭풍을 둘 수 있는 첫 자리 (가운데 발이 볼록이에게서 충분히 멀어진 곳)
+            var dry = Make(gun.Name);
+            dry.Fire(dry.Me, -70 * deg, Power(gun.Name));
+            var mid = dry.Shells[dry.Shells.Count / 2];
+            for (int i = 0; i < 60 && !dry.StormFits(mid.X, mid.Y, Fortress.StormSize); i++) dry.Update(1 / 60.0);
+            var (onX, onY) = (mid.X, mid.Y);
+            var plain = Shoot(gun.Name, null);
+            var hot = Shoot(gun.Name, (onX, onY));
+            var off = Shoot(gun.Name, (onX, onY - 220));
+            Expect(plain.Powers == 0 && plain.Blasts.Count > 0 && plain.Blasts.All(b => Math.Abs(b.R - gun.Radius) < 1e-9), $"폭풍이 없으면 보통 폭발 ({gun.Name})");
+            Expect(off.Powers == 0 && off.Blasts.Count == plain.Blasts.Count && off.Blasts.All(b => Math.Abs(b.R - gun.Radius) < 1e-9) && off.W.StormOn == (off.W.Turns < 3) && !off.W.StormUsed,
+                $"폭풍 밖으로 지난 포탄은 그대로다 ({gun.Name}): {off.Powers}번 세짐");
+            Expect(hot.Powers == 1 && hot.Hot != null, $"폭풍을 지난 포탄은 세진다 ({gun.Name}): 알림 {hot.Powers}번 (한 발에 한 번)");
+            var s = hot.Hot!;
+            Expect(Math.Abs(s.R - gun.Radius * Fortress.BoostBlast) < 1e-9 && Math.Abs(s.Damage - gun.Damage * Fortress.BoostBlast) < 1e-9 && Math.Abs(s.Knock - gun.Knock * Fortress.BoostKnock) < 1e-9 && Math.Abs(s.Drill - gun.Drill * Fortress.BoostBlast) < 1e-9,
+                $"세진 포탄은 폭발·피해 1.5배, 밀치기 1.3배, 드릴 길이 1.5배 ({gun.Name}): {s.R:F0}·{s.Damage:F0}·{s.Knock:F2}·{s.Drill:F0}");
+            int big = hot.Blasts.Count(b => Math.Abs(b.R - gun.Radius * Fortress.BoostBlast) < 1e-9);
+            // 멀티캐논은 먼저 터진 큰 구멍 때문에 뒤따르는 발이 떨어지는 자리가 달라진다: 터진 수는 견주지 않는다
+            Expect(gun.Shells > 1 ? big >= 4 : hot.Blasts.Count == plain.Blasts.Count && big == hot.Blasts.Count && big == Math.Max(1, gun.Split),
+                $"세진 포탄은 크게 터진다 ({gun.Name}): {hot.Blasts.Count}번 중 {big}번 (새끼 탄도 물려받는다)");
+            if (gun.Drill > 0) Expect(hot.Blasts[^1].Y > plain.Blasts[^1].Y + gun.Drill * .3, $"세진 드릴탄은 더 깊이 판다: {plain.Blasts[^1].Y:F0} → {hot.Blasts[^1].Y:F0}");
+            for (int i = 0; i < 60 * 3 && hot.W.MyTurn; i++) hot.W.Update(1 / 60.0);
+            Expect(!hot.W.MyTurn && !hot.W.StormOn && !hot.W.StormUsed, $"한 발을 세지게 한 폭풍은 그 발이 끝나면 사라진다 ({gun.Name})");
+        }
+
+        // 뜨는 자리와 때: 양쪽이 계산대로 쏘는 판들을 돌려 보며 폭풍이 뜰 때마다 본다
+        int spawns = 0, used = 0, games = 0, longest = 0;
+        for (int seed = 0; seed < 24; seed++)
+        {
+            var w = new Fortress(field, new[] { landA, landB }, 3, new Random(seed), Fortress.Guns[seed % Fortress.Guns.Length].Name);
+            Expect(!w.StormOn && w.Turns == 1, "새 판에는 폭풍이 없다");
+            var seat = new Random(seed);
+            int born = 0;
+            bool wasOn = false, spent = false;
+            w.OnEvent = e =>
+            {
+                if (e == "power") spent = true;
+                if (e != "storm") return;
+                spawns++;
+                double r = w.StormR;
+                Expect(w.Turns > 2, $"폭풍은 양쪽 첫 발이 끝난 뒤에 뜬다 (씨 {seed}): {w.Turns}번째 차례");
+                Expect(r == Fortress.StormSize && w.StormX > Math.Min(w.Me.X, w.Cpu.X) && w.StormX < Math.Max(w.Me.X, w.Cpu.X) && w.StormY - r >= field.Top && w.StormY + r < Math.Min(w.Me.Y, w.Cpu.Y),
+                    $"폭풍은 둘 사이 하늘에 뜬다 (씨 {seed}): ({w.StormX:F0},{w.StormY:F0})");
+                foreach (var h in new[] { w.Me, w.Cpu })
+                    Expect(Math.Sqrt(Math.Pow(h.X - w.StormX, 2) + Math.Pow(w.CenterY(h) - w.StormY, 2)) >= r + w.BodyR * 3, $"폭풍이 햄스터와 안 겹친다 (씨 {seed})");
+                for (double y = w.StormY - r; y <= w.StormY + r; y += 2)
+                    for (double x = w.StormX - r; x <= w.StormX + r; x += 2)
+                        if ((x - w.StormX) * (x - w.StormX) + (y - w.StormY) * (y - w.StormY) <= r * r) Expect(!w.Solid(x, y), $"폭풍이 섬과 안 겹친다 (씨 {seed}): ({x:F0},{y:F0})");
+            };
+            for (int i = 0; i < 60 * 400 && Bot(w, seat); i++)
+            {
+                w.Update(1 / 60.0);
+                if (w.StormOn && !wasOn) (born, spent) = (w.Turns, false);
+                if (!w.StormOn && wasOn)
+                {
+                    int life = w.Turns - born;
+                    longest = Math.Max(longest, life);
+                    if (spent) used++;
+                    Expect(life <= Fortress.StormTurns && (life == Fortress.StormTurns || spent), $"폭풍은 두 차례 떠 있거나 한 발을 세지게 하고 사라진다 (씨 {seed}): {life}차례, 씀 {spent}");
+                }
+                wasOn = w.StormOn;
+            }
+            games++;
+        }
+        Expect(spawns >= 12 && longest == Fortress.StormTurns, $"폭풍은 가끔 뜬다: {games}판에 {spawns}번, 가장 오래 {longest}차례");
+
+        // 라이벌: 가장 좋은 길 위에 폭풍이 있으면 그 길로 쏜다 (세진 채로 볼록이 근처에 떨어진다)
+        int through = 0, tried = 0;
+        foreach (var gun in Fortress.Guns)
+        {
+            if (gun.Bounces > 0) continue; // 튕기는 길은 조금만 달라도 딴 데로 간다: 여기서는 뺀다
+            var scout = Make("normal", gun.Name, 3);
+            var (ang, pow) = scout.Plan(miss: 0);
+            scout.MyTurn = false;
+            scout.Fire(scout.Cpu, ang, pow);
+            var way = new List<(double X, double Y)>();
+            for (int i = 0; i < 60 * 10 && scout.Stage == Fortress.Phase.Flying; i++) { scout.Update(1 / 60.0); if (scout.Shells.Count == gun.Shells && scout.Shells[0].DrillLeft < 0) way.Add((scout.Shells[gun.Shells / 2].X, scout.Shells[gun.Shells / 2].Y)); }
+            var ai = Make("normal", gun.Name, 3);
+            var at = way.Skip(way.Count / 4).FirstOrDefault(p => ai.StormFits(p.X, p.Y, Fortress.StormSize));
+            if (at == default || !ai.PlaceStorm(at.X, at.Y)) continue;
+            tried++;
+            (ang, pow) = ai.Plan(miss: 0);
+            ai.MyTurn = false;
+            int powers = 0, hp = ai.Me.Hp;
+            double near = double.MaxValue;
+            ai.OnEvent = e =>
+            {
+                if (e == "power") powers++;
+                if (e == "boom") near = Math.Min(near, Math.Sqrt(Math.Pow(ai.Blasts[^1].X - ai.Me.X, 2) + Math.Pow(ai.Blasts[^1].Y - ai.CenterY(ai.Me), 2)));
+            };
+            ai.Fire(ai.Cpu, ang, pow);
+            for (int i = 0; i < 60 * 10 && ai.Stage == Fortress.Phase.Flying; i++) ai.Update(1 / 60.0);
+            Expect(powers > 0 && (near < 110 || ai.Me.Hp < hp), $"라이벌은 길 위의 폭풍을 지나 쏜다 ({gun.Name}): 세진 발 {powers}, 가장 가까운 폭발 {near:F0}px");
+            through++;
+        }
+        Expect(tried >= 4, $"라이벌 길 위에 폭풍을 둔 판: {tried}");
+        return $"파워업 폭풍: 대포 {Fortress.Guns.Length}가지 모두 지나면 세지고(폭발·피해 {Fortress.BoostBlast}배) 밖으로 지나면 그대로, {games}판에 {spawns}번 뜨고 {used}번 쓰임(섬·햄스터와 안 겹침, 길어야 {longest}차례), 라이벌은 {tried}판 모두 폭풍을 지나 쏨";
+    }
+
+    // 새 대포 넷 (YELL 2026-11-13): 튕김탄은 두 번 튕기고, 집속탄은 꼭대기에서 넷으로 갈라지고, 드릴탄은 땅속으로 파고들어 터지고, 밀치기탄은 조금 다치게 하고 멀리 민다.
+    // 라이벌은 어느 대포로든 몇 발 안에 맞히고, 포탄이 판 밖으로 나가도 탈이 없다
+    static string NewGunChecks(Rectangle field, Rectangle landA, Rectangle landB)
+    {
+        Fortress Make(string mine, string cpu = "normal", int seed = 1) => new(field, new[] { landA, landB }, 3, new Random(seed), mine, cpu) { Wind = 0 };
+        void Tick(Fortress w, double sec) { for (double t = 0; t < sec; t += 1 / 60.0) w.Update(1 / 60.0); }
+        static double Speed(Fortress.Shell s) => Math.Sqrt(s.Vx * s.Vx + s.Vy * s.Vy);
+        const double deg = Math.PI / 180;
+
+        // 튕김탄: 제 섬 위에 떨어뜨리면 두 번 튕기고(튕길 때마다 느려진다) 세 번째로 닿을 때 터진다
+        var hop = Make("bounce");
+        var hopSpeeds = new List<double>();
+        double hopFirst = -1, hopBoom = -1, hopWas = 0, hopKeep = 0, hopUp = double.MinValue;
+        hop.OnEvent = e =>
+        {
+            if (e == "bounce")
+            {
+                hopSpeeds.Add(Speed(hop.Shells[0]));
+                (hopKeep, hopUp) = (Math.Max(hopKeep, hopSpeeds[^1] / hopWas), Math.Max(hopUp, hop.Shells[0].Vy));
+                if (hopFirst < 0) hopFirst = hop.Clock;
+            }
+            if (e == "boom") hopBoom = hop.Clock;
+        };
+        hop.Fire(hop.Me, -60 * deg, .35);
+        double hopV0 = Speed(hop.Shells[0]);
+        for (int i = 0; i < 60 * 6; i++)
+        {
+            if (hop.Shells.Count == 1) hopWas = Speed(hop.Shells[0]);
+            hop.Update(1 / 60.0);
+        }
+        Expect(hopSpeeds.Count == 2 && hop.Booms == 1 && hop.Stage != Fortress.Phase.Flying, $"튕김탄은 두 번 튕기고 터진다: {hopSpeeds.Count}번 튕기고 {hop.Booms}번 터짐");
+        Expect(hopKeep is > .5 and < .68 && hopSpeeds[1] < hopSpeeds[0] * .8 && hopUp < -50, $"튕길 때마다 느려지고 위로 튄다: {hopV0:F0} → {hopSpeeds[0]:F0} → {hopSpeeds[1]:F0} (남는 빠르기 {hopKeep:F2}배)");
+
+        Expect(hop.Blasts.Count == 0 && hopBoom - hopFirst is > .1 and <= Fortress.BounceFuse + .05, $"처음 튕기고 {Fortress.BounceFuse}초 안에 터진다: {hopBoom - hopFirst:F2}초");
+        // 가파른 벽에 쏘면 되돌아온다 (겉면이 보는 쪽으로 튄다)
+        var wall = Make("bounce");
+        double wallVx = 0;
+        wall.OnEvent = e => { if (e == "bounce" && wallVx == 0) wallVx = wall.Shells[0].Vx; };
+        (wall.Me.X, wall.Me.Y) = (landB.Left - 200, landB.Top + 150); // 오른쪽 섬 왼쪽 벽 앞 허공에서 (곧 떨어지지만 쏘는 데는 상관없다)
+        wall.Fire(wall.Me, 0, .4);
+        Tick(wall, .6);
+        Expect(wallVx < -100, $"벽에 맞으면 되튄다: 오른쪽으로 쏜 탄이 {wallVx:F0}");
+
+        // 집속탄: 올라가다 내려가기 시작하는 순간 넷으로 갈라져 옆으로 벌어지고, 작은 폭발 넷
+        var burst = Make("cluster");
+        double riseVy = 0, splitVy = double.NaN, spread = 0;
+        int kids = 0;
+        var pops = new List<Fortress.Blast>();
+        burst.OnEvent = e =>
+        {
+            if (e == "split") (kids, splitVy, spread) = (burst.Shells.Count(s => s.Look == 2 && s.Split == 0), riseVy, burst.Shells.Max(s => s.Vx) - burst.Shells.Min(s => s.Vx));
+            if (e == "boom") pops.Add(burst.Blasts[^1]);
+        };
+        burst.Fire(burst.Me, -70 * deg, .5);
+        Expect(burst.Shells.Count == 1 && burst.Shells[0].Split == 4, "집속탄은 한 발로 날아간다");
+        for (int i = 0; i < 60 * 8 && burst.Stage == Fortress.Phase.Flying; i++)
+        {
+            if (burst.Shells.Count == 1 && burst.Shells[0].Split > 0) riseVy = burst.Shells[0].Vy;
+            burst.Update(1 / 60.0);
+        }
+        Expect(kids == 4 && splitVy is < 0 and > -40 && spread > 200, $"집속탄은 꼭대기에서 넷으로 갈라진다: {kids}개, 갈라지기 직전 세로 빠르기 {splitVy:F0}, 벌어짐 {spread:F0}");
+        Expect(pops.Count == 4 && pops.All(p => p.R < 40) && pops.Max(p => p.X) - pops.Min(p => p.X) > 60, $"새끼 탄 넷이 넓게 떨어져 작게 터진다: {pops.Count}번, 폭 {(pops.Count > 0 ? pops.Max(p => p.X) - pops.Min(p => p.X) : 0):F0}px");
+
+        // 드릴탄: 땅에 닿으면 날던 쪽으로 정해진 길이만큼 파고든 뒤 땅속에서 터진다. 지나간 자리는 굴이 되고, 굴은 폭발로 세지 않는다
+        var bore = Make("drill");
+        double drillLen = Fortress.GunOf("drill").Drill;
+        (double X, double Y)? entry = null;
+        bore.Fire(bore.Me, -70 * deg, .5);
+        for (int i = 0; i < 60 * 8 && bore.Stage == Fortress.Phase.Flying; i++)
+        {
+            bore.Update(1 / 60.0);
+            if (entry == null && bore.Shells.Count == 1 && bore.Shells[0].DrillLeft >= 0) entry = (bore.Shells[0].X + bore.Shells[0].Vx / Fortress.DrillSpeed * (bore.Shells[0].DrillLeft - drillLen), bore.Shells[0].Y + bore.Shells[0].Vy / Fortress.DrillSpeed * (bore.Shells[0].DrillLeft - drillLen));
+        }
+        var deep = bore.Blasts.LastOrDefault(b => !b.Quiet);
+        Expect(entry != null && deep != null && bore.Booms == 1 && bore.Carves >= 5, $"드릴탄은 굴을 파고 한 번 터진다: 폭발 {bore.Booms}번, 깎인 자리 {bore.Carves}곳");
+        double drilled = Math.Sqrt((deep!.X - entry!.Value.X) * (deep.X - entry.Value.X) + (deep.Y - entry.Value.Y) * (deep.Y - entry.Value.Y));
+        Expect(Math.Abs(drilled - drillLen) < 3 && deep.Y > landA.Top + drillLen * .7 && Math.Abs(entry.Value.Y - landA.Top) < 12, $"땅속 {drillLen}px 에서 터진다: 들어간 자리 ({entry.Value.X:F0},{entry.Value.Y:F0}) → 터진 자리 ({deep.X:F0},{deep.Y:F0}), {drilled:F0}px");
+        Expect(!bore.Solid((entry.Value.X + deep.X) / 2, (entry.Value.Y + deep.Y) / 2) && !bore.Solid(entry.Value.X + (deep.X - entry.Value.X) * .2, entry.Value.Y + (deep.Y - entry.Value.Y) * .2), "지나간 자리는 굴이 된다");
+        var flat = Make("normal");
+        flat.Fire(flat.Me, -70 * deg, .5);
+        Tick(flat, 5);
+        Expect(flat.Booms == 1 && flat.Carves == 1, "보통 포탄은 굴을 파지 않는다");
+
+        // 밀치기탄: 조금 다치게 하고 멀리 민다. 구멍은 작다. 멀리서 터지면 거의 안 밀린다 (어디서 맞든 이기는 것이 아니다)
+        var pushGun = Fortress.GunOf("push");
+        (double Moved, int Lost, bool Out) Shove(double dx, Fortress.Gun gun)
+        {
+            var t = Make("normal");
+            var (x0, hp) = (t.Cpu.X, t.Cpu.Hp);
+            t.Explode(t.Cpu.X + dx, t.Cpu.Y - 2, gun.Radius, gun.Damage, gun.Knock, gun.Crater);
+            Tick(t, 4);
+            return (Math.Abs(t.Cpu.X - x0), hp - t.Cpu.Hp, t.Cpu.Out);
+        }
+        var (pushNear, plain, pushFar, pushEdge) = (Shove(25, pushGun), Shove(25, Fortress.GunOf("normal")), Shove(50, pushGun), Shove(-25, pushGun));
+        Expect(pushNear.Moved > 150 && pushNear.Moved > plain.Moved * 1.7 && !pushNear.Out, $"밀치기탄은 멀리 민다: {pushNear.Moved:F0}px (일반대포 {plain.Moved:F0}px)");
+        Expect(pushNear.Lost is > 0 and <= 20 && pushNear.Lost * 2 < plain.Lost, $"밀치기탄은 조금만 다치게 한다: {pushNear.Lost} (일반대포 {plain.Lost})");
+        Expect(pushFar.Moved < 60 && pushFar.Lost <= 4 && !pushFar.Out, $"50px 떨어져 터지면 거의 안 밀린다: {pushFar.Moved:F0}px, 피해 {pushFar.Lost}");
+        Expect(pushEdge.Out, "섬 끝 쪽으로 가까이서 밀리면 물에 빠진다");
+        var dent = Make("normal");
+        var (dentX, dentY) = (dent.Cpu.X - 200, dent.Cpu.Y);
+        dent.Explode(dentX, dentY, pushGun.Radius, pushGun.Damage, pushGun.Knock, pushGun.Crater);
+        Expect(!dent.Solid(dentX, dentY + 8) && dent.Solid(dentX + 38, dentY + 8) && dent.Solid(dentX, dentY + 38), "밀치기탄 구멍은 작다 (폭발 반지름의 절반이 안 된다)");
+
+        // 라이벌: 어느 대포로든 빗나감 없이 계산하면 가까이 떨어지고, 실제로(흔들려) 쏴도 몇 발 안에 맞힌다
+        int worstShots = 0;
+        string worstGun = "", shotsBy = "";
+        foreach (var gun in Fortress.Guns)
+        {
+            int gunWorst = 0, gunSum = 0;
+            int near = 0;
+            for (int seed = 0; seed < 4; seed++)
+            {
+                var ai = Make("normal", gun.Name, seed);
+                ai.Wind = (seed - 1.5) / 2;
+                var (ang, pow) = ai.Plan(miss: 0);
+                ai.MyTurn = false;
+                double best = double.MaxValue;
+                int hp = ai.Me.Hp;
+                ai.OnEvent = e => { if (e == "boom") best = Math.Min(best, Math.Sqrt(Math.Pow(ai.Blasts[^1].X - ai.Me.X, 2) + Math.Pow(ai.Blasts[^1].Y - ai.CenterY(ai.Me), 2))); };
+                ai.Fire(ai.Cpu, ang, pow);
+                for (int i = 0; i < 60 * 10 && ai.Stage == Fortress.Phase.Flying; i++) ai.Update(1 / 60.0);
+                if (best < 80 || ai.Me.Hp < hp) near++;
+            }
+            Expect(near >= 3, $"라이벌 계산은 {gun.Name} 로도 볼록이 근처에 떨어진다: {near}/4");
+            for (int seed = 0; seed < 5; seed++)
+            {
+                var t = Make("normal", gun.Name, seed + 20);
+
+                int shots = 0, hp = t.Me.Hp;
+                t.OnEvent = e => { if (e == "fire") shots++; };
+                for (int i = 0; i < 60 * 240 && t.Me.Hp == hp && !t.Me.Out && shots <= 12; i++)
+                {
+                    if (t.MyTurn && t.Stage == Fortress.Phase.Turn) (t.MyTurn, t.Wind) = (false, 0); // 볼록이는 가만히 있고 라이벌만 거듭 쏜다
+                    t.Update(1 / 60.0);
+                }
+                Expect(t.Me.Hp < hp || t.Me.Out, $"라이벌이 {gun.Name} 로 볼록이를 맞힌다 (씨 {seed + 20}): {shots}발을 쏘고도 못 맞힘");
+                if (shots > worstShots) (worstShots, worstGun) = (shots, gun.Name);
+                gunWorst = Math.Max(gunWorst, shots);
+                gunSum += shots;
+            }
+            Expect(gunSum <= 6 * 5, $"라이벌은 {gun.Name} 로 보통 여섯 발 안에 맞힌다: 다섯 판 평균 {gunSum / 5.0:F1}발");
+            shotsBy += $"{(shotsBy == "" ? "" : " · ")}{gun.KoLabel} {gunWorst}";
+        }
+        Expect(worstShots <= 12, $"라이벌은 어느 대포로든 12발 안에 맞힌다: {worstGun} {worstShots}발"); // 흔들려 쏘니 운이 나쁜 판도 있다
+
+        // 대포 이름: 디버그 명령(worms <이름>)·하위 메뉴가 이름으로 찾고, 어느 언어에도 제 이름이 있다
+        string lang = L.Code;
+        foreach (var gun in Fortress.Guns)
+        {
+            Expect(Fortress.GunOf(gun.Name) == gun, $"이름으로 대포를 찾는다: {gun.Name}");
+            foreach (var (code, _) in L.Languages)
+            {
+                L.Use(code);
+                Expect(gun.Label.Length > 0 && !gun.Label.StartsWith("gun."), $"{gun.Name} 의 {code} 이름이 있다: {gun.Label}");
+            }
+        }
+        L.Use(lang);
+
+        // 포탄이 판 밖으로 나가도 탈이 없다: 어느 대포든 사방으로(센 바람에도) 쏘면 차례가 넘어간다
+        int flown = 0;
+        foreach (var gun in Fortress.Guns)
+            foreach (double ang in new[] { -178.0, -135, -90, -45, -2, 20, 90, 160 })
+                foreach (double wind in new[] { -1.0, 1 })
+                {
+                    var t = Make(gun.Name);
+                    t.Wind = wind;
+                    t.Fire(t.Me, ang * deg, 1);
+                    for (int i = 0; i < 60 * 20 && t.Stage == Fortress.Phase.Flying; i++) t.Update(1 / 60.0);
+                    Expect(t.Stage != Fortress.Phase.Flying && t.Shells.Count == 0, $"{gun.Name} 를 {ang}° 로 쏴도 끝난다 (바람 {wind})");
+                    flown++;
+                }
+        return $"새 대포: 튕김탄 2번 튕김({hopV0:F0}→{hopSpeeds[0]:F0}→{hopSpeeds[1]:F0}px/초), 집속탄 꼭대기에서 4개(폭 {pops.Max(p => p.X) - pops.Min(p => p.X):F0}px), 드릴탄 땅속 {drilled:F0}px, " +
+               $"밀치기탄 {pushNear.Moved:F0}px 밀고 피해 {pushNear.Lost}(일반대포 {plain.Moved:F0}px·{plain.Lost}), 라이벌이 맞히기까지 가장 오래 걸린 발 수 ({shotsBy}), 판 밖으로 쏜 {flown}발 탈 없음";
     }
 
     // 바람 상자 자리: 어느 모습·배율·언어에서도, 볼록이가 왼쪽 섬이든 오른쪽 섬이든, 섬이 낮든 높든 판 끝에 붙었든
@@ -402,6 +877,17 @@ sealed partial class FortressGame
         Expect(!r.IntersectsWith(game.GuideRect(ov, w)), $"바람 상자가 안내 말풍선과 안 겹친다 ({what}): {r} · {game.GuideRect(ov, w)}");
         int gap = Math.Max(Math.Max(pet.Left - r.Right, r.Left - pet.Right), Math.Max(pet.Top - r.Bottom, r.Top - pet.Bottom));
         Expect(gap <= 40 * k, $"바람 상자는 볼록이 가까이에 있다 ({what}): {gap}px");
+        // 대포 그림: 체력 막대 왼쪽에 따로 있고, 체력 막대·숫자·힘 막대·지난 힘 세모(막대 왼쪽 끝에 있을 때까지)·제 몸과 안 겹친다
+        foreach (var h in new[] { me, w.Cpu })
+        {
+            int e = Math.Max(1, k / 2), x = (int)h.X, y = game.BarY(w, h);
+            var gun = game.GunBox(w, h);
+            var bars = Rectangle.FromLTRB(x - 10 * k - e, y - 6 * k - e, x + 12 * k + 17 * GameHud.Small(k), y + 2 * k + e);  // 힘 막대 윗변부터 체력 막대·숫자까지
+            var tip = Rectangle.FromLTRB(x - 13 * k, y - 10 * k, x + 13 * k + e, y - 6 * k);                                // 지난 힘 세모가 올 수 있는 자리
+            Expect(gun.Right <= x - 10 * k - e && gun.Width >= 9 * k && gun.Height >= 7 * k && !gun.IntersectsWith(bars) && !gun.IntersectsWith(tip), $"대포 그림은 막대 옆에 따로 있다 ({what}): {gun} · {bars} · {tip}");
+            Expect(gun.Bottom <= (int)(h.Y - (h == me ? game.meHead : game.cpuHead)), $"대포 그림이 머리를 가리지 않는다 ({what}): {gun}");
+            Expect(!r.IntersectsWith(gun) || h != me, $"바람 상자가 내 대포 그림과 안 겹친다 ({what}): {r} · {gun}");
+        }
         double keep = w.Aim;
         for (int deg = 0; deg < 360; deg += 2) // 조준경이 도는 둘레 (0° 오른쪽, 90° 아래)
         {
@@ -470,6 +956,7 @@ sealed partial class FortressGame
         ses.Press(MouseButtons.Left, false);
         Frames(1);
         Expect(play.Stage == Fortress.Phase.Flying && play.Shells.Count == 1 && play.ChargeFrom < 0, "놓으면 쏜다");
+        Expect(play.LastAim == play.Aim && play.LastPower is > .4 and < .55, $"놓은 각도와 힘이 지난 발로 남는다: {play.LastPower:F2}");
         ses.Press(MouseButtons.Right, true);
         ses.Press(MouseButtons.Right, false);
         Frames(2);
@@ -489,7 +976,9 @@ sealed partial class FortressGame
         var cmd = New();
         game.Open(cmd, Session.Fake(field), events: false);
         host.Pet.StartPuppet();
+        Expect(!cmd.HasLast, "새 판을 열면 지난 발이 없다");
         Expect(game.Command(new[] { "fortress", "fire", "-60", "0.5" }) && cmd.Stage == Fortress.Phase.Flying && cmd.Shells.Count == 1, "worms fire 로 쏜다");
+        Expect(Math.Abs(cmd.LastAim + Math.PI / 3) < 1e-9 && cmd.LastPower == .5, "worms fire 로 쏜 각도와 힘도 지난 발로 남는다");
         game.Stop(true);
 
         // 기록: 이기면 한 번 더해지고, 옛 저장 칸(WormsWins)도 넘어온다
@@ -507,29 +996,47 @@ sealed partial class FortressGame
 
         // 다시 칠할 자리: 걷고 뛰고 서로 쏘는 판, 그리고 이기는 판. 바뀐 자리만 다시 그려도 화면에 지나간 그림이 남지 않는다
         var small = new Rectangle(0, 0, 960, 600);
-        var paint = new Fortress(small, new[] { new Rectangle(60, 300, 340, 240), new Rectangle(560, 270, 340, 270) }, 3, new Random(5), "giant", "multi") { Wind = .4 };
-        game.Open(paint, Session.Fake(small), events: false);
         using var ov = host.Overlay(game);
-        int n = 0;
-        var (bad, first) = SceneKit.Repaint(ov, game, small, () =>
+        int ghosts = 0, tips = 0, holes = 0, bad, first; // 지난 각도 조준경·지난 힘 세모가 보인 프레임 (둘째 내 차례부터: 걷고 뛰는 동안에도 따라다닌다)
+        int bounces = 0, splits = 0, digs = 0;           // 새 대포가 한 일 (튕김·갈라짐·굴): 그 그림들도 다시 칠할 자리에 다 들어 있어야 한다
+        int stormy = 0, powers = 0, glowing = 0;         // 파워업 폭풍이 떠 있던 프레임 · 세진 발 · 세진 포탄이 날던 프레임 (도는 폭풍 그림, 포탄의 빛과 꼬리)
+        foreach (var (mine, theirs, seed) in new[] { ("giant", "multi", 5), ("drill", "cluster", 5), ("bounce", "push", 7), ("cluster", "drill", 8), ("push", "bounce", 9) })
         {
-            if (paint.Done || paint.Booms >= 12 && paint.Stage == Fortress.Phase.Turn || ++n > 60 * 80) return false;
-            if (paint.MyTurn && paint.Stage == Fortress.Phase.Turn)
+            var paint = new Fortress(small, new[] { new Rectangle(60, 300, 340, 240), new Rectangle(560, 270, 340, 270) }, 3, new Random(seed), mine, theirs) { Wind = .4 };
+            game.Open(paint, Session.Fake(small), events: false);
+            paint.OnEvent = e => { if (e == "bounce") bounces++; else if (e == "split") splits++; else if (e == "power") powers++; };
+            int n = 0;
+            bool mainRun = mine == "giant";
+            (bad, first) = SceneKit.Repaint(ov, game, small, () =>
             {
-                double t = paint.Clock - paint.TurnAt;
-                paint.Aim = -1 + Math.Sin(paint.Clock * 3) * .5; // 조준경이 움직인다
-                if (t < .4) paint.Walk(paint.Me, 1, 1 / 60.0);
-                else if (t < .45) paint.Jump(paint.Me);
-                else if (t > 1.3 && paint.ChargeFrom < 0) paint.StartCharge();
-                else if (paint.ChargeFrom >= 0 && paint.Power > .5) paint.ReleaseCharge();
-            }
-            paint.Update(1 / 60.0);
-            game.Sync();
-            game.Track();
-            return true;
-        }, 60 * 90, every: 7);
-        Expect(bad == 0 && paint.Booms >= 2, $"바뀐 자리만 다시 칠해도 화면이 맞다: {bad}번 다름 (처음 {first}프레임), 폭발 {paint.Booms}번");
-        int holes = game.tiles.Count(t => t != null);
+                if (paint.Done || paint.Booms >= 12 && paint.Stage == Fortress.Phase.Turn || ++n > 60 * 80) return false;
+                if (mainRun && GhostOn(paint)) ghosts++;
+                if (mainRun && paint.HasLast && Mark(paint, paint.Me) >= 1000) tips++;
+                if (paint.MyTurn && paint.Stage == Fortress.Phase.Turn)
+                {
+                    double t = paint.Clock - paint.TurnAt;
+                    paint.Aim = -1 + Math.Sin(paint.Clock * 3) * .5; // 조준경이 움직인다
+                    if (t is > 1 and < 1.1 && !paint.StormOn) paint.PlaceStorm(paint.Me.X + 105, paint.CenterY(paint.Me) - 115); // 쏘는 길목에 폭풍을 둔다
+                    if (t < .4) paint.Walk(paint.Me, 1, 1 / 60.0);
+                    else if (t < .45) paint.Jump(paint.Me);
+                    else if (t > 1.3 && paint.ChargeFrom < 0) paint.StartCharge();
+                    else if (paint.ChargeFrom >= 0 && paint.Power > .5) paint.ReleaseCharge();
+                }
+                paint.Update(1 / 60.0);
+                game.Sync();
+                game.Track();
+                if (paint.StormOn) stormy++;
+                if (paint.Shells.Any(s => s.Boost)) glowing++;
+                return true;
+            }, 60 * 90, every: 7);
+            digs += paint.Carves - paint.Booms;
+            Expect(bad == 0 && paint.Booms >= (mainRun ? 2 : 1), $"바뀐 자리만 다시 칠해도 화면이 맞다 ({mine} · {theirs}): {bad}번 다름 (처음 {first}프레임), 폭발 {paint.Booms}번");
+            if (mainRun) holes = game.tiles.Count(t => t != null);
+        }
+        Expect(ghosts > 60 && tips > 60, $"그 판에 지난 발 표시(흐린 조준경·힘 세모)도 나왔다: {ghosts}·{tips}프레임");
+        Expect(bounces >= 2 && splits >= 2 && digs >= 4, $"그 판들에 새 대포의 튕김·갈라짐·굴도 나왔다: {bounces}·{splits}·{digs}");
+        Expect(stormy > 300 && powers >= 3 && glowing > 60, $"그 판들에 파워업 폭풍과 세진 포탄도 나왔다: 폭풍 {stormy}프레임, 세진 발 {powers}, 세진 포탄 {glowing}프레임");
+
         var end = new Fortress(small, new[] { new Rectangle(60, 300, 340, 240), new Rectangle(560, 270, 340, 270) }, 3, new Random(6), "normal", "normal");
         game.Open(end, Session.Fake(small), events: false);
         for (int i = 0; i < 20 && !end.Cpu.Dead; i++) end.Explode(end.Cpu.X, end.CenterY(end.Cpu));
@@ -546,6 +1053,6 @@ sealed partial class FortressGame
         game.game = null;
         game.DropTiles();
         game.DropGuide();
-        return $"조작은 마우스·←→·↑ 만, 구멍 그림 조각 {holes}장";
+        return $"조작은 마우스·←→·↑ 만, 지난 발(각도·힘)은 내 것만 다음 차례까지 남아 {ghosts}프레임 보임, 구멍 그림 조각 {holes}장";
     }
 }
