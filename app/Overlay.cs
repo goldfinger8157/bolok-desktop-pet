@@ -7,7 +7,6 @@ public sealed class Overlay : Form
     readonly Brain b;
     readonly Func<Sprites> sprites;
     readonly Func<Game?> game;
-    public Func<Worms?> WormsGame = () => null;
     public Func<Icbm?> IcbmGame = () => null;
     public Func<Visitor?> Guest = () => null;           // 놀러 온 떠난 친구
     public Func<Sprites?> GuestSprites = () => null;
@@ -19,8 +18,6 @@ public sealed class Overlay : Form
     Icbm? icbmSeen;
     int icbmVersion = -1;
     List<Rectangle> craterRects = new();
-    Worms? wormsSeen;
-    int blastsSeen;
     int gameSeen = -1;
     readonly SolidBrush redFill = new(Color.FromArgb(232, 72, 92));
     readonly SolidBrush barLine = new(Color.FromArgb(92, 58, 40)), barBack = new(Color.FromArgb(255, 243, 224)), barFill = new(Color.FromArgb(250, 185, 40));
@@ -96,16 +93,6 @@ public sealed class Overlay : Form
             foreach (var bit in ic.Bits) r.Add(Client(new Rectangle((int)bit.X - bit.Size, (int)bit.Y - bit.Size, bit.Size * 2, bit.Size * 2)));
             foreach (var bl in ic.Blasts) r.Add(Client(new Rectangle((int)bl.X - 62 * k, (int)bl.Y - 118 * k, 124 * k, 124 * k)));
         }
-        if (WormsGame() is { } wm)
-        {
-            int k = b.Scale, cell = b.CellPx;
-            foreach (var h in new[] { wm.Me, wm.Cpu }) r.Add(Client(new Rectangle((int)h.X - 24 * k, (int)h.Y - 54 * k, 48 * k, 58 * k)));
-            r.Add(Client(Rectangle.Inflate(new Rectangle((int)wm.Active.X, (int)wm.CenterY(wm.Active), 0, 0), (int)(cell * 1.4), (int)(cell * 1.4))));
-            foreach (var sh in wm.Shells) r.Add(Client(new Rectangle((int)sh.X - 12 * k, (int)sh.Y - 12 * k, 24 * k, 24 * k)));
-            foreach (var bl in wm.Blasts) if (wm.Clock - bl.At < .5) r.Add(Client(Rectangle.Inflate(new Rectangle((int)bl.X, (int)bl.Y, 0, 0), 22 * k, 22 * k)));
-            r.Add(Client(WormsHud(wm)));
-            if (WormsNote(wm) is { } note) r.Add(Client(NoteRect(b.X, b.Y, wm.Field, note)));
-        }
         for (var (ms, i) = (Modes(), 0); i < ms.Count; i++) if (ms[i].Running) ms[i].Dirty(this, r); // 번호로 돈다: 목록 약속(IReadOnlyList)을 foreach 로 돌면 프레임마다 메모리를 잡는다
         if (Guest() is { } gv) r.Add(Client(GuestRect(gv)));
         if (Present() is { } pr) r.Add(Client(Around(pr.X, pr.Y - 8 * b.Scale, 14 * b.Scale, 14 * b.Scale)));
@@ -151,15 +138,6 @@ public sealed class Overlay : Form
             }
         }
         else if (icbmSeen != null) { icbmSeen = null; craterRects.Clear(); }
-        if (WormsGame() is { } wm)
-        {
-            if (wm != wormsSeen) { (wormsSeen, blastsSeen) = (wm, 0); once.Add(Client(wm.Field)); }
-            for (; blastsSeen < wm.Blasts.Count; blastsSeen++)
-            {
-                var bl = wm.Blasts[blastsSeen];
-                once.Add(Client(Rectangle.Inflate(new Rectangle((int)bl.X, (int)bl.Y, 0, 0), (int)bl.R + 4, (int)bl.R + 4)));
-            }
-        }
         InvalidateMerged(last, now, once);
         (dirtySpare, last) = (last, now);
     }
@@ -244,7 +222,6 @@ public sealed class Overlay : Form
         }
         if (b.Saying) DrawNoteAt(g, b.X, b.Y, b.Area, b.SayLines!);
         if (game() is { } gm) DrawGame(g, gm);
-        if (WormsGame() is { } wm) DrawWorms(g, wm);
         if (IcbmGame() is { } ic) DrawIcbm(g, ic);
         for (var (ms, i) = (Modes(), 0); i < ms.Count; i++) if (ms[i].Running) ms[i].Draw(this, g);
         if (Guest() is { } gv && GuestSprites() is { } gs) DrawGuest(g, gv, gs);
@@ -621,109 +598,6 @@ public sealed class Overlay : Form
     }
 
     readonly SolidBrush chip = new(Color.FromArgb(200, 204, 212)), chipEdge = new(Color.FromArgb(90, 94, 104));
-
-    // ── 포트리스 ──
-    static string[]? WormsNote(Worms w) => w.Clock < 5
-        ? new[] { L.T("note.worms_gun", w.Me.Gun.Label, w.Me.Gun.Hp), L.T("note.gun_aim"), L.T("note.worms_fire"), L.T("note.worms_walk"), L.T("note.worms_wind"), L.T("note.esc") } : null;
-    readonly SolidBrush grass = new(Color.FromArgb(120, 200, 90)), grassDark = new(Color.FromArgb(70, 140, 60)), hpGood = new(Color.FromArgb(110, 200, 110)),
-        dirt = new(Color.FromArgb(139, 94, 60)), windFill = new(Color.FromArgb(96, 150, 230));
-    Pen? holePen;
-
-    Rectangle WormsHud(Worms w) => new(w.Field.Left + w.Field.Width / 2 - 46 * b.Scale, w.Field.Top + 4 * b.Scale, 92 * b.Scale, 14 * b.Scale);
-
-    void DrawWorms(Graphics g, Worms w)
-    {
-        var sp = sprites();
-        int k = b.Scale, cell = b.CellPx, small = Math.Max(1, k - 1);
-        foreach (var l in w.Lands) // 섬 윗변의 풀, 밑면의 흙 줄 (섬 두께가 보이게)
-        {
-            var r = Client(l);
-            g.FillRectangle(grass, r.X, r.Y, r.Width, 2 * k);
-            g.FillRectangle(grassDark, r.X, r.Y + 2 * k, r.Width, k);
-            g.FillRectangle(dirt, r.X, r.Bottom - 2 * k, r.Width, 2 * k);
-        }
-        if (w.Blasts.Count > 0) // 깎인 자리는 섬 안에서만 까만 구멍
-        {
-            var state = g.Save();
-            using var land = new Region();
-            land.MakeEmpty();
-            foreach (var l in w.Lands) land.Union(Client(l));
-            g.SetClip(land, System.Drawing.Drawing2D.CombineMode.Intersect);
-            holePen ??= new Pen(holeEdge.Color, k);
-            foreach (var bl in w.Blasts)
-            {
-                var c = ToClient(bl.X, bl.Y);
-                int r = (int)bl.R;
-                g.FillEllipse(holeFill, c.X - r, c.Y - r, 2 * r, 2 * r);
-                g.DrawEllipse(holePen, c.X - r, c.Y - r, 2 * r, 2 * r);
-            }
-            g.Restore(state);
-        }
-        var cpu = w.Cpu; // 라이벌 (볼록이는 제 창으로 그려진다)
-        if (!cpu.Out)
-        {
-            var p = ToClient(cpu.X - 20 * k, cpu.Y - 40 * k);
-            g.DrawImageUnscaled(sp.Get($"adult_grumpy/1/{w.PoseOf(cpu)}", (int)(w.Clock * 6), k, cpu.Dir < 0), p.X, p.Y);
-        }
-        foreach (var h in new[] { w.Me, cpu }) // 체력 막대, 차례 화살표
-        {
-            if (h.Out) continue;
-            var bar = ToClient(h.X - 10 * k, h.Y - 34 * k);
-            g.FillRectangle(barLine, bar.X - 1, bar.Y - 1, 20 * k + 2, 2 * k + 2);
-            g.FillRectangle(barBack, bar.X, bar.Y, 20 * k, 2 * k);
-            g.FillRectangle(h.Hp * 3 < h.Gun.Hp ? redFill : hpGood, bar.X, bar.Y, 20 * k * h.Hp / h.Gun.Hp, 2 * k);
-            Number(g, h.Hp, (int)h.X + 16 * k, (int)h.Y - 33 * k, small);
-            if (w.Active == h && w.Stage == Worms.Phase.Turn)
-            {
-                int bob = (int)(Math.Sin(w.Clock * 6) * k), ax = bar.X + 10 * k, ay = bar.Y - 4 * k + bob;
-                g.FillPolygon(barFill, new[] { new Point(ax - 3 * k, ay - 3 * k), new Point(ax + 3 * k, ay - 3 * k), new Point(ax, ay) });
-            }
-        }
-        if (w.Stage == Worms.Phase.Turn && !w.Active.Dead && (w.MyTurn || w.PoseOf(cpu) == "angry")) // 조준경과 힘
-        {
-            var h = w.Active;
-            double a = w.MyTurn ? w.Aim : w.CpuAim;
-            Put(g, sp.Get("game/aim", 0, small), (int)(h.X + Math.Cos(a) * cell * .9), (int)(w.CenterY(h) + Math.Sin(a) * cell * .9));
-            if (w.MyTurn && w.ChargeFrom >= 0)
-            {
-                var bar = ToClient(h.X - 10 * k, h.Y - 30 * k);
-                g.FillRectangle(barLine, bar.X - 1, bar.Y - 1, 20 * k + 2, 2 * k + 2);
-                g.FillRectangle(w.Power > .8 ? redFill : barFill, bar.X, bar.Y, (int)(20 * k * w.Power), 2 * k);
-            }
-        }
-        foreach (var s in w.Shells)
-        {
-            if (s.Kind == "multi") { Put(g, sp.Get("game/ball", 0, small), (int)s.X, (int)s.Y); continue; } // 멀티캐논은 작은 쇠공
-            int sk = s.Kind == "giant" ? k * 2 : k; // 왕대포는 두 배
-            var state = g.Save(); // 포탄은 날아가는 쪽을 본다
-            var c = ToClient(s.X, s.Y);
-            g.TranslateTransform(c.X, c.Y);
-            g.RotateTransform((float)(Math.Atan2(s.Vy, s.Vx) * 180 / Math.PI));
-            g.DrawImageUnscaled(sp.Get("game/rocket", 0, sk), (int)(-19.5 * sk), (int)(-19.5 * sk));
-            g.Restore(state);
-        }
-        foreach (var bl in w.Blasts)
-        {
-            double t = w.Clock - bl.At;
-            if (t < .45) Put(g, sp.Get("game/boom", Math.Min(3, (int)(t / .11)), Math.Max(1, (int)Math.Round(k * bl.R / (50.0 * k / 3)))), (int)bl.X, (int)bl.Y); // 폭발 크기만큼
-        }
-        // 위 가운데: 구름 + 바람 화살표(길이)와 세기 칸 다섯, 남은 시간, 지금 차례 대포
-        var hud = Client(WormsHud(w));
-        g.FillRectangle(barLine, hud);
-        g.FillRectangle(Brushes.White, hud.X + k, hud.Y + k, hud.Width - 2 * k, hud.Height - 2 * k);
-        var at = new Point(hud.X + Left, hud.Y + Top);
-        int mid = hud.Y + hud.Height / 2;
-        Put(g, sp.Get("prop/cloud", 0, 1), at.X + 9 * k, at.Y + hud.Height / 2);
-        int wx = hud.X + 30 * k, len = (int)(Math.Abs(w.Wind) * 12 * k) + k, dir = w.Wind >= 0 ? 1 : -1;
-        g.FillRectangle(windFill, Math.Min(wx, wx + dir * len), mid - k, len, 2 * k);
-        g.FillPolygon(windFill, new[] { new Point(wx + dir * (len + 4 * k), mid), new Point(wx + dir * len, mid - 4 * k), new Point(wx + dir * len, mid + 4 * k) });
-        int bars = (int)Math.Round(Math.Abs(w.Wind) * 5);
-        for (int i = 0; i < 5; i++) g.FillRectangle(i < bars ? windFill : barBack, hud.X + 48 * k + i * 3 * k, mid - 3 * k, 2 * k, 6 * k);
-        Number(g, (int)Math.Ceiling(w.TimeLeft), at.X + 70 * k, at.Y + hud.Height / 2, small);
-        var gun = w.Active.Gun;
-        Put(g, gun.Shells > 1 ? sp.Get("game/ball", 0, small) : sp.Get("game/rocket", 0, gun.Name == "giant" ? k : small), at.X + 84 * k, at.Y + hud.Height / 2);
-        if (WormsNote(w) is { } note) DrawNoteAt(g, b.X, b.Y, w.Field, note);
-    }
 
     void DrawNote(Graphics g, Rectangle r, string[] lines, bool tailRight)
     {
