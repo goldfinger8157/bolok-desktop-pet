@@ -141,7 +141,6 @@ public sealed class DevLink
             case "icbm": form.IcbmCommand(a); break;
             case "species": form.SetSpecies(a[1], a.Length > 2 ? int.Parse(a[2]) : 0); break; // 예: species fox 2 (2번 색)
             case "release": form.Release(); break;
-            case "break": form.BreakCommand(a.Length > 1 ? a[1] : "start", a.Length > 2 ? a[2] : null); break;
             case "esc": form.BossKey(); break; // 보스 키 (Esc 를 누른 것과 같다)
             case "game": form.StartGame(a.Length > 1 ? a[1] : null, a.Length > 2 ? a[2] : null); break;
             case "fire": form.GameMouse(false, int.Parse(a[1]), int.Parse(a[2])); form.GameRelease(); break;

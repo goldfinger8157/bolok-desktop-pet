@@ -1,6 +1,6 @@
 namespace Bolok;
 
-public enum Mode { Wander, Anim, GoBite, Chase, Held, Thrown, GoHide, SlipIn, Hiding, Emerge, GoNap, Perch, Prey, Paddle, Puppet }
+public enum Mode { Wander, Anim, GoBite, Chase, Held, Thrown, GoHide, SlipIn, Hiding, Emerge, GoNap, Perch, Prey, Puppet }
 
 public sealed class Hole { public int Cx, Cy; public readonly List<Point> Cells = new(); }
 public sealed class Bit { public double X, Y, Vx, Vy, G, Life; public Color C; }
@@ -112,7 +112,7 @@ public sealed class Brain
 
     void Play(string pose, double sec, Action? after = null)
     {
-        if (Mode is Mode.Prey or Mode.Paddle or Mode.Puppet) return; // 게임 중에는 다른 동작이 끼어들지 않는다
+        if (Mode is Mode.Prey or Mode.Puppet) return; // 게임 중에는 다른 동작이 끼어들지 않는다
         Mode = Mode.Anim; Pose = pose; until = Now + sec; then = after;
         solo = false; tailSpin = false; fleeing = false;
     }
@@ -190,7 +190,7 @@ public sealed class Brain
     // 마우스 손짓 (PetForm 이 커서 움직임에서 알아낸다, Gestures.cs): 쓰다듬기·툭툭은 쓰다듬기로 쳐 주고, 찌르기는 깜짝
     public void Gesture(string kind)
     {
-        if (P.Stage == "egg" || Mode is Mode.Thrown or Mode.Held or Mode.Puppet or Mode.Hiding or Mode.SlipIn or Mode.Emerge or Mode.Paddle or Mode.Prey) return;
+        if (P.Stage == "egg" || Mode is Mode.Thrown or Mode.Held or Mode.Puppet or Mode.Hiding or Mode.SlipIn or Mode.Emerge or Mode.Prey) return;
         Dbg.Log("gesture", ("kind", kind), ("asleep", P.Asleep));
         if (kind != "poke" && Now >= nextPet) { P.Act(K, "pet"); nextPet = Now + K.PetCooldownSec; }
         if (kind == "poke") P.Act(K, "annoy");
@@ -459,7 +459,7 @@ public sealed class Brain
 
     void OnActivated(Win w)
     {
-        if (P.Stage == "egg" || Mode is Mode.Held or Mode.Thrown or Mode.Chase or Mode.GoBite or Mode.Prey or Mode.Paddle or Mode.Puppet) return;
+        if (P.Stage == "egg" || Mode is Mode.Held or Mode.Thrown or Mode.Chase or Mode.GoBite or Mode.Prey or Mode.Puppet) return;
         if (Mode == Mode.Anim && !solo) return;
         if (Mode == Mode.Perch && w.H == perch.H) return; // 누워 있는 창을 누른 것뿐이다
         bool hiding = Mode is Mode.GoHide or Mode.SlipIn or Mode.Hiding or Mode.Emerge;
@@ -489,7 +489,7 @@ public sealed class Brain
         Active = Foreground();
         if (Active is not { } w) return;
         if (was is not { } old || old.H != w.H) { OnActivated(w); return; }
-        if (old.R == w.R || Mode is Mode.Held or Mode.Thrown or Mode.Prey or Mode.Paddle or Mode.Puppet) return;
+        if (old.R == w.R || Mode is Mode.Held or Mode.Thrown or Mode.Prey or Mode.Puppet) return;
         if (HideSpots.HitBy(old.R, w.R, Body(X, Y)) is { } hit) Knock(hit.Dx, hit.Dy, hit.Moved / Math.Max(gap, .01));
     }
 
@@ -672,46 +672,6 @@ public sealed class Brain
         Play(won ? "happy" : "sad", 1.6);
         Emote(won ? "star" : "tear", 1.6);
         Dbg.Log(what + "-end", log.Append(("won", won)).ToArray());
-    }
-
-    // ── 벽돌깨기: 모니터 맨 아래에서 쟁반을 머리 위로 받치고 마우스를 따라 좌우로 ──
-    public Breakout? Break;
-
-    public void StartBreak(Breakout bo)
-    {
-        Break = bo;
-        Behind = false;
-        fleeing = false;
-        Foods.Clear();
-        P.Asleep = false;
-        Mode = Mode.Paddle;
-        (X, Y) = (bo.Field.Left + bo.Field.Width / 2.0, bo.Field.Bottom - K.FloorGap);
-        Pose = "carry";
-    }
-
-    public void EndBreak()
-    {
-        if (Break is not { } bo) return;
-        Break = null;
-        Mode = Mode.Wander;
-        next = Now + 2;
-        bool won = bo.Stage == Breakout.Phase.Won;
-        P.Act(K, "play"); // 한 판은 놀아주기 한 번
-        Play(won ? "happy" : "sad", 1.6);
-        Emote(won ? "star" : "tear", 1.6);
-        Dbg.Log("break-end", ("broken", bo.Broken), ("tiles", bo.Tiles.Count), ("won", won), ("sec", Math.Round(bo.Clock)));
-    }
-
-    void Paddling(double dt)
-    {
-        var bo = Break!;
-        double half = bo.PlateW / 2.0;
-        double to = Math.Clamp(Mouse.X, bo.Field.Left + half, bo.Field.Right - half);
-        X += (to - X) * Math.Min(1, dt * 30); // 거의 바로 따라가되 살짝 미끄러진다
-        Y = bo.Field.Bottom - K.FloorGap;
-        Dir = 1;
-        P.Asleep = false;
-        Pose = "carry";
     }
 
     // 창 윗변에 올라가 누워 잔다
@@ -1163,10 +1123,6 @@ public sealed class Brain
 
             case Mode.Prey:
                 Prey(dt);
-                break;
-
-            case Mode.Paddle:
-                Paddling(dt);
                 break;
 
             case Mode.Puppet: // 포트리스: 자리와 자세는 게임이 정한다

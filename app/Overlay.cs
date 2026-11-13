@@ -7,7 +7,6 @@ public sealed class Overlay : Form
     readonly Brain b;
     readonly Func<Sprites> sprites;
     readonly Func<Game?> game;
-    public Func<Breakout?> Break = () => null;
     public Func<Worms?> WormsGame = () => null;
     public Func<Icbm?> IcbmGame = () => null;
     public Func<Visitor?> Guest = () => null;           // 놀러 온 떠난 친구
@@ -22,8 +21,6 @@ public sealed class Overlay : Form
     List<Rectangle> craterRects = new();
     Worms? wormsSeen;
     int blastsSeen;
-    Breakout? breakSeen;
-    int brokenSeen;
     int gameSeen = -1;
     readonly SolidBrush redFill = new(Color.FromArgb(232, 72, 92));
     readonly SolidBrush barLine = new(Color.FromArgb(92, 58, 40)), barBack = new(Color.FromArgb(255, 243, 224)), barFill = new(Color.FromArgb(250, 185, 40));
@@ -109,15 +106,6 @@ public sealed class Overlay : Form
             r.Add(Client(WormsHud(wm)));
             if (WormsNote(wm) is { } note) r.Add(Client(NoteRect(b.X, b.Y, wm.Field, note)));
         }
-        if (Break() is { } bo)
-        {
-            foreach (var ball in bo.Balls) r.Add(Client(BallRect(bo, ball)));
-            foreach (var it in bo.Items) r.Add(Client(ItemRect(it)));
-            r.Add(Client(PlateRect(bo)));
-            r.Add(Client(LivesRect(bo)));
-            foreach (var sh in bo.Shards) r.Add(Client(new Rectangle((int)sh.X - sh.Size * 2, (int)sh.Y - sh.Size * 2, sh.Size * 4, sh.Size * 4)));
-            if (BreakNote(bo) is { } note) r.Add(Client(NoteRect(b.X, b.Y, bo.Field, note)));
-        }
         for (var (ms, i) = (Modes(), 0); i < ms.Count; i++) if (ms[i].Running) ms[i].Dirty(this, r); // 번호로 돈다: 목록 약속(IReadOnlyList)을 foreach 로 돌면 프레임마다 메모리를 잡는다
         if (Guest() is { } gv) r.Add(Client(GuestRect(gv)));
         if (Present() is { } pr) r.Add(Client(Around(pr.X, pr.Y - 8 * b.Scale, 14 * b.Scale, 14 * b.Scale)));
@@ -152,11 +140,6 @@ public sealed class Overlay : Form
         var now = Dirty();
         var once = dirtyOnce;
         once.Clear();
-        if (Break() is { } bo) // 새 판이면 창 자리 전체를, 그다음엔 새로 깨진 조각 자리만 한 번 다시 칠한다
-        {
-            if (bo != breakSeen) { (breakSeen, brokenSeen) = (bo, 0); once.AddRange(bo.Boards.Select(r => Client(Rectangle.Inflate(r, 2, 2)))); }
-            for (; brokenSeen < bo.BrokenOrder.Count; brokenSeen++) once.Add(Client(Rectangle.Inflate(bo.BrokenOrder[brokenSeen].R, 2, 2)));
-        }
         if (IcbmGame() is { } ic) // 구멍이 생기거나 줄면 그 자리만 한 번 다시 칠한다
         {
             if (ic != icbmSeen || ic.Version != icbmVersion)
@@ -220,17 +203,7 @@ public sealed class Overlay : Form
         }
     }
 
-    // 그리는 데 걸린 시간 (모든 모니터 합). 벽돌깨기 판이 끝날 때 로그에 남긴다
-    public static double PaintMsSum, PaintMsMax;
-    public static int Paints;
-
-    protected override void OnPaint(PaintEventArgs e)
-    {
-        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-        Render(e.Graphics);
-        double ms = System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
-        (PaintMsSum, PaintMsMax, Paints) = (PaintMsSum + ms, Math.Max(PaintMsMax, ms), Paints + 1);
-    }
+    protected override void OnPaint(PaintEventArgs e) => Render(e.Graphics);
 
     public void Render(Graphics g)
     {
@@ -271,7 +244,6 @@ public sealed class Overlay : Form
         }
         if (b.Saying) DrawNoteAt(g, b.X, b.Y, b.Area, b.SayLines!);
         if (game() is { } gm) DrawGame(g, gm);
-        if (Break() is { } bo) DrawBreak(g, bo);
         if (WormsGame() is { } wm) DrawWorms(g, wm);
         if (IcbmGame() is { } ic) DrawIcbm(g, ic);
         for (var (ms, i) = (Modes(), 0); i < ms.Count; i++) if (ms[i].Running) ms[i].Draw(this, g);
@@ -430,88 +402,7 @@ public sealed class Overlay : Form
         DrawNote(g, Client(r), lines, r.X < petX);
     }
 
-    // ── 벽돌깨기: 창 위에 조각 금, 깨진 자리는 까만 구멍, 떨어지는 파편, 쟁반, 쇠공, 남은 공 ──
-    static string[]? BreakNote(Breakout bo) => bo.Clock < 4 ? new[] { L.T("note.break_mouse"), L.T("note.break_click"), L.T("note.esc") } : null;
-
-    Rectangle BallRect(Breakout bo, Breakout.Ball ball) => new((int)ball.X - bo.BallR * 2 - 2, (int)ball.Y - bo.BallR * 2 - 2, bo.BallR * 4 + 4, bo.BallR * 4 + 4); // 왕볼 크기까지
-    Rectangle ItemRect(Breakout.Item it) => new((int)it.X - 7 * b.Scale, (int)it.Y - 5 * b.Scale, 14 * b.Scale, 10 * b.Scale);
-    Rectangle PlateRect(Breakout bo) => new((int)bo.PlateX - bo.PlateW / 2 - 2 * b.Scale, (int)bo.PlateTop - 2 * b.Scale, bo.PlateW + 4 * b.Scale, bo.PlateH + 4 * b.Scale);
-    Rectangle LivesRect(Breakout bo) => new(bo.Field.Left + 4 * b.Scale, bo.Field.Bottom - 10 * b.Scale, 90 * b.Scale, 8 * b.Scale); // 남은 공 + 켜진 아이템
-
-    readonly SolidBrush crackLight = new(Color.FromArgb(244, 246, 250)), crackDark = new(Color.FromArgb(58, 62, 72)),
-        holeFill = new(Color.FromArgb(14, 16, 22)), holeEdge = new(Color.FromArgb(46, 50, 60)), shardFill = new(Color.FromArgb(214, 222, 234));
-
-    readonly PointF[] shardPts = new PointF[4];
-
-    void DrawBreak(Graphics g, Breakout bo)
-    {
-        var sp = sprites();
-        int k = b.Scale, u = Math.Max(1, k / 2);
-        var clip = Rectangle.Ceiling(g.ClipBounds);
-        foreach (var t in bo.Tiles)
-        {
-            var r = Client(t.R);
-            if (!r.IntersectsWith(clip)) continue; // 다시 칠하는 곳 밖은 건너뛴다
-            if (t.Broken)
-            {
-                g.FillRectangle(holeFill, r);
-                g.FillRectangle(holeEdge, r.X, r.Y, r.Width, u); // 위쪽에 얇은 턱
-            }
-            else // 금: 위·왼쪽은 밝게, 아래·오른쪽은 어둡게 한 줄씩. 창 바탕이 밝든 어둡든 보인다
-            {
-                g.FillRectangle(crackLight, r.X, r.Y, r.Width, u);
-                g.FillRectangle(crackLight, r.X, r.Y, u, r.Height);
-                g.FillRectangle(crackDark, r.X, r.Bottom - u, r.Width, u);
-                g.FillRectangle(crackDark, r.Right - u, r.Y, u, r.Height);
-            }
-        }
-        foreach (var s in bo.Shards) // 돌며 떨어지는 파편 (창 내용은 찍지 않고 밝은 유리색으로만)
-        {
-            var c = ToClient(s.X, s.Y);
-            for (int i = 0; i < 4; i++)
-                shardPts[i] = new PointF(c.X + (float)(Math.Cos(s.Angle + i * Math.PI / 2) * s.Size), c.Y + (float)(Math.Sin(s.Angle + i * Math.PI / 2) * s.Size * .7));
-            g.FillPolygon(shardFill, shardPts);
-            g.DrawPolygon(Pens.DimGray, shardPts);
-        }
-        foreach (var it in bo.Items) // 떨어지는 아이템
-        {
-            var p = ToClient(it.X - 19.5 * k, it.Y - 19.5 * k);
-            g.DrawImageUnscaled(sp.Get("game/item_" + it.Kind, 0, k), p.X, p.Y);
-        }
-        // 쟁반: 양 끝 6칸은 그대로 두고 가운데를 늘인다 (가운데 칸은 모두 같아서 늘여도 티가 안 난다)
-        int bump = bo.Clock - bo.PlateHitAt < .08 ? k : 0; // 공을 받으면 쟁반이 살짝 눌린다
-        var img = sp.Get("game/plate", 0, k);
-        var p0 = ToClient(bo.PlateX - bo.PlateW / 2.0, bo.PlateTop + bump);
-        int w = bo.PlateW, h = 5 * k;
-        var state = g.Save();
-        g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
-        g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
-        g.DrawImage(img, new Rectangle(p0.X, p0.Y, 6 * k, h), new Rectangle(2 * k, 17 * k, 6 * k, h), GraphicsUnit.Pixel);
-        g.DrawImage(img, new Rectangle(p0.X + 6 * k, p0.Y, w - 12 * k, h), new Rectangle(8 * k, 17 * k, 24 * k, h), GraphicsUnit.Pixel);
-        g.DrawImage(img, new Rectangle(p0.X + w - 6 * k, p0.Y, 6 * k, h), new Rectangle(32 * k, 17 * k, 6 * k, h), GraphicsUnit.Pixel);
-        g.Restore(state);
-        if (bo.Stage == Breakout.Phase.Play)
-            foreach (var ball in bo.Balls)
-            {
-                int bk = bo.Giant ? k * 2 : k; // 왕볼은 두 배
-                var p = ToClient(ball.X - 19.5 * bk, ball.Y - 19.5 * bk);
-                g.DrawImageUnscaled(sp.Get(bo.Fire ? "game/fireball" : "game/ball", 0, bk), p.X, p.Y);
-            }
-        // 왼쪽 아래: 남은 공(날아가는 것은 빼고)과 켜진 아이템. 끝나기 2초 전부터 깜빡인다
-        var lives = Client(LivesRect(bo));
-        int small = Math.Max(1, k - 1), x = lives.X - 16 * small;
-        for (int i = 0; i < bo.Lives - 1; i++, x += 9 * small)
-            g.DrawImageUnscaled(sp.Get("game/ball", 0, small), x, lives.Y - 16 * small);
-        x += 6 * small;
-        foreach (var (kind, until) in new[] { ("wide", bo.WideUntil), ("giant", bo.GiantUntil), ("fire", bo.FireUntil), ("slow", bo.SlowUntil) })
-        {
-            if (bo.Clock >= until) continue;
-            if (until - bo.Clock > 2 || (int)(bo.Clock * 6) % 2 == 0)
-                g.DrawImageUnscaled(sp.Get("game/item_" + kind, 0, small), x - 3 * small, lives.Y - 16 * small);
-            x += 14 * small;
-        }
-        if (BreakNote(bo) is { } note) DrawNoteAt(g, b.X, b.Y, bo.Field, note);
-    }
+    readonly SolidBrush holeFill = new(Color.FromArgb(14, 16, 22)), holeEdge = new(Color.FromArgb(46, 50, 60)); // 구멍 속·턱 (ICBM·포트리스)
 
     // ── ICBM ──
     readonly SolidBrush rimBrush = new(Color.FromArgb(70, 60, 52)), smokeBrush = new(Color.FromArgb(186, 184, 188));

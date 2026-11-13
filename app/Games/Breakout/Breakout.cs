@@ -6,6 +6,7 @@ namespace Bolok;
 public sealed class Breakout
 {
     public sealed class Tile { public Rectangle R; public bool Broken; }
+    public readonly record struct Grid(Rectangle R, int Cols, int Rows, int First); // First: Tiles 에서 이 창의 첫 조각
     public sealed class Ball { public double X, Y, Vx, Vy, StuckDx, StuckAt; public bool Stuck, Lost; }
     public sealed class Item { public string Kind = ""; public double X, Y; }
     public sealed class Shard { public double X, Y, Vx, Vy, Angle, Spin, Born; public int Size; }
@@ -16,12 +17,16 @@ public sealed class Breakout
     // 공을 붙잡는 끈끈이는 뺐다 (YELL)
     public static readonly string[] Kinds = { "split", "wide", "giant", "fire", "slow", "life" };
     static readonly double[] KindWeights = { 40, 16, 14, 10, 6, 14 };
+    static readonly double KindTotal = KindWeights.Sum();
+    static readonly string[] KindEvents = Kinds.Select(k => "item:" + k).ToArray();
     public const double ItemChance = .18, WideSec = 15, GiantSec = 8, FireSec = 8, SlowSec = 8, AutoLaunch = 3, ShardSec = 1.1;
+    public const double EndSec = 3.5; // 끝난 뒤 결과를 보이는 시간
     public const int MaxBalls = 12, MaxLives = 5, MaxShards = 40;
 
     public readonly Rectangle Field;                 // 모니터 작업 영역
     public readonly List<Rectangle> Boards;          // 조각낸 창들
     public readonly List<Tile> Tiles = new();
+    public readonly List<Grid> Grids = new();        // 창마다 조각 격자. Tiles 는 창 차례, 그 안에서 줄 차례(위에서 아래, 왼쪽에서 오른쪽)로 들어 있다
     public readonly List<Tile> BrokenOrder = new();  // 깨진 차례. 화면은 새로 깨진 조각 자리만 다시 칠한다
     public readonly List<Ball> Balls = new();
     public readonly List<Item> Items = new();
@@ -32,7 +37,7 @@ public sealed class Breakout
     public int Lives = 3, Broken;
     public Phase Stage = Phase.Play;
     public Action<string>? OnEvent;
-    public bool Done => Stage != Phase.Play && Clock - EndAt > 2;
+    public bool Done => Stage != Phase.Play && Clock - EndAt > EndSec;
     public bool Wide => Clock < WideUntil;
     public bool Slow => Clock < SlowUntil;
     public bool Giant => Clock < GiantUntil;
@@ -53,6 +58,7 @@ public sealed class Breakout
             // 조각은 대략 90×30 (배율 3 기준), 납작한 벽돌 모양 (YELL: "가로로 나누는걸 더 쪼개줘")
             int cols = Math.Clamp((int)Math.Round(board.Width / (90 * sf)), 3, 18);
             int rows = Math.Clamp((int)Math.Round(board.Height / (30 * sf)), 2, 30);
+            Grids.Add(new Grid(board, cols, rows, Tiles.Count));
             for (int r = 0; r < rows; r++)
                 for (int c = 0; c < cols; c++)
                     Tiles.Add(new Tile
@@ -110,8 +116,9 @@ public sealed class Breakout
     public void Launch()
     {
         bool any = false;
-        foreach (var b in Balls.Where(b => b.Stuck))
+        foreach (var b in Balls)
         {
+            if (!b.Stuck) continue;
             double a = b.StuckDx == 0 ? (rng.NextDouble() * 2 - 1) * 20 * Math.PI / 180 : Angle(b.StuckDx);
             (b.Vx, b.Vy, b.Stuck) = (Speed * Math.Sin(a), -Speed * Math.Cos(a), false);
             any = true;
@@ -121,40 +128,58 @@ public sealed class Breakout
 
     double Angle(double dx) => Math.Clamp(dx / (PlateW / 2.0), -1, 1) * 60 * Math.PI / 180; // 가운데는 똑바로, 끝은 60도
 
-    // 쟁반은 볼록이를 따라다닌다. 볼록이 자리를 받는다
+    // 쟁반은 볼록이를 따라다닌다. 볼록이 자리를 받는다.
+    // 프레임마다 도는 곳이라 목록을 새로 만들지 않는다 (2026-11-13: 전에는 프레임마다 1.5KB 를 잡았다)
     public void Update(double dt, double plateX, double plateTop)
     {
         Clock += dt;
         (PlateX, PlateTop) = (plateX, plateTop);
-        foreach (var s in Shards) { s.Vy += 1800 * sf * dt; s.X += s.Vx * dt; s.Y += s.Vy * dt; s.Angle += s.Spin * dt; }
-        Shards.RemoveAll(s => Clock - s.Born > ShardSec);
+        int keep = 0;
+        for (int i = 0; i < Shards.Count; i++)
+        {
+            var s = Shards[i];
+            s.Vy += 1800 * sf * dt; s.X += s.Vx * dt; s.Y += s.Vy * dt; s.Angle += s.Spin * dt;
+            if (Clock - s.Born > ShardSec) spare.Push(s);
+            else Shards[keep++] = s;
+        }
+        Shards.RemoveRange(keep, Shards.Count - keep);
         if (Stage != Phase.Play) return;
 
-        foreach (var it in Items.ToList()) // 아이템은 똑바로 떨어진다. 쟁반으로 받으면 바로 효과
+        for (int i = 0; i < Items.Count;) // 아이템은 똑바로 떨어진다. 쟁반으로 받으면 바로 효과
         {
+            var it = Items[i];
             it.Y += 240 * sf * dt;
             if (Math.Abs(it.X - PlateX) <= PlateW / 2.0 + ItemR && it.Y + ItemR >= PlateTop && it.Y - ItemR <= PlateTop + PlateH)
             {
-                Items.Remove(it);
+                Items.RemoveAt(i);
                 Apply(it.Kind);
             }
-            else if (it.Y - ItemR > Field.Bottom) Items.Remove(it);
+            else if (it.Y - ItemR > Field.Bottom) Items.RemoveAt(i);
+            else i++;
         }
 
-        foreach (var b in Balls.Where(b => b.Stuck)) (b.X, b.Y) = (PlateX + b.StuckDx, PlateTop - BallR); // 쟁반 위에 얹혀 따라다닌다
-        if (Balls.Any(b => b.Stuck && Clock - b.StuckAt > AutoLaunch)) Launch(); // 안 누르면 3초 뒤 저절로
+        bool late = false;
+        foreach (var b in Balls)
+        {
+            if (!b.Stuck) continue;
+            (b.X, b.Y) = (PlateX + b.StuckDx, PlateTop - BallR); // 쟁반 위에 얹혀 따라다닌다
+            late |= Clock - b.StuckAt > AutoLaunch;
+        }
+        if (late) Launch(); // 안 누르면 3초 뒤 저절로
 
         double speed = Speed * (Slow ? .65 : 1);
-        foreach (var b in Balls.Where(b => !b.Stuck))
+        foreach (var b in Balls)
         {
+            if (b.Stuck) continue;
             double v = Math.Sqrt(b.Vx * b.Vx + b.Vy * b.Vy);
             if (v > 0) (b.Vx, b.Vy) = (b.Vx / v * speed, b.Vy / v * speed);
         }
         // 빠른 공이 조각이나 쟁반을 건너뛰지 않게 반지름 절반씩 나눠 움직인다
         int steps = Math.Max(1, (int)Math.Ceiling(speed * dt / (BallR * .5)));
         for (int i = 0; i < steps && Stage == Phase.Play; i++)
-            foreach (var b in Balls.Where(b => !b.Stuck && !b.Lost).ToList()) Step(b, dt / steps);
-        Balls.RemoveAll(b => b.Lost);
+            for (int j = 0, n = Balls.Count; j < n; j++)
+                if (Balls[j] is { Stuck: false, Lost: false } b) Step(b, dt / steps);
+        Balls.RemoveAll(static b => b.Lost);
         if (Stage == Phase.Play && Balls.Count == 0) Miss();
     }
 
@@ -179,23 +204,35 @@ public sealed class Breakout
         }
         if (b.Y - r > Field.Bottom) { b.Lost = true; return; }
 
-        foreach (var t in Tiles)
+        // 조각: 공이 닿을 수 있는 칸만 본다 (창마다 격자에서 공 둘레 칸을 어림해 한 칸씩 넉넉히). 보는 차례는 Tiles 차례 그대로다
+        foreach (var gr in Grids)
         {
-            if (t.Broken) continue;
-            double cx = Math.Clamp(b.X, t.R.Left, t.R.Right), cy = Math.Clamp(b.Y, t.R.Top, t.R.Bottom);
-            double dx = b.X - cx, dy = b.Y - cy;
-            if (dx * dx + dy * dy > r * (double)r) continue;
-            if (Giant) { Smash(t); if (Stage != Phase.Play) return; continue; } // 왕볼은 닿는 조각을 한꺼번에 부수며 쭉 간다
-            if (!Fire) // 불공은 튕기지 않고 뚫고 간다. 아니면 옆면은 좌우로, 윗면·아랫면은 위아래로
-            {
-                if (Math.Abs(dx) > Math.Abs(dy)) b.Vx = Math.Sign(dx) * Math.Abs(b.Vx);
-                else if (dy != 0) b.Vy = Math.Sign(dy) * Math.Abs(b.Vy);
-                else b.Vy = -b.Vy; // 공 가운데가 조각 안에 들어갔을 때
-            }
-            Smash(t);
-            return; // 한 걸음에 하나만
+            var o = gr.R;
+            if (b.X + r < o.Left || b.X - r > o.Right || b.Y + r < o.Top || b.Y - r > o.Bottom) continue;
+            int c0 = Math.Max(0, (int)Math.Floor((b.X - r - o.Left) * gr.Cols / o.Width) - 1), c1 = Math.Min(gr.Cols - 1, (int)Math.Floor((b.X + r - o.Left) * gr.Cols / o.Width) + 1);
+            int r0 = Math.Max(0, (int)Math.Floor((b.Y - r - o.Top) * gr.Rows / o.Height) - 1), r1 = Math.Min(gr.Rows - 1, (int)Math.Floor((b.Y + r - o.Top) * gr.Rows / o.Height) + 1);
+            for (int row = r0; row <= r1; row++)
+                for (int col = c0; col <= c1; col++)
+                {
+                    var t = Tiles[gr.First + row * gr.Cols + col];
+                    if (t.Broken) continue;
+                    double cx = Math.Clamp(b.X, t.R.Left, t.R.Right), cy = Math.Clamp(b.Y, t.R.Top, t.R.Bottom);
+                    double dx = b.X - cx, dy = b.Y - cy;
+                    if (dx * dx + dy * dy > r * (double)r) continue;
+                    if (Giant) { Smash(t); if (Stage != Phase.Play) return; continue; } // 왕볼은 닿는 조각을 한꺼번에 부수며 쭉 간다
+                    if (!Fire) // 불공은 튕기지 않고 뚫고 간다. 아니면 옆면은 좌우로, 윗면·아랫면은 위아래로
+                    {
+                        if (Math.Abs(dx) > Math.Abs(dy)) b.Vx = Math.Sign(dx) * Math.Abs(b.Vx);
+                        else if (dy != 0) b.Vy = Math.Sign(dy) * Math.Abs(b.Vy);
+                        else b.Vy = -b.Vy; // 공 가운데가 조각 안에 들어갔을 때
+                    }
+                    Smash(t);
+                    return; // 한 걸음에 하나만
+                }
         }
     }
+
+    readonly Stack<Shard> spare = new(); // 다 떨어진 파편은 다시 쓴다
 
     void Smash(Tile t)
     {
@@ -204,22 +241,26 @@ public sealed class Breakout
         BrokenOrder.Add(t);
         int pieces = Math.Clamp(MaxShards - Shards.Count, 0, 4); // 불공·왕볼이 몰아 깨도 파편은 40개까지만
         for (int i = 0; i < pieces; i++) // 조각이 부서져 떨어진다
-            Shards.Add(new Shard
-            {
-                X = t.R.Left + rng.NextDouble() * t.R.Width, Y = t.R.Top + rng.NextDouble() * t.R.Height,
-                Vx = (rng.NextDouble() - .5) * 300 * sf, Vy = -rng.NextDouble() * 250 * sf, Spin = (rng.NextDouble() - .5) * 12,
-                Size = (int)((3 + rng.Next(5)) * sf), Born = Clock,
-            });
+        {
+            var s = spare.Count > 0 ? spare.Pop() : new Shard();
+            s.X = t.R.Left + rng.NextDouble() * t.R.Width; s.Y = t.R.Top + rng.NextDouble() * t.R.Height;
+            s.Vx = (rng.NextDouble() - .5) * 300 * sf; s.Vy = -rng.NextDouble() * 250 * sf; s.Spin = (rng.NextDouble() - .5) * 12;
+            (s.Size, s.Born, s.Angle) = ((int)((3 + rng.Next(5)) * sf), Clock, 0);
+            Shards.Add(s);
+        }
         Speed = Math.Min(baseSpeed * 1.5, Speed * 1.006); // 깰수록 조금씩 빨라진다
         if (Items.Count < 3 && rng.NextDouble() < ItemChance)
             Items.Add(new Item { Kind = PickKind(), X = t.R.Left + t.R.Width / 2.0, Y = t.R.Top + t.R.Height / 2.0 });
         OnEvent?.Invoke("break");
-        if (Tiles.All(x => x.Broken)) { Stage = Phase.Won; EndAt = Clock; Items.Clear(); OnEvent?.Invoke("won"); }
+        foreach (var x in Tiles) if (!x.Broken) return;
+        (Stage, EndAt) = (Phase.Won, Clock);
+        Items.Clear();
+        OnEvent?.Invoke("won");
     }
 
     string PickKind()
     {
-        double roll = rng.NextDouble() * KindWeights.Sum();
+        double roll = rng.NextDouble() * KindTotal;
         for (int i = 0; i < Kinds.Length; i++) if ((roll -= KindWeights[i]) < 0) return Kinds[i];
         return Kinds[0];
     }
@@ -229,9 +270,11 @@ public sealed class Breakout
         switch (kind)
         {
             case "split": // 날아가는 공마다 둘로. 모두 쟁반에 붙어 있으면 하나를 먼저 던진다
-                if (Balls.All(b => b.Stuck)) { Balls[0].StuckDx = 1; Launch(); }
-                foreach (var b in Balls.Where(b => !b.Stuck).ToList())
+                if (Balls.TrueForAll(static b => b.Stuck)) { Balls[0].StuckDx = 1; Launch(); }
+                for (int i = 0, n = Balls.Count; i < n; i++)
                 {
+                    var b = Balls[i];
+                    if (b.Stuck) continue;
                     if (Balls.Count >= MaxBalls) break;
                     var (vx, vy) = Turn(b.Vx, b.Vy, 30);
                     Balls.Add(new Ball { X = b.X, Y = b.Y, Vx = vx, Vy = vy });
@@ -244,7 +287,8 @@ public sealed class Breakout
             case "fire": FireUntil = Clock + FireSec; break;
             case "life": Lives = Math.Min(MaxLives, Lives + 1); break;
         }
-        OnEvent?.Invoke("item:" + kind);
+        int known = Array.IndexOf(Kinds, kind);
+        OnEvent?.Invoke(known >= 0 ? KindEvents[known] : "item:" + kind);
     }
 
     // 방향을 돌린다. 너무 눕지 않게(수직에서 70도까지) 잡는다

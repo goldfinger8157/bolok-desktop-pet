@@ -50,6 +50,7 @@ static class GameModes
     static readonly GameEntry[] All =
     {
         new("run", h => new RunGame(h), RunGame.Check, RunGame.Scene, RunGame.BenchRun),
+        new("breakout", h => new BreakoutGame(h), BreakoutGame.Check, BreakoutGame.Scene, BreakoutGame.BenchRun),
         new("minigun", h => new MinigunGame(h), MinigunGame.Check, MinigunGame.Scene, MinigunGame.BenchRun),
         new("raid", h => new RaidGame(h), RaidGame.Check, RaidGame.Scene, RaidGame.BenchRun),
         new("swarm", h => new SwarmGame(h), SwarmGame.Check, SwarmGame.Scene, SwarmGame.BenchRun),
