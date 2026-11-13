@@ -8,7 +8,6 @@ public sealed class Overlay : Form
     readonly Func<Sprites> sprites;
     readonly Func<Game?> game;
     public Func<Breakout?> Break = () => null;
-    public Func<Minigun?> MinigunGame = () => null;
     public Func<Icbm?> IcbmGame = () => null;
     public Func<Visitor?> Guest = () => null;           // 놀러 온 떠난 친구
     public Func<Sprites?> GuestSprites = () => null;
@@ -20,9 +19,6 @@ public sealed class Overlay : Form
     Icbm? icbmSeen;
     int icbmVersion = -1;
     List<Rectangle> craterRects = new();
-    Minigun? gunSeen;
-    int carvedSeen;
-    Bitmap? gunHoles;   // 파인 칸 그림 (칸 하나가 한 점, 그릴 때 4배로 늘린다)
     Breakout? breakSeen;
     int brokenSeen;
     int gameSeen = -1;
@@ -100,16 +96,6 @@ public sealed class Overlay : Form
             foreach (var bit in ic.Bits) r.Add(Client(new Rectangle((int)bit.X - bit.Size, (int)bit.Y - bit.Size, bit.Size * 2, bit.Size * 2)));
             foreach (var bl in ic.Blasts) r.Add(Client(new Rectangle((int)bl.X - 62 * k, (int)bl.Y - 118 * k, 124 * k, 124 * k)));
         }
-        if (MinigunGame() is { } mg)
-        {
-            int k = b.Scale;
-            foreach (var (pv, _) in mg.Guns()) r.Add(Client(Rectangle.Inflate(new Rectangle((int)pv.X, (int)pv.Y, 0, 0), 36 * mg.GunK, 36 * mg.GunK)));
-            foreach (var bl in mg.Bullets) r.Add(Client(Rectangle.FromLTRB((int)Math.Min(bl.X, bl.X - bl.Vx * .012) - 3, (int)Math.Min(bl.Y, bl.Y - bl.Vy * .012) - 3, (int)Math.Max(bl.X, bl.X - bl.Vx * .012) + 3, (int)Math.Max(bl.Y, bl.Y - bl.Vy * .012) + 3)));
-            foreach (var bit in mg.Bits) r.Add(Client(new Rectangle((int)bit.X - bit.Size, (int)bit.Y - bit.Size, bit.Size * 2, bit.Size * 2)));
-            foreach (var n in mg.Nades) r.Add(Client(new Rectangle((int)n.X - 8 * k, (int)n.Y - 8 * k, 16 * k, 16 * k)));
-            foreach (var bl in mg.Blasts) r.Add(Client(Rectangle.Inflate(new Rectangle((int)bl.X, (int)bl.Y, 0, 0), (int)(bl.R * 1.3), (int)(bl.R * 1.3))));
-            if (GunNote(mg) is { } note) r.Add(Client(NoteRect(b.X, b.Y, mg.Field, note)));
-        }
         if (Break() is { } bo)
         {
             foreach (var ball in bo.Balls) r.Add(Client(BallRect(bo, ball)));
@@ -169,22 +155,6 @@ public sealed class Overlay : Form
             }
         }
         else if (icbmSeen != null) { icbmSeen = null; craterRects.Clear(); }
-        if (MinigunGame() is { } mg) // 새 판이면 그림을 새로, 파인 자리는 그 자리만 칠하고 한 번 다시 그린다
-        {
-            if (mg != gunSeen)
-            {
-                (gunSeen, carvedSeen) = (mg, 0);
-                gunHoles?.Dispose();
-                gunHoles = Bounds.IntersectsWith(mg.Field) ? new Bitmap(mg.Gw, mg.Gh, System.Drawing.Imaging.PixelFormat.Format32bppArgb) : null;
-                once.Add(Client(mg.Field));
-            }
-            for (; carvedSeen < mg.Carved.Count; carvedSeen++)
-            {
-                PaintHoles(mg, mg.Carved[carvedSeen]);
-                once.Add(Client(Rectangle.Inflate(mg.Carved[carvedSeen], 2, 2)));
-            }
-        }
-        else if (gunSeen != null) { gunSeen = null; gunHoles?.Dispose(); gunHoles = null; }
         InvalidateMerged(last, now, once);
         (dirtySpare, last) = (last, now);
     }
@@ -280,7 +250,6 @@ public sealed class Overlay : Form
         if (b.Saying) DrawNoteAt(g, b.X, b.Y, b.Area, b.SayLines!);
         if (game() is { } gm) DrawGame(g, gm);
         if (Break() is { } bo) DrawBreak(g, bo);
-        if (MinigunGame() is { } mg) DrawMinigun(g, mg);
         if (IcbmGame() is { } ic) DrawIcbm(g, ic);
         for (var (ms, i) = (Modes(), 0); i < ms.Count; i++) if (ms[i].Running) ms[i].Draw(this, g);
         if (Guest() is { } gv && GuestSprites() is { } gs) DrawGuest(g, gv, gs);
@@ -737,81 +706,7 @@ public sealed class Overlay : Form
         for (int i = 0; i < text.Length; i++) Put(g, sprites().Get("num/" + (text[i] == '×' ? 'x' : text[i]), 0, k), x0 + i * step, (int)cy);
     }
 
-    // ── 미니건 ──
-    static string[]? GunNote(Minigun mg) => mg.Clock < 4 ? new[] { L.T("note.gun_aim"), L.T("note.gun_hold"), L.T("note.gun_right"), L.T("note.esc") } : null;
-    readonly Color holeColor = Color.FromArgb(14, 16, 22), rimColor = Color.FromArgb(70, 60, 52);
-    readonly SolidBrush chip = new(Color.FromArgb(200, 204, 212)), chipEdge = new(Color.FromArgb(90, 94, 104)), brass = new(Color.FromArgb(214, 170, 60)),
-        spark = new(Color.FromArgb(255, 236, 140)), sparkCore = new(Color.White);
-    Pen? tracerPen;
-
-    // 파인 칸은 까맣게, 아직 남은 칸과 맞닿은 가장자리는 그을린 갈색으로
-    void PaintHoles(Minigun mg, Rectangle r)
-    {
-        if (gunHoles == null) return;
-        int c = Minigun.Cell;
-        int x0 = Math.Max(0, (r.Left - mg.Field.Left) / c), x1 = Math.Min(mg.Gw - 1, (r.Right - mg.Field.Left) / c);
-        int y0 = Math.Max(0, (r.Top - mg.Field.Top) / c), y1 = Math.Min(mg.Gh - 1, (r.Bottom - mg.Field.Top) / c);
-        for (int gx = x0; gx <= x1; gx++)
-            for (int gy = y0; gy <= y1; gy++)
-            {
-                if (!mg.Gone(gx, gy)) { gunHoles.SetPixel(gx, gy, Color.Transparent); continue; }
-                bool rim = (mg.Land(gx - 1, gy) && !mg.Gone(gx - 1, gy)) || (mg.Land(gx + 1, gy) && !mg.Gone(gx + 1, gy))
-                    || (mg.Land(gx, gy - 1) && !mg.Gone(gx, gy - 1)) || (mg.Land(gx, gy + 1) && !mg.Gone(gx, gy + 1));
-                gunHoles.SetPixel(gx, gy, rim ? rimColor : holeColor);
-            }
-    }
-
-    void DrawMinigun(Graphics g, Minigun mg)
-    {
-        var sp = sprites();
-        int k = b.Scale, c = Minigun.Cell;
-        if (gunHoles != null) // 다시 칠하는 곳에 걸친 칸만 늘려 그린다
-        {
-            var f = Client(mg.Field);
-            var clip = Rectangle.Intersect(Rectangle.Ceiling(g.ClipBounds), new Rectangle(f.X, f.Y, mg.Gw * c, mg.Gh * c));
-            if (!clip.IsEmpty)
-            {
-                int sx = (clip.X - f.X) / c, sy = (clip.Y - f.Y) / c, sw = Math.Min(mg.Gw - sx, clip.Width / c + 2), sh = Math.Min(mg.Gh - sy, clip.Height / c + 2);
-                var state = g.Save();
-                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
-                g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
-                g.DrawImage(gunHoles, new Rectangle(f.X + sx * c, f.Y + sy * c, sw * c, sh * c), new Rectangle(sx, sy, sw, sh), GraphicsUnit.Pixel);
-                g.Restore(state);
-            }
-        }
-        foreach (var bit in mg.Bits) // 파편(칸만 한 네모, 어두운 테두리), 탄피, 맞은 자리 불꽃
-        {
-            var p = ToClient(bit.X, bit.Y);
-            int s2 = bit.Size / 2;
-            if (bit.Brass) g.FillRectangle(brass, p.X - s2, p.Y - k / 2, bit.Size, Math.Max(1, k));
-            else if (bit.Spark)
-            {
-                g.FillRectangle(spark, p.X - s2, p.Y - s2 / 3, bit.Size, s2 * 2 / 3); // 十 모양으로 번쩍
-                g.FillRectangle(spark, p.X - s2 / 3, p.Y - s2, s2 * 2 / 3, bit.Size);
-                g.FillRectangle(sparkCore, p.X - s2 / 3, p.Y - s2 / 3, s2 * 2 / 3, s2 * 2 / 3);
-            }
-            else
-            {
-                g.FillRectangle(chipEdge, p.X - s2 - 1, p.Y - s2 - 1, bit.Size + 2, bit.Size + 2);
-                g.FillRectangle(chip, p.X - s2, p.Y - s2, bit.Size, bit.Size);
-            }
-        }
-        tracerPen ??= new Pen(Color.FromArgb(255, 220, 90), Math.Max(2, k));
-        foreach (var bl in mg.Bullets) g.DrawLine(tracerPen, ToClient(bl.X - bl.Vx * .012, bl.Y - bl.Vy * .012), ToClient(bl.X, bl.Y)); // 예광탄
-        foreach (var n in mg.Nades) Put(g, sp.Get("game/grenade", 0, k), (int)n.X, (int)n.Y);
-        foreach (var bl in mg.Blasts)
-        {
-            double t = mg.Clock - bl.At;
-            if (t < .45) Put(g, sp.Get("game/boom", Math.Min(3, (int)(t / .11)), Math.Max(1, (int)Math.Round(k * bl.R / (50.0 * k / 3)))), (int)bl.X, (int)bl.Y);
-        }
-        int flash = mg.Firing && mg.Spin >= 1 && mg.Clock - mg.LastShot < .05 ? (int)(mg.Clock * 40) % 2 : -1;
-        foreach (var (pivot, aim) in mg.Guns()) // 쌍 미니건이면 양손에 하나씩
-        {
-            var pv = ToClient(pivot.X, pivot.Y);
-            GunArt.Draw(g, sp, "minigun", new PointF(pv.X, pv.Y), aim, mg.Kick * 2 * k, mg.GunK, flash);
-        }
-        if (GunNote(mg) is { } note) DrawNoteAt(g, b.X, b.Y, mg.Field, note);
-    }
+    readonly SolidBrush chip = new(Color.FromArgb(200, 204, 212)), chipEdge = new(Color.FromArgb(90, 94, 104));
 
     void DrawNote(Graphics g, Rectangle r, string[] lines, bool tailRight)
     {

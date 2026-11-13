@@ -131,7 +131,7 @@ public sealed class PetForm : Form, IGameHost
         hud.SpeciesName = () => b.P.Stage == "egg" ? "" : L.Species(species);
         if (!debug) // 새 버전을 받아 바꿔 두면 메뉴에 알린다. 그냥 둬도 다음에 켤 때 새 버전이다
             Updater.Start(() => autoUpdate, tag => BeginInvoke(() => { updateTag = tag; updateItem.Text = L.T("menu.update", tag); updateItem.Visible = true; settings?.ShowReady(); }));
-        foreach (var o in overlays) { o.Break = () => breakout; o.MinigunGame = () => minigun; o.IcbmGame = () => icbm; o.Guest = () => visitor; o.GuestSprites = () => visitorSprites; o.Present = () => present; o.Clover = () => clover.State == Clover.Phase.Ground ? (clover.Kind, clover.X, clover.Y) : null; o.Dreams = Dreams; o.Modes = () => modes; }
+        foreach (var o in overlays) { o.Break = () => breakout; o.IcbmGame = () => icbm; o.Guest = () => visitor; o.GuestSprites = () => visitorSprites; o.Present = () => present; o.Clover = () => clover.State == Clover.Phase.Ground ? (clover.Kind, clover.X, clover.Y) : null; o.Dreams = Dreams; o.Modes = () => modes; }
         hud.PlaceAt(area);
         if (runDir != null) dev = new DevLink(runDir, assetsDir!, b, this);
 
@@ -325,7 +325,6 @@ public sealed class PetForm : Form, IGameHost
         menu.Items.Add(new ToolStripSeparator());
         Add("menu.shoot", () => BeginInvoke(StartGame)); // 메뉴가 닫히고 포커스가 돌아온 뒤에 시작한다
         Add("menu.breakout", () => BeginInvoke(StartBreak));
-        Add("menu.minigun", () => BeginInvoke(StartMinigun));
         Add("menu.icbm", () => BeginInvoke(StartIcbm));
         foreach (var m in modes) // 게임 모듈. 그 게임을 하는 중에 또 고르면 게임에 알린다 (한 발 더 쏘기 같은 것)
         {
@@ -415,7 +414,6 @@ public sealed class PetForm : Form, IGameHost
             b.Mouse = new Point((int)low.X, b.Mouse.Y); // 디버그 시험: 가장 낮게 내려오는 공을 받는다
         b.Update(dt, !InGame && Afk());
         if (breakout != null) BreakFrame(dt);
-        if (minigun != null) MinigunFrame(dt);
         foreach (var m in modes) if (m.Running) m.Frame(dt);
         if (leaving) LeaveFrame(dt);
         WatchHatch();
@@ -999,7 +997,7 @@ public sealed class PetForm : Form, IGameHost
 
     // 게임에 쓸 창(최대화 안 한 창)이 없다: 말 대신 「X 표 창」 그림을 머리 위에 띄우고 고개를 젓는다 (YELL 2026-11-13: 알림 말풍선도 그림으로)
     void NoWindow() { b.Emote("nowin", 3); b.ShakeUntil = b.Now + .5; }
-    bool Playing => game != null || breakout != null || minigun != null || icbm != null || modes.Any(m => m.Running);
+    bool Playing => game != null || breakout != null || icbm != null || modes.Any(m => m.Running);
 
     // ── 보스 키 (YELL 2026-11-13: "게임에서 esc 는 언제나 빠져나가기다!!") ──
     // 어느 창에 초점이 있든(판을 놓쳐 일하는 창을 눌렀어도) Esc 를 누르는 순간 하던 게임을 결과 화면 없이 곧바로 다 끝내고,
@@ -1019,7 +1017,6 @@ public sealed class PetForm : Form, IGameHost
         quit?.Invoke(); // 판이 알려 준 끝내기 (아래와 겹쳐도 게임마다 한 번만 끝난다)
         foreach (var m in modes) if (m.Running) m.Stop(true);
         if (breakout != null) EndBreak(true);
-        if (minigun != null) EndMinigun(true);
         if (icbm != null) EndIcbm();
         if (game is { } gm) { gm.Finish(); gm.Finish(); EndGame(); } // 결과 화면 없이
         b.Hush();
@@ -1109,91 +1106,6 @@ public sealed class PetForm : Form, IGameHost
         icbm = null;
         foreach (var o in overlays) o.Invalidate();
         b.EndPuppet(true, "icbm", ("launched", ic.Launched));
-    }
-
-    // ── 미니건: 위쪽 창모드 창들을 쏴서 부순다 (스트레스 풀기, 점수 없음, Esc 끝) ──
-    Minigun? minigun;
-    List<(IntPtr H, Rectangle R)> gunWindows = new();
-    bool gunFire, gunForceFire;
-    Point? gunForceAim;
-    double gunCheckAt;
-
-    public void StartMinigun()
-    {
-        if (InGame || b.P.Stage == "egg") return;
-        gameFocus = Native.GetForegroundWindow();
-        var wins = Native.ListWindows();
-        var (field, rects) = WindowPick.Islands(Native.Foreground(), wins, b.Area, Screen.AllScreens.Select(s => s.WorkingArea).ToList(), b.CellPx, 8, topRoom: 0);
-        if (rects.Count == 0)
-        {
-            NoWindow();
-            Dbg.Log("gun-none");
-            return;
-        }
-        gunWindows = wins.Where(w => rects.Contains(Rectangle.Intersect(w.R, field))).Select(w => (w.H, w.R)).ToList();
-        var mg = minigun = new Minigun(field, rects, field.Bottom - b.K.FloorGap, b.Scale, new Random());
-        mg.OnEvent = e =>
-        {
-            switch (e)
-            {
-                case "shot": if (mg.Shots % 4 == 0) Sfx.Play("mg"); break; // 매 발 소리를 내면 소리가 서로 끊긴다
-                case "throw": Sfx.Play("empty"); break;
-                case "boom": Sfx.Play("boom"); break;
-                case "chunk": Sfx.Play("hit"); break;
-                case "dual": b.Emote("star", 1.2); Sfx.Play("reload"); break; // 쌍 미니건
-            }
-            if (e is "boom" or "dual") Dbg.Log("gun-" + e, ("shots", mg.Shots));
-        };
-        (gunFire, gunForceFire, gunForceAim, gunCheckAt) = (false, false, null, 0);
-        var layer = OpenLayer(field, (_, e) =>
-        {
-            if (e.Button == MouseButtons.Left) gunFire = true;
-            else if (e.Button == MouseButtons.Right) minigun?.Throw(MousePosition.X, MousePosition.Y);
-        }, (_, e) => { if (e.Button == MouseButtons.Left) gunFire = false; }, () => EndMinigun(true));
-        layer.Cursor = Cursors.Cross;
-        b.StartPuppet();
-        Dbg.Log("gun-start", ("field", field.ToString()), ("targets", string.Join(" ", rects.Select(r => $"{r.X},{r.Y},{r.Width}x{r.Height}"))));
-    }
-
-    void MinigunFrame(double dt)
-    {
-        var mg = minigun!;
-        var m = gunForceAim ?? MousePosition;
-        bool fire = gunForceFire || gunFire && (MouseButtons & MouseButtons.Left) != 0; // 떼는 걸 놓쳐도 계속 쏘지 않게
-        mg.Update(dt, m.X, m.Y, fire);
-        (b.X, b.Y, b.Dir) = (mg.X, mg.Ground, Math.Cos(mg.Aim) >= 0 ? 1 : -1);
-        b.Pose = mg.Clock - mg.ThrowAt < .3 ? "hop" : mg.Firing ? "angry" : mg.Clock - mg.WalkAt < .1 ? "walk" : "idle";
-        if (mg.Clock > gunCheckAt) // 창이 닫히거나 움직이면 그 창만 대상에서 뺀다
-        {
-            gunCheckAt = mg.Clock + .5;
-            foreach (var (h, r) in gunWindows.ToList())
-            {
-                var st = Native.Probe(h);
-                if (st.Alive && !st.Minimized && st.R == r) continue;
-                gunWindows.Remove((h, r));
-                mg.RemoveTarget(Rectangle.Intersect(r, mg.Field));
-                Dbg.Log("gun-window-gone");
-            }
-        }
-    }
-
-    // 디버그: minigun / minigun aim <x> <y> / minigun fire on|off / minigun nade <x> <y> / minigun dual / minigun stop
-    public void MinigunCommand(string[] a)
-    {
-        if (a.Length > 1 && a[1] == "stop") EndMinigun(true);
-        else if (a.Length > 3 && a[1] == "aim") gunForceAim = new Point(int.Parse(a[2]), int.Parse(a[3]));
-        else if (a.Length > 2 && a[1] == "fire") gunForceFire = a[2] == "on";
-        else if (a.Length > 3 && a[1] == "nade") minigun?.Throw(double.Parse(a[2]), double.Parse(a[3]));
-        else if (a.Length > 1 && a[1] == "dual") minigun?.StartDual();
-        else StartMinigun();
-    }
-
-    void EndMinigun(bool quit)
-    {
-        if (minigun is not { } mg) return;
-        minigun = null;
-        CloseLayer();
-        b.EndPuppet(true, "gun", ("shots", mg.Shots), ("gone", mg.GoneCount()), ("esc", quit)); // 이기고 지는 건 없다. 실컷 쏘면 즐겁다
     }
 
     // ── 벽돌깨기: 창모드 창 하나를 조각내고, 볼록이가 쟁반으로 쇠공을 튕긴다 ──
