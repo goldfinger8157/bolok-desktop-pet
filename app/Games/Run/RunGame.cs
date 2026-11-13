@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace Bolok;
 
 // 달리기 모듈: 앱에 붙이기(조작·볼록이·녹화 숨김), 그리기, 기록, 디버그 명령. 규칙은 Runner.cs, 자가 검사·장면·속도 재기는 RunCheck.cs
-// 판이 없다: 일하던 창은 초점도 그대로 두고, 어느 창에서든 Ctrl(점프)·Shift(앉기)만 읽는다 (Session, layer: false).
+// 판이 없다: 일하던 창은 초점도 그대로 두고, 어느 창에서든 Ctrl(점프)·Shift(앉기, 2층 발판 위에서는 뚫고 내려가기)만 읽는다 (Session, layer: false).
 // 볼록이는 본체 창 그대로 Puppet 으로 제자리에서 달리고, 그림 창에는 길 위의 것과 발밑의 가는 체력 막대만 그린다 (점수판·배경 없음).
 // 끝: Esc(보스 키 → Stop(true))는 점수·표정 없이 바로. 체력이 다 닳아 끝나면 머리 위에 점수를 2.5초 띄운다 —
 //     그동안에도 Running 이다 (녹화 숨김을 유지하고, 그사이 Esc 를 누르면 점수도 바로 지운다). Ctrl+Shift 를 0.5초 누르는 옛 끝내기도 남아 있다
@@ -109,7 +109,7 @@ sealed partial class RunGame : IGameMode
     {
         var b = host.Pet;
         (b.X, b.Y, b.Dir) = (r.PetX, r.Ground - r.Lift, 1);
-        b.Pose = r.Clock < r.HurtUntil ? "hurt" : r.Lift > 0 ? (r.Jumps >= 2 ? "roll" : "happy") : r.Sliding ? "land" : "walk";
+        b.Pose = r.Clock < r.HurtUntil ? "hurt" : !r.Landed ? (r.Jumps >= 2 ? "roll" : "happy") : r.Sliding ? "land" : "walk"; // 발판 위에서도 달린다
         b.PuppetMs = b.Pose == "walk" ? 60 : 0; // 달리는 발은 빠르게, 다른 자세는 평소대로
     }
 
@@ -195,7 +195,7 @@ sealed partial class RunGame : IGameMode
     Sprites? artOf;
     Runner? artRun;
     Stamp[] pics = Array.Empty<Stamp>();    // 길 위 그림 (Runner.Arts 순서): 프레임마다 이름으로 찾지 않는다
-    Stamp star = null!;
+    Stamp star = null!, ledgeL = null!, ledgeM = null!, ledgeR = null!;    // 2층 발판은 왼쪽 끝 + 가운데 여러 장 + 오른쪽 끝
     Overlay? guideOn;
     Rectangle guideRect;
     Bitmap? guidePic;                       // 안내 말풍선: 4초 동안 안 바뀌니 한 번만 그려 둔다
@@ -208,6 +208,7 @@ sealed partial class RunGame : IGameMode
         (artOf, artRun) = (o.Art, r);
         pics = new Stamp[r.Arts.Count];
         for (int i = 0; i < pics.Length; i++) pics[i] = stamps.Get(r.Arts[i].Sprite, 0, r.Arts[i].Scale);
+        (ledgeL, ledgeM, ledgeR) = (pics[r.LedgeArt.L], pics[r.LedgeArt.M], pics[r.LedgeArt.R]);
         star = stamps.Get("game/star", 0, r.PetScale);
         stamps.Digits(r.PetScale);
         stamps.Digits(ScoreK);
@@ -296,6 +297,11 @@ sealed partial class RunGame : IGameMode
         Art(o, r);
         int right = r.Track.Right;
         foreach (var t in r.Things) if (!t.Gone && t.X < right) rs.Add(o.Client(Rectangle.Inflate(t.Box, 1, 1))); // 지난 자리는 지난 프레임 목록이 지운다
+        foreach (var f in r.Floors) // 발판은 길다: 달리는 모니터에 들어온 만큼만
+        {
+            var box = Rectangle.Intersect(Rectangle.Inflate(f.Box, 1, 1), r.Track);
+            if (!box.IsEmpty) rs.Add(o.Client(box));
+        }
         if (bar.Changed) rs.Add(o.Client(GameHud.BarRect(BarRect(r), r.PetScale)));
         if (note.Changed) rs.Add(o.Client(GuideRect(o, r)));
         if (LevelOn(r)) { var (x, y) = LevelAt(r); rs.Add(o.Client(BadgeRect(star, r.Level, x, y, r.PetScale))); }
@@ -312,6 +318,16 @@ sealed partial class RunGame : IGameMode
         Art(o, r);
         var clip = Rectangle.Ceiling(g.ClipBounds);
         int right = r.Track.Right;
+        foreach (var f in r.Floors) // 발판 먼저: 씨앗·하트가 그 위에 놓인다
+        {
+            if (f.X >= right) continue;
+            var box = o.Client(f.Box);
+            if (!box.IntersectsWith(clip)) continue;
+            int stop = box.Right - ledgeR.Bmp.Width, x = box.X + ledgeL.Bmp.Width, w = ledgeM.Bmp.Width;
+            g.DrawImageUnscaled(ledgeL.Bmp, box.X, box.Y);
+            for (; x < stop; x += w) if (x < clip.Right && x + w > clip.Left) g.DrawImageUnscaled(ledgeM.Bmp, x, box.Y);
+            g.DrawImageUnscaled(ledgeR.Bmp, stop, box.Y);
+        }
         foreach (var t in r.Things)
         {
             if (t.Gone || t.X >= right) continue; // 아직 화면 밖
@@ -369,29 +385,59 @@ sealed partial class RunGame : IGameMode
 
     // 잘하는 사람 (자가 검사·속도 재기·디버그 auto): 장애물 한가운데서 가장 높이 뜨게 뛰고, 구름이 오면 엎드리고, 구름이 머리 위에 있으면 기다린다.
     // 사이에 내려설 틈이 없는 장애물들은 한 번에 넘는다 (길 위의 것은 앞에서부터 차례로 들어 있다).
-    // 늦게 뛰어서 다음 장애물 앞에 내려설 틈이 없으면 닿기 직전에 한 번 더 뛴다 (더블 점프) — 어려운 레벨에서 연달아 올 때 쓴다
-    static void Bot(Runner r)
+    // 늦게 뛰어서 다음 장애물 앞에 내려설 틈이 없으면 닿기 직전에 한 번 더 뛴다 (더블 점프) — 어려운 레벨에서 연달아 올 때 쓴다.
+    // 2층 (seek): 뛰면 발판에 내려설 수 있을 때 올라가고, 발판 위에서는 밑의 장애물을 보지 않는다. 하트는 뛰어서 먹고, 다음 발판이 이어지면 끝에서 건너뛴다.
+    //     seek 를 끄면 2층을 일부러 찾지 않는다 (장애물을 넘다 올라서게 되면 그냥 끝까지 간다) — 자가 검사가 둘을 견준다
+    static void Bot(Runner r, bool seek = true)
     {
         var me = r.PetBox;
-        bool cloud = false, any = false;
+        double sf = r.PetScale / 3.0, g = Runner.Gravity * sf, v1 = Runner.JumpSpeed * sf, v2 = v1 * .85;
+        if (r.Under is { } on && r.Landed) // 발판 위
+        {
+            r.Slide(false);
+            if (!seek) return;
+            bool hop = on.X + on.W - me.Left <= r.Speed * .08; // 곧 끝난다: 다음 발판이 닿으면 건너뛴다
+            if (!hop)
+                foreach (var x in r.Things) // 머리 위 하트: 올라가는 길에 스친다
+                    if (x.Kind == ThingKind.Heart && !x.Gone && x.Y < r.Ground - r.Lift - r.StandPx && x.X - r.PetX is var d && d > 0 && d < r.Speed * .11) { hop = true; break; }
+            if (hop && Lands(r, me, r.Lift, -v1, g, .1)) r.Jump();
+            return;
+        }
+        if (!r.Landed && r.Floors.Count > 0 && Lands(r, me, r.Lift, r.Vy, g, 0)) return; // 발판에 내려서는 중
+        bool cloud = false, any = false, low = false;
         double from = 0, to = 0, top = 0;
         foreach (var x in r.Things)
         {
             if (x.X + x.W <= me.Left) continue;
             if (x.Kind == ThingKind.Fly && x.X < me.Right + r.Speed * .1) cloud = true;
+            if (x.Kind == ThingKind.Fly && x.X < me.Right + r.Speed * .25) low = true;          // 뛰어오르는 길에 구름이 있다
             if (x.Kind != ThingKind.Block) continue;
+            if (x.X - me.Right < r.Speed * (Rise(v1, x.H, g) + .03)) low = true;                // 뛰어도 그 위로 못 올라갈 만큼 가깝다
             if (!any) (from, to, top, any) = (x.X, x.X + x.W, x.H, true);
             else if (x.X >= from && x.X - to < r.Speed * .45) (to, top) = (Math.Max(to, x.X + x.W), Math.Max(top, x.H));
         }
         r.Slide(cloud);
+        if (seek && !low && r.Landed && r.Floors.Count > 0 && Lands(r, me, 0, -v1, g, .3)) { r.Jump(); return; } // 2층으로
         if (cloud || !any) return;
-        if (r.Lift == 0) { if (from - me.Right <= r.Speed * .395 - (to - from + me.Width) / 2.0) r.Jump(); return; }
+        if (r.Landed) { if (from - me.Right <= r.Speed * .395 - (to - from + me.Width) / 2.0) r.Jump(); return; }
         if (r.Jumps != 1 || r.Vy <= 0) return;
-        double sf = r.PetScale / 3.0, g = Runner.Gravity * sf, v1 = Runner.JumpSpeed * sf, v2 = v1 * .85;
         double land = (-r.Vy + Math.Sqrt(r.Vy * r.Vy + 2 * g * r.Lift)) / g;
         double front = (from - me.Right) / r.Speed, back = (to - me.Left) / r.Speed;
         bool noTime = back > land && front < land + Rise(v1, top, g) + .035;  // 내려서 다시 뛰기엔 늦다
         if (noTime && front <= Rise(v2, top - r.Lift, g) + .035) r.Jump();
+    }
+
+    // 높이 lift 에서 속도 vy(위쪽이 음수)로 움직일 때 발판 윗면에 내려서게 되는지. keep: 내려선 뒤에도 그 발판이 이만큼(초)은 남아 있어야 한다
+    static bool Lands(Runner r, Rectangle me, double lift, double vy, double g, double keep)
+    {
+        foreach (var f in r.Floors)
+        {
+            double d = vy * vy + 2 * g * (lift - r.TopOf(f));
+            if (d < 0) continue; // 거기까지 못 올라간다
+            double t = (-vy + Math.Sqrt(d)) / g, x = f.X - r.Speed * t;
+            if (x <= me.Left - 2 && x + f.W - r.Speed * keep >= me.Right) return true;
+        }
+        return false;
     }
 
     // 속도 v 로 뛰어 h 만큼 오르는 데 걸리는 시간
