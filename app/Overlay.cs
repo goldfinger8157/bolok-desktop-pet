@@ -236,10 +236,14 @@ public sealed class Overlay : Form
     {
         if (!w.Leaf.IsEmpty && Weather.HasLeaf(sp)) // 우산: 줄기(볼록이 머리 뒤로 들어간다) 위에 잎
         {
-            var st = Client(w.Stem);
-            int third = Math.Max(1, st.Width / 3);
-            g.FillRectangle(stemDark, st);
-            g.FillRectangle(stemLight, st.X + third, st.Y, third, st.Height);
+            int k = w.LeafK, x0 = w.StemFrom.X - Left, y0 = w.StemFrom.Y - Top, x1 = w.StemTo.X - Left, y1 = w.StemTo.Y - Top;
+            int steps = Math.Max(1, Math.Max(Math.Abs(x1 - x0), Math.Abs(y1 - y0)) / Math.Max(1, k)); // 몸 옆(손)에서 잎 밑까지 비스듬한 줄기
+            for (int i = 0; i <= steps; i++)
+            {
+                int x = x0 + (x1 - x0) * i / steps, y = y0 + (y1 - y0) * i / steps;
+                g.FillRectangle(stemDark, x, y, 2 * k, 2 * k);
+                g.FillRectangle(stemLight, x + k / 2, y, Math.Max(1, k), Math.Max(1, k));
+            }
             g.DrawImageUnscaled(sp.Get(Weather.LeafName, w.LeafFrame, w.LeafK, w.LeafFlip), w.LeafAt.X - Left, w.LeafAt.Y - Top);
         }
         if (w.Drops.Count == 0) return;

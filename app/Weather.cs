@@ -217,13 +217,13 @@ public sealed class Weather
     public struct Drop { public int X, Y; public byte Art, Frame; } // Art: 0~2 눈송이, 3 빗줄기, 4 튀는 물. (X, Y) 가 그림 가운데
 
     // 그림 칸 크기 (tools/sprites.py 의 FLAKES·RAIN·SPLASH 와 같아야 한다 — 자가 검사가 본다)
-    static readonly (int W, int H)[] Size = { (7, 7), (7, 7), (7, 7), (1, 5), (5, 2) };
+    static readonly (int W, int H)[] Size = { (7, 7), (7, 7), (7, 7), (2, 7), (5, 2) }; // 빗줄기는 2×7 (YELL: 조금 더 크게)
     static readonly string[] FlakeNames = { "weather/flake0", "weather/flake1", "weather/flake2" };
     public const string RainName = "weather/rain", LeafName = "weather/leaf", WetName = "weather/wet";
     public const int Pics = 8; // 그림 조각 수: 눈송이 셋 × 두 장, 빗줄기, 튀는 물
 
     public static (string Name, int Frame, int W, int H) PicArt(int pic) =>
-        pic < 6 ? (FlakeNames[pic / 2], pic % 2, 7, 7) : pic == 6 ? (RainName, 0, 1, 5) : (RainName, 1, 5, 2);
+        pic < 6 ? (FlakeNames[pic / 2], pic % 2, 7, 7) : pic == 6 ? (RainName, 0, 2, 7) : (RainName, 1, 5, 2);
     public static int Pic(in Drop d) => d.Art < 3 ? d.Art * 2 + d.Frame : d.Art == 3 ? 6 : 7;
     public static Rectangle Src(int pic, int s) { var (_, _, w, h) = PicArt(pic); return new((PetArt.Cell - w) / 2 * s, (PetArt.Cell - h) / 2 * s, w * s, h * s); } // 공통 그림 칸에서 잘라 올 자리
     public static int DropScale(int k) => Math.Max(1, k - 1);
@@ -261,7 +261,7 @@ public sealed class Weather
         for (int i = 0; i < n; i++)
         {
             if ((i + .5) / n > density) break; // 처음·끝엔 몇 개만
-            double speed = snow ? (30 + 16 * Hash(i, 1)) * u : (520 + 160 * Hash(i, 1)) * u;
+            double speed = snow ? (30 + 16 * Hash(i, 1)) * u : (370 + 110 * Hash(i, 1)) * u; // 비는 조금 천천히 (YELL 2026-11-13: 520 → 370)
             double run = t * speed + Hash(i, 2) * span;
             double lap = Math.Floor(run / span);
             double y = top + (run - lap * span);
@@ -291,7 +291,8 @@ public sealed class Weather
     // ── 이번 프레임에 그릴 것 (PetForm 이 채우고 Overlay 가 그린다) ──
     public readonly List<Drop> Drops = new(64);
     public int Scale = 2;                   // 알갱이 그림 배율
-    public Rectangle Leaf, Stem;            // 우산 잎·줄기 (화면 좌표, 비었으면 없음)
+    public Rectangle Leaf, Stem;            // 우산 잎·줄기 (화면 좌표, 비었으면 없음). Stem 은 줄기가 지나는 곳 전체 (다시 칠할 자리)
+    public Point StemFrom, StemTo;          // 줄기: 몸 옆(손)에서 잎 가운데 밑까지 비스듬히 (YELL 이 보낸 개구리 우산 그림처럼)
     public Point LeafAt;                    // 잎 그림 칸의 왼쪽 위
     public int LeafK = 3, LeafFrame;
     public bool LeafFlip;
@@ -376,7 +377,12 @@ public sealed class Weather
         int cy = high - 1 - r.Bottom, stemTop = cy + LeafDome - 1;
         LeafAt = new Point(ox + cx * k, oy + cy * k);
         Leaf = new Rectangle(LeafAt.X + rx * k, LeafAt.Y + r.Y * k, r.Width * k, r.Height * k);
-        Stem = new Rectangle(ox + (h.Col - 1) * k, oy + stemTop * k, 3 * k, Math.Max(1, h.Surface + 3 - stemTop) * k);
+        int sd = flip ? 1 : -1, ex = h.Col; // 잎이 높은 쪽 몸 옆에서 든다
+        while (ex + sd >= 0 && ex + sd < PetArt.Cell && h.Tops[ex + sd] < PetArt.Cell) ex += sd;
+        int fromY = Math.Min(PetArt.Cell - 5, (h.Surface + 37) / 2 + 2);
+        StemFrom = new Point(ox + (ex + sd) * k, oy + fromY * k);
+        StemTo = new Point(LeafAt.X + (flip ? PetArt.Cell - 1 - LeafStemX : LeafStemX) * k, oy + stemTop * k);
+        Stem = Rectangle.Inflate(Rectangle.FromLTRB(Math.Min(StemFrom.X, StemTo.X), Math.Min(StemFrom.Y, StemTo.Y), Math.Max(StemFrom.X, StemTo.X) + 2 * k, Math.Max(StemFrom.Y, StemTo.Y) + 2 * k), k, k);
         (LeafK, LeafFlip, LeafFrame) = (k, flip, (int)(t / .8) % 2);
     }
 

@@ -6,6 +6,7 @@
 
     python3 tools/sprites.py
 """
+import math
 import json
 import pathlib
 import struct
@@ -814,7 +815,7 @@ FLAKES = [  # 「+」 모양 ↔ 「×」 모양으로 번갈아 팔랑
     ('.......|...s...|..sws..|.swwws.|..sws..|...s...|.......', '.......|.s...s.|..sws..|..www..|..sws..|.s...s.|.......'),
     ('.......|.......|...s...|..sws..|...s...|.......|.......', '.......|.......|..s.s..|...w...|..s.s..|.......|.......'),
 ]
-RAIN = 's|r|r|r|d'          # 가는 빗줄기
+RAIN = '.s|sr|rr|rr|rr|rd|.d'  # 빗방울 줄기: 폭 2·길이 7 (YELL 2026-11-13: 조금 더 크게)
 SPLASH = '.r.r.|r...r'       # 바닥·잎에 닿아 튀는 물
 
 
@@ -830,24 +831,33 @@ def weather_art(rows):
 
 
 def weather_leaf(drip):
-    """큰 잎 우산: 볼록이보다 넓은 둥근 잎을 머리 위로 (앞쪽 끝이 살짝 처진다). 줄기는 앱이 머리까지 잇는다 — 볼록이 뒤로 들어가 손에 든 것처럼.
-    drip: 처진 잎 끝에서 빗물이 똑"""
+    """큰 잎 우산 (YELL 2026-11-13 이 보낸 그림 참고): 넓고 둥근 연잎을 비스듬히 (왼쪽이 높고 오른쪽이 낮게) 들고, 양끝이 아래로 처진다.
+    줄기는 앱이 몸 옆(손)에서 잎 가운데 밑까지 비스듬히 잇는다. drip: 처진 끝에서 빗물이 똑 (0: 오른쪽 끝, 1: 왼쪽 끝)"""
     g = Canvas()
     leaf, dark, light, water = (110, 190, 110), (58, 126, 70), (170, 224, 150), (150, 190, 235)
-    cx, base = 20, 21
-    g.ell(cx, base + .5, 14.5, 7.5, leaf)
-    for y in range(base + 1, CELL):  # 아래 반은 잘라 둥근 지붕만
-        g.p[y] = [None] * CELL
-    for x in range(cx - 13, cx + 14, 5):  # 아랫단 물결
-        g.p[base][x] = None
-    g.pix(leaf, (cx + 13, base + 1), (cx + 14, base + 1), (cx + 15, base + 2))  # 앞쪽 잎 끝이 살짝 처진다
-    for dx, dy in ((-11, -4), (-6, -6), (0, -7), (6, -6), (11, -4)):  # 잎맥: 줄기 끝에서 퍼진다
-        for i in range(1, 9):
-            g.put(round(cx + dx * i / 8), round(base + dy * i / 8), dark, True)
-    g.pix(light, (cx - 8, base - 5), (cx - 7, base - 6), (cx - 5, base - 7), (cx - 9, base - 4))  # 빛
+    cx, base, w, h, tilt = 20, 21, 15.5, 7.5, .2
+    for x in range(CELL):
+        dx = x + .5 - cx
+        if abs(dx) > w:
+            continue
+        u = abs(dx) / w
+        top = base - h * math.sqrt(1 - u * u) + tilt * dx
+        bot = base + 2.6 * u ** 3 + tilt * dx  # 양끝이 아래로 처진다
+        for y in range(CELL):
+            if top <= y + .5 <= bot + .5:
+                g.p[y][x] = leaf
+    for dxv in (-12, -6, 0, 6, 12):  # 잎맥: 줄기 붙는 곳에서 퍼진다
+        ty = base - h * math.sqrt(max(0, 1 - (dxv / w) ** 2)) * .8 + tilt * dxv
+        for k in range(1, 9):
+            g.put(round(cx + dxv * k / 8), round(base + (ty - base) * k / 8), dark, True)
+    g.pix(light, (cx - 8, base - 6), (cx - 7, base - 7), (cx - 5, base - 8), (cx - 9, base - 5))  # 빛
     g.outline(dark)
-    if drip:
-        g.pix(water, (cx + 16, base + 4), (cx + 16, base + 5))
+    if drip == 0:  # 낮은 오른쪽 끝에서 똑
+        tx, ty = round(cx + w - 1), round(base + 2.6 + tilt * w)
+        g.pix(water, (tx, ty + 2), (tx, ty + 3))
+    else:          # 높은 왼쪽 끝에서 똑
+        tx, ty = round(cx - w), round(base + 2.6 - tilt * w)
+        g.pix(water, (tx, ty + 2), (tx, ty + 3))
     return g
 
 
