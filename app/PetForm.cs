@@ -1047,8 +1047,7 @@ public sealed class PetForm : Form, IGameHost
         {
             met.Add(species);
             TakePhoto(b.P.Stage);
-            b.Say(4, L.T("say.hatched", L.With(L.Species(species), "가", "이가")));
-            b.Emote("star", 2);
+            b.Emote("star", 2.5); // 펫은 말하지 않는다 (YELL 2026-11-13): 「태어났어요!」 대신 반짝 별
             BookChanged();
             Save();
         }
@@ -1057,6 +1056,9 @@ public sealed class PetForm : Form, IGameHost
     }
 
     bool InGame => Playing || leaving;
+
+    // 게임에 쓸 창(최대화 안 한 창)이 없다: 말 대신 「X 표 창」 그림을 머리 위에 띄우고 고개를 젓는다 (YELL 2026-11-13: 알림 말풍선도 그림으로)
+    void NoWindow() { b.Emote("nowin", 3); b.ShakeUntil = b.Now + .5; }
     bool Playing => game != null || runner != null || breakout != null || worms != null || minigun != null || icbm != null || modes.Any(m => m.Running);
 
     // ── 보스 키 (YELL 2026-11-13: "게임에서 esc 는 언제나 빠져나가기다!!") ──
@@ -1139,7 +1141,7 @@ public sealed class PetForm : Form, IGameHost
                 case "peek": b.Emote("heart", 1.6); Dbg.Log("icbm-peek", ("friend", ic.Peeks.LastOrDefault()?.Species)); break; // 옛 친구를 알아본다
                 case "boom": Sfx.Play("boom"); b.Emote("bang", 1); break;
                 case "blown": b.Throw(ic.BlownVx, ic.BlownVy, hard: true); break; // 어지러워하다가 거기서부터 고치러 간다
-                case "nowhere": b.Say(3, L.T("say.nowhere")); break;
+                case "nowhere": b.Emote("ask", 2); break; // 떨어뜨릴 곳이 없다: 갸웃 (말 대신 그림)
                 case "repaired": b.P.Energy = Math.Max(0, b.P.Energy - 4); b.Emote("spark", .8); break; // 일은 기운이 든다
             }
             if (e is "boom" or "nowhere" or "repaired") Dbg.Log("icbm", ("event", e), ("craters", ic.Craters.Count), ("x", (int)ic.TX), ("y", (int)ic.TY));
@@ -1189,7 +1191,7 @@ public sealed class PetForm : Form, IGameHost
         var (field, rects) = Worms.Islands(Native.Foreground(), wins, b.Area, Screen.AllScreens.Select(s => s.WorkingArea).ToList(), b.CellPx, 8, topRoom: 0);
         if (rects.Count == 0)
         {
-            b.Say(3.5, L.T("say.no_gun"), L.T("say.open_window"));
+            NoWindow();
             Dbg.Log("gun-none");
             return;
         }
@@ -1271,7 +1273,7 @@ public sealed class PetForm : Form, IGameHost
         var (field, wins) = PickIslands();
         if (wins.Count == 0)
         {
-            b.Say(3.5, L.T("say.no_islands"), L.T("say.open_window"));
+            NoWindow();
             Dbg.Log("worms-none");
             return;
         }
@@ -1351,7 +1353,7 @@ public sealed class PetForm : Form, IGameHost
         var screens = Screen.AllScreens.Select(s => s.WorkingArea).ToList();
         if (Breakout.Pick(Native.Foreground(), Native.ListWindows(), b.Area, screens, b.CellPx) is not { } pick)
         {
-            b.Say(3.5, L.T("say.no_break"), L.T("say.open_window")); // 창모드 창이 없다
+            NoWindow(); // 창모드 창이 없다
             Dbg.Log("break-none");
             return;
         }
