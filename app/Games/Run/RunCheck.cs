@@ -29,12 +29,13 @@ sealed partial class RunGame
     {
         var host = new SceneHost();
         var sp = host.Sprites;
-        return Rules(sp) + "\n" + Perf(host) + "\n" + Module(host);
+        return Rules(sp) + "\n" + Gimmicks(sp) + "\n" + Perf(host) + "\n" + Module(host);
     }
 
     // ── 규칙 (화면 없이) ──
     static string Rules(Sprites sp)
     {
+        played = new();
         var area = TestArea;
         var measure = Measure(sp);
         var forms = Forms();
@@ -112,18 +113,47 @@ sealed partial class RunGame
         // 한 판 해 보기. 길에 저절로 나온 것들이 몸 크기 규칙을 지키는지도 같이 본다
         // ride: 2층을 어떻게 타는지. Seek 찾아 올라간다(잘하는 사람) · Plain 일부러 찾지 않는다 ·
         //   Walk 올라가서 끝까지 걷다 떨어지고, 땅에 내려선 뒤 0.3초는 손을 뗀다 (끝에 함정이 없는지) · Leap 끝에서 뛰어내린다
-        (double Sec, int Score, int Hits, int Level) Play(int level, int seed, bool good, RunBody? body = null, int scale = 3, Ride ride = Ride.Seek, FloorStat? stat = null)
+        (double Sec, int Score, int Hits, int Level) Play(int level, int seed, bool good, RunBody? body = null, int scale = 3, Ride ride = Ride.Seek, FloorStat? stat = null, Rectangle? wide = null)
         {
-            var r = New(seed, level, body, scale);
+            // wide: 다른 크기의 모니터 (말벌·돌은 화면 폭에 따라 출발하는 자리와 빠르기가 달라진다)
+            var r = wide is { } mon ? new Runner(mon, mon.Bottom - 50, 40 * scale, body ?? child, new Random(seed), measure, level) : New(seed, level, body, scale);
             int hits = 0;
+            played.Runs++;
             bool wasOn = false, falling = false;
             double handsOff = -1, leapt = -9;
             Thing? newest = null;
             var rode = new HashSet<Thing>();
+            var spans = new List<Span>();
+            bool padFloor = false; // 2층 앞 버섯을 밟고 떠 있는 중 (손대지 않으면 그 발판에 내려서야 한다)
+            string tag = $"배율 {scale} Lv{level} 씨 {seed} {ride}{(wide is { } m ? $" 화면 {m.Width}×{m.Height}" : "")}";
+            r.OnGimmick = (g, fresh) =>
+            {
+                Expect(r.Level >= Runner.UnlockOf(g), $"{tag}: {g} 는 Lv{Runner.UnlockOf(g)} 부터 나온다 (지금 Lv{r.Level})");
+                played.Met[(int)g]++;
+                if (fresh) played.Fresh[(int)g]++;
+            };
             r.OnEvent = e =>
             {
+                if (e == "bounce")
+                {
+                    played.Bounces++;
+                    padFloor = false;
+                    foreach (var t in r.Things) if (t.Kind == ThingKind.Pad && t.Hot == r.Clock && t.Bunch == 0) { padFloor = true; played.PadFloor++; }
+                    Expect(!padFloor || r.Seen(Gimmick.Pad), $"{tag}: 2층 앞 버섯은 혼자 나온 버섯을 한 번 본 뒤에만 놓인다");
+                }
+                else if (e is "jump" or "jump2" or "drop") padFloor = false;
+                else if (e == "land" && padFloor)
+                {
+                    padFloor = false;
+                    Expect(r.Under is { Kind: ThingKind.Floor }, $"{tag}: 2층 앞 버섯을 밟으면 그 발판에 내려선다 ({r.Clock:F1}초)");
+                }
                 if (e != "hit") return;
                 hits++;
+                Spans(r, spans);
+                var cause = ThingKind.Block;
+                foreach (var x in spans) if (x.Front <= 2 && x.Back >= -2 && x.Kind != ThingKind.Pad) cause = x.Kind;
+                played.Hits[Math.Max(0, (int)cause - (int)ThingKind.Pad)]++;
+                played.AllHits++;
                 if (stat != null && (falling || r.Clock < handsOff || r.Clock < leapt + 1.2)) stat.EndHits++;
             };
             for (int i = 0; i < 60 * 150 && !r.Over; i++)
@@ -144,8 +174,8 @@ sealed partial class RunGame
                         if (stat != null)
                         {
                             stat.Ends++;
-                            foreach (var t in r.Things) // 내려선 자리에서 다음 장애물이 닿을 때까지
-                                if (t.Kind is ThingKind.Block or ThingKind.Fly && t.X + t.W > r.PetBox.Left) stat.MinGap = Math.Min(stat.MinGap, (Runner.Hard(t).Left - r.PetBox.Right) / r.Speed);
+                            Spans(r, spans); // 내려선 자리에서 다음 장애물(기믹도)이 닿을 때까지
+                            foreach (var x in spans) if (x.Kind != ThingKind.Pad && x.Back > 0) stat.MinGap = Math.Min(stat.MinGap, x.Front / r.Speed);
                         }
                     }
                 }
@@ -165,6 +195,8 @@ sealed partial class RunGame
                         newest = r.Floors[^1];
                     }
                 }
+                played.Sec += 1 / 60.0;
+                if (i % 10 == 0) Fair(r, spans, tag);   // 기믹이 공정하게 놓였는지 (묶음 사이 틈, 처음 보는 것은 혼자, 앞지르지 않기)
                 if (i % 30 != 0) continue;
                 foreach (var t in r.Things)
                 {
@@ -172,7 +204,11 @@ sealed partial class RunGame
                     {
                         ThingKind.Fly => t.Y == r.Ground - r.CloudUp && t.Scale == r.Px(2),
                         ThingKind.Block => t.Y == r.Ground && t.H <= r.TallMax && (r.TallBlocks.Contains(t.Art) || r.NormalBlocks.Contains(t.Art)),
-                        ThingKind.Heart => t.Y == r.Ground - 2 * r.StandPx || r.Floors.Any(f => t.Y == r.Ground - r.TopOf(f) - 2 * r.StandPx && t.X >= f.X && t.X < f.X + f.W),
+                        ThingKind.Heart => t.Y == r.Ground - 2 * r.StandPx || r.Floors.Any(f => t.Y == r.Ground - r.TopOf(f) - 2 * r.StandPx && t.X >= f.X && t.X < f.X + f.W)
+                            || t.Bunch > 0 && t.Y < r.Ground - r.JumpUp,    // 버섯으로 튄 꼭대기: 그냥 뛰어서는 안 닿는다
+                        ThingKind.Pad => t.Y == r.Ground && t.Scale == r.Px(3) && t.H < r.DuckPx,
+                        ThingKind.Wasp => t.Scale == r.Px(2) && t.Fast > 1 && t.Bunch > 0 && r.Ground - t.Y >= Runner.WaspLow * scale - .01 && r.Ground - t.Y <= r.CloudUp + .01,
+                        ThingKind.Rock => t.Scale == r.Px(3) && t.Fast > 1 && t.Bunch > 0 && r.Ground - t.Y >= -.01 && r.Ground - t.Y <= r.CloudUp + .01,
                         _ => t.Scale == r.Px(1) && t.Y <= r.Ground,
                     };
                     Expect(ok, $"길에 나온 것은 몸 크기 규칙을 따른다: {t.Kind} {t.Sprite}×{t.Scale} 높이 {t.H} (선 키 {r.StandPx}, 배율 {scale})");
@@ -481,20 +517,466 @@ sealed partial class RunGame
                     {
                         Play(level, 300 + seed, true, BodyOf(form), scale, Ride.Walk, walk);
                         Play(level, 300 + seed, true, BodyOf(form), scale, Ride.Leap, leap);
+                        // 2층을 안 찾는 사람: 2층 앞 버섯을 그냥 밟는다 (그 발판에 내려서는지는 Play 가 본다). 버섯이 일찍 나오는 낮은 레벨에서
+                        Play(level == 1 ? 2 : level == 6 ? 3 : level, 300 + seed, true, BodyOf(form), scale, Ride.Plain);
                     }
         Expect(walk.Ends > ends && walk.EndHits == 0 && walk.MinGap >= .45, $"발판 끝에서 떨어져도 함정이 없다: {ends}판 {walk.Ends}번 떨어져 {walk.EndHits}번 맞음, 내려선 뒤 다음 장애물까지 가장 짧게 {walk.MinGap:F2}초");
         Expect(leap.Ends > ends && leap.EndHits == 0, $"발판 끝에서 뛰어내려도 함정이 없다: {leap.Ends}번 뛰어 {leap.EndHits}번 맞음");
+
+        // 다른 크기의 모니터에서도 (좁은 노트북 ~ 4K, 배율은 그 모니터에서 쓸 만한 것들): 잘하는 사람이 버티고, 기믹이 공정하게 놓인다
+        //   넓은 화면에서는 말벌·돌이 더 멀리서 출발해 뒤 묶음이 더 기다리고, 좁은 화면에서는 말벌·돌이 덜 빠르다
+        int wideRuns = 0, wideHits = 0;
+        double wideSec = 0;
+        foreach (var (mon, scales) in Monitors)
+            foreach (int scale in scales)
+                foreach (var form in new[] { "baby", forms[^1] })
+                    foreach (int level in new[] { 4, 8, 12 })
+                        for (int seed = 0; seed < 2; seed++, wideRuns++)
+                        {
+                            var run = Play(level, 400 + seed, true, BodyOf(form), scale, Ride.Seek, null, mon);
+                            (wideHits, wideSec) = (wideHits + run.Hits, wideSec + run.Sec);
+                        }
+        Expect(wideSec / wideRuns > 35 && wideHits <= wideRuns * .5, $"다른 크기의 모니터에서도 잘하면 버틴다: {wideRuns}판 평균 {wideSec / wideRuns:F0}초, 모두 {wideHits}번 부딪힘");
 
         return $"달리기 잘하는 사람 ({string.Join(" / ", rows)}), 가만히 {lazy.Sec:F0}초\n"
             + $"달리기 몸 크기별: {forms.Count}형태 × 배율 {string.Join("·", Scales)} = {combos}조합 — 서면 구름에 맞고 엎드리면 지나감, 장애물 {jumps / 4}개를 두 속도에서 맞춰 뛰면 넘음, 잘하는 사람 가장 짧게 {worstSec:F0}초·가장 많이 부딪힘 {worstHits:F1}\n"
             + "  배율 3 (화면 px):\n" + string.Join("\n", table) + "\n"
             + $"달리기 2층: {combos}조합 모두 윗면 {floorLow:F0}~{floorHigh:F0}칸px(뛰는 높이 62.7, 여유 {floorRoom:F1}칸px 이상)에 한 번 뛰어 올라서고({floorChecks}번, 느린 프레임 포함) 선 채로 밑을 지나감(캐릭터 {sp.SpeciesList.Count}종 모두 귀도 안 닿음, 가장 긴 귀는 {earWho}), 밑에서 뛰면 뚫고 올라섬, Shift 로 내려감. 1분에 {string.Join(" · ", freq)}\n"
             + $"  {seekRow}\n"
+            + $"  다른 모니터({string.Join(" · ", Monitors.Select(m => $"{m.Area.Width}×{m.Area.Height} 배율 {string.Join("·", m.Scales)}"))}): {wideRuns}판 평균 {wideSec / wideRuns:F0}초, 모두 {wideHits}번 부딪힘\n"
             + $"  끝의 함정 없음: {ends}판에서 {walk.Ends}번 걸어서 떨어져 {walk.EndHits}번 맞음 (내려선 뒤 0.3초 손 뗌, 다음 장애물까지 가장 짧게 {walk.MinGap:F2}초), {leap.Ends}번 뛰어내려 {leap.EndHits}번 맞음. 잘하는 사람은 발판 {floorStat.Ridden}/{floorStat.Floors} 탐\n"
             + "  배율 3 (화면 px):\n" + string.Join("\n", floorTable);
     }
 
+    // 여러 판에 걸친 기믹 통계 (한 판 해 보기에서 모은다). Hits 는 무엇에 맞았는지: [0] 은 기믹이 아닌 것(버섯은 안 다친다), 그 뒤로 말벌·돌·구덩이·동굴
+    sealed class GimStat
+    {
+        public readonly int[] Met = new int[5], Fresh = new int[5], Hits = new int[5];
+        public int AllHits, Bounces, PadFloor, Checks, Runs;
+        public double Sec, MinGap = 9, MinFresh = 9, MinLand = 9;   // MinLand: 버섯으로 튀어 내려선 뒤·동굴 지붕에서 떨어져 내려선 뒤 다음 것이 닿을 때까지
+    }
+    static GimStat played = new();
+
+    // 부딪히는 것(과 버섯) 하나가 볼록이 몸에 닿기까지(Front)·다 지나가기까지(Back) 길이 더 흘러야 하는 거리. 길보다 빨리 오는 말벌·돌도 같은 자로 잰다
+    readonly record struct Span(double Front, double Back, ThingKind Kind, Thing T);
+
+    static void Spans(Runner r, List<Span> to)
+    {
+        to.Clear();
+        var me = r.PetBox;
+        foreach (var t in r.Things)
+        {
+            if (t.Gone) continue;
+            if (t.Kind is ThingKind.Block or ThingKind.Fly or ThingKind.Wasp or ThingKind.Rock)
+            {
+                var h = Runner.Hard(t);
+                to.Add(new((h.Left - me.Right) / t.Fast, (h.Right - me.Left) / t.Fast, t.Kind, t));
+            }
+            else if (t.Kind == ThingKind.Pad) to.Add(new(t.X + t.W / 6 - me.Right, t.X + t.W - t.W / 6 - me.Left, t.Kind, t));
+        }
+        foreach (var p in r.Pits) to.Add(new(p.X + r.PitEdge - r.PetX, p.X + p.W - r.PitEdge - r.PetX, p.Kind, p));
+        foreach (var c in r.Caves) to.Add(new(c.X + r.CaveEdge - me.Right, c.X + c.W - r.CaveEdge - me.Left, c.Kind, c));
+    }
+
+    // 기믹이 공정하게 놓였는지 (지금 길 위에 있는 것 모두):
+    //   묶음과 묶음 사이에 틈이 있다 (닿는 때로 0.5초 이상. 버섯 뒤는 튀어 내려설 때까지 + 0.65초, 동굴 뒤는 지붕에서 떨어지는 시간 + 0.65초, 2층이 끝난 뒤는 떨어지는 시간 + 0.5초)
+    //   → 동굴 안·구덩이 위·버섯으로 튀는 길에 2층도 장애물도 없다. 이 판에서 처음 보는 기믹은 혼자, 앞뒤 1.2초 이상.
+    //   길보다 빠른 말벌·돌은 화면에서 저보다 늦게 닿을 것을 앞지르지 않는다 (겹쳐 지나가지 않는다)
+    static void Fair(Runner r, List<Span> spans, string who)
+    {
+        Spans(r, spans);
+        var me = r.PetBox;
+        double sp = r.Speed;
+        played.Checks++;
+        for (int i = 0; i < spans.Count; i++)
+        {
+            var a = spans[i];
+            if (a.T.Bunch == 0) continue;
+            bool mover = a.Kind is ThingKind.Wasp or ThingKind.Rock, seen = mover && a.T.X < r.Track.Right;
+            double air = a.Kind == ThingKind.Pad ? Runner.BounceSec : a.Kind == ThingKind.Cave ? r.FallSec(r.TopOf(a.T)) : 0;  // 튀어 떠 있는·지붕에서 떨어지는 시간
+            double after = air > 0 ? air + .65 : .5;
+            string what = $"{who} {r.Clock:F1}초: {a.Kind}{(a.T.Fresh ? "(처음)" : "")}";
+            for (int j = 0; j < spans.Count; j++)
+            {
+                if (i == j) continue;
+                var b = spans[j];
+                bool later = b.Front >= a.Front;
+                double gap = (later ? b.Front - a.Back : a.Front - b.Back) / sp;
+                if (seen && later) Expect(b.T.X >= a.T.X + a.T.W - 1, $"{what} 이 뒤에 닿을 {b.Kind} 를 화면에서 앞지르지 않는다");
+                if (b.T.Bunch == a.T.Bunch)
+                {
+                    Expect(!a.T.Fresh, $"{what} 처음 보는 기믹은 혼자 나온다");
+                    Expect(gap >= .5, $"{what} 둘씩 올 때 사이가 {gap:F2}초 (0.5초 이상)");
+                    continue;
+                }
+                bool fresh = a.T.Fresh || b.T.Fresh;
+                double need = fresh ? 1.2 : later ? after : .5;
+                Expect(gap >= need, $"{what} 와 {(later ? "뒤" : "앞")}의 {b.Kind} 사이가 {gap:F2}초 ({need:F2}초 이상)");
+                if (fresh) played.MinFresh = Math.Min(played.MinFresh, gap); else played.MinGap = Math.Min(played.MinGap, gap);
+                if (later && air > 0) played.MinLand = Math.Min(played.MinLand, gap - air);
+            }
+            foreach (var f in r.Floors)
+            {
+                double front = f.X - me.Right, back = f.X + f.W - me.Left;
+                bool later = front >= a.Front;
+                double gap = (later ? front - a.Back : a.Front - back) / sp;
+                double need = a.T.Fresh ? 1.2 : later ? after - .1 : r.FallSec(r.TopOf(f)) + .5;
+                Expect(gap >= need, $"{what} 와 {(later ? "뒤" : "앞")}의 2층 사이가 {gap:F2}초 ({need:F2}초 이상)");
+                if (seen && later) Expect(f.X >= a.T.X + a.T.W - 1, $"{what} 이 뒤에 올 2층을 화면에서 앞지르지 않는다");
+                if (a.T.Fresh) played.MinFresh = Math.Min(played.MinFresh, gap);
+            }
+        }
+    }
+
+    // ── 기믹 (YELL 2026-11-13): 그림 데이터의 모든 형태 × 배율 × 가장 느릴 때·가장 빠를 때. 맞게 하면 지나가고, 틀리게 하면 뜻한 대로 맞는다 ──
+    static string Gimmicks(Sprites sp)
+    {
+        var area = TestArea;
+        var measure = Measure(sp);
+        var forms = Forms();
+        string[] names = { "버섯", "말벌", "돌", "구덩이", "동굴" };
+        int combos = 0, cases = 0, arcLeast = 99;
+        double waspRoom = 99, rockRoom = 99, pitWindow = 99, roofRoom = 99, bounceUp = 0, overTime = 99;
+        var table = new List<string>();
+        foreach (var form in forms)
+        {
+            var body = BodyOf(form);
+            foreach (int scale in Scales)
+            {
+                combos++;
+                double u = scale / 3.0, grav = Runner.Gravity * u, v1 = Runner.JumpSpeed * u, air = 2 * Runner.JumpSpeed / Runner.Gravity;
+                Runner At(double speed, int level)
+                {
+                    var r = new Runner(area, TestGround, 40 * scale, body, new Random(7), measure, level) { Mute = true };
+                    r.Things.Clear();
+                    r.Speed = speed;
+                    return r;
+                }
+                // 놓아둔 것이 다 지나가고 tail 초 더 달린다. 맞은 수를 돌려준다
+                int Go(Runner r, Action<Runner>? each = null, double dt = 1 / 60.0, double tail = .4)
+                {
+                    int hits = 0;
+                    var old = r.OnEvent;
+                    r.OnEvent = e => { if (e == "hit") hits++; old?.Invoke(e); };
+                    var spans = new List<Span>();
+                    for (int i = 0; i < 60 * 40 && tail > 0; i++)
+                    {
+                        each?.Invoke(r);
+                        r.Update(dt);
+                        Spans(r, spans);
+                        bool ahead = false;
+                        foreach (var x in spans) ahead |= x.Back > -10;
+                        if (!ahead) tail -= dt;
+                    }
+                    r.OnEvent = old;
+                    cases++;
+                    return hits;
+                }
+
+                // 모양 (속도와 무관): 말벌·돌의 높이는 볼록이까지 남은 거리로만 정해진다. 닿을 때는 맨 아래이거나 맨 위다
+                var probe = At(Runner.StartSpeedOf(1) * u, 1);
+                foreach (var kind in new[] { ThingKind.Wasp, ThingKind.Rock })
+                    foreach (int way in new[] { 0, 1 })
+                    {
+                        var t = probe.AddMover(kind, way, probe.PetX, 1.3);
+                        double want = way == 1 ? probe.CloudUp : kind == ThingKind.Wasp ? Runner.WaspLow * scale : 0;
+                        Expect(Math.Abs(probe.UpOf(t) - want) < .01 && probe.Ground - t.Y == probe.UpOf(t), $"{form}×{scale}: {kind} {(way == 1 ? "높게" : "낮게")} 는 볼록이 자리에서 밑면이 {want:F1}");
+                        int half = (probe.BoxW + t.W - 2 * (t.W / 6)) / 2 + 2; // 몸에 걸치는 동안 (부딪히는 자리 기준, 2px 더)
+                        for (int d = -half; d <= half; d++)
+                        {
+                            t.X = probe.PetX + d - t.W / 2.0;
+                            double up = probe.UpOf(t);
+                            if (way == 1)
+                            {
+                                Expect(up >= probe.DuckPx + .7 * scale && up <= probe.CloudUp + .01, $"{form}×{scale}: 높게 오는 {kind} 는 몸에 걸치는 동안 내내 엎드린 키 {probe.DuckPx} 보다 높다 ({d}px 에서 {up:F1})");
+                                if (kind == ThingKind.Wasp) waspRoom = Math.Min(waspRoom, (up - probe.DuckPx) / scale); else rockRoom = Math.Min(rockRoom, (up - probe.DuckPx) / scale);
+                            }
+                            else Expect(up + t.H <= probe.LowTop(t) + .01 && up < probe.DuckPx - t.H / 6, $"{form}×{scale}: 낮게 오는 {kind} 는 몸에 걸치는 동안 넘을 높이 {probe.LowTop(t):F0} 를 안 넘고, 밑으로는 못 지나간다 ({d}px 에서 {up:F1})");
+                        }
+                        // 넘을 높이 위에 떠 있는 시간이 가장 느릴 때 몸에 걸치는 시간보다 0.25초 넘게 길다 (뛸 때를 맞출 틈)
+                        double over = 2 * Math.Sqrt(2 * (probe.JumpUp - probe.LowTop(t)) / grav), cross = (2.0 * half) / (Runner.StartSpeedOf(1) * u * 1.1);
+                        if (way == 0) { overTime = Math.Min(overTime, over - cross); Expect(over - cross >= .25, $"{form}×{scale}: 낮게 오는 {kind} 를 넘을 틈 {over - cross:F2}초"); }
+                        probe.Things.Clear();
+                    }
+                Expect(probe.TopOf(probe.AddCave(0, 1)) <= Runner.FloorReach * probe.JumpUp && probe.Caves[0].Box.Bottom <= probe.Ground - probe.DuckPx - 2 * scale && probe.Caves[0].Box.Bottom > probe.Ground - probe.StandPx + scale,
+                    $"{form}×{scale}: 동굴 천장 밑면은 선 키와 엎드린 키 사이, 윗면 {probe.TopOf(probe.Caves[0]):F0} 은 뛰어 올라설 수 있는 높이");
+                roofRoom = Math.Min(roofRoom, (probe.JumpUp - probe.TopOf(probe.Caves[0])) / scale);
+                bounceUp = probe.BounceUp / scale;
+                if (scale == 3)
+                {
+                    var (w, k) = (probe.AddMover(ThingKind.Wasp, 0, 0, 1.2), probe.AddMover(ThingKind.Rock, 0, 0, 1.2));
+                    table.Add($"  {form,-13} 버섯 높이 {probe.Arts[probe.AddPad(0).Art].H} → 튀는 높이 {probe.BounceUp:F0} (뛰는 높이 {probe.JumpUp:F0}), 말벌 {w.W}×{w.H} 밑면 {Runner.WaspLow * scale:F0}~{probe.CloudUp:F1}, 돌 {k.W}×{k.H} 밑면 0~{Runner.HopUp * scale:F0} / 0~{probe.CloudUp:F1}, 구덩이 폭 {probe.AddPit(0, probe.PitTiles(Runner.PitMin * scale)).W}px 부터 (가장자리 {probe.PitEdge}px 는 안 빠짐), 동굴 천장 {probe.Ground - probe.Caves[0].Box.Bottom}~{probe.TopOf(probe.Caves[0]):F1} (선 키 {probe.StandPx}, 엎드린 키 {probe.DuckPx})");
+                }
+
+                foreach (bool fast in new[] { false, true })
+                {
+                    double speed = (fast ? Runner.MaxSpeedOf(12) : Runner.StartSpeedOf(1)) * u;
+                    int level = fast ? 12 : 1;
+                    string at = $"{form}×{scale} 속도 {speed:F0}";
+                    Runner Lay() => At(speed, level);
+
+                    // ── 버섯 점프대: 달려와 밟아도, 위에서 내려서도 튄다. 안 다친다. 뛰어넘으면 안 튄다 ──
+                    foreach (double dt in new[] { 1 / 60.0, 1 / 30.0 })
+                    {
+                        var r = Lay();
+                        var pad = r.AddPad(r.PetX + 300 * u);
+                        int bounces = 0;
+                        double peak = 0, from = -1, flew = 0;
+                        r.OnEvent = e => { if (e == "bounce") { bounces++; from = r.Clock; } else if (e == "land" && flew == 0) flew = r.Clock - from; };
+                        int hits = Go(r, x => peak = Math.Max(peak, x.Lift), dt, 1.3);
+                        Expect(bounces == 1 && hits == 0 && r.Landed && r.Lift == 0 && r.Jumps == 0, $"{at}: 버섯을 달려와 밟으면 한 번 튀고 안 다친다 (튄 수 {bounces}, 맞음 {hits})");
+                        Expect(peak > r.BounceUp - Runner.Bounce * u * dt * .55 - 1 && peak <= r.BounceUp + 1 && peak > (dt < 1 / 40.0 ? 1.4 : 1.3) * r.JumpUp && Math.Abs(flew - Runner.BounceSec) <= 3 * dt, /* 느린 프레임은 계산보다 조금 낮게 뜬다 */ $"{at}: 버섯은 뛰는 높이의 1.4배 넘게 튄다 (가장 높이 {peak:F0}, 계산 {r.BounceUp:F0}, {flew:F2}초)");
+
+                        var drop = Lay();
+                        var pad2 = drop.AddPad(drop.PetX + 1000 * u);
+                        (bounces, flew) = (0, 0);
+                        bool jumped = false, twice = false;
+                        drop.OnEvent = e => { if (e == "bounce") bounces++; };
+                        hits = Go(drop, x =>
+                        {
+                            if (!jumped && pad2.X + pad2.W / 2.0 - x.PetX <= x.Speed * (air - 2 * dt)) { x.Jump(); jumped = true; }  // 버섯 위에 내려서게
+                            else if (bounces == 1 && !twice && x.Vy > 0) { Expect(x.Jumps == 1, $"{at}: 버섯으로 튄 것은 한 번 뛴 셈이다"); x.Jump(); twice = x.Jumps == 2; }
+                        }, dt, 1.5);
+                        Expect(bounces == 1 && hits == 0 && twice && drop.Landed, $"{at}: 버섯 위에 내려서도 튀고, 튄 뒤 한 번 더 뛸 수 있다 (튄 수 {bounces})");
+                    }
+                    if (!fast) // 뛰어넘으면 밟지 않는다 (느릴 때: 빠를 때는 뛴 채로 지나가고도 남는다)
+                    {
+                        var over = Lay();
+                        var pad = over.AddPad(over.PetX + 300 * u);
+                        int bounces = 0;
+                        bool jumped = false;
+                        over.OnEvent = e => { if (e == "bounce") bounces++; };
+                        Go(over, x => { if (!jumped && pad.X - x.PetBox.Right <= x.Speed * .1) { x.Jump(); jumped = true; } });
+                        Expect(bounces == 0, $"{at}: 버섯을 뛰어넘으면 튀지 않는다");
+                    }
+                    // 2층 앞 버섯: 밟으면 그 발판에 내려선다 (가장 낮은 발판·가장 높은 발판)
+                    foreach (int top in new[] { probe.FloorLow, probe.FloorHigh })
+                        foreach (double dt in new[] { 1 / 60.0, 1 / 30.0 })
+                        {
+                            var r = Lay();
+                            var pad = r.AddPad(r.PetX + 300 * u);
+                            var f = r.AddFloor(pad.X + pad.W / 6.0 + speed * Runner.PadLead, (int)Math.Ceiling(speed * 1.2 / r.Arts[r.LedgeArt.M].W), top);   // 가장 짧은 발판 (연달아 둘일 때)
+                            bool on = false;
+                            double stay = 0;
+                            int hits = Go(r, x => { on |= x.Under == f; if (x.Under == f) { stay += dt; Expect(x.Lift == top, $"{at}: 발판 윗면에 선다"); } }, dt, 1.2);
+                            Expect(stay > .3, $"{at}: 버섯으로 올라선 발판(윗면 {top})이 0.3초 넘게 남아 있다 ({stay:F2}초)");
+                            Expect(on && hits == 0, $"{at}: 2층(윗면 {top}) 앞 버섯을 밟으면 그 발판에 내려선다 (프레임 {dt:F3}초)");
+                        }
+
+                    // ── 말벌·돌: 낮게 오면 뛰어넘고(엎드리면 맞는다), 높게 오면 엎드려 지나간다. 가만히 서 있으면 어느 쪽이든 맞는다 ──
+                    foreach (var kind in new[] { ThingKind.Wasp, ThingKind.Rock })
+                        foreach (int way in new[] { 0, 1 })
+                            foreach (double dt in new[] { 1 / 60.0, 1 / 30.0 })
+                            {
+                                Runner One() { var r = Lay(); r.AddMover(kind, way, r.PetX + 500 * u, r.FastOf(kind == ThingKind.Wasp ? Runner.WaspFast : Runner.RockFast)); return r; }
+                                string name = $"{at}: {(way == 1 ? "높게" : "낮게")} 오는 {(kind == ThingKind.Wasp ? "말벌" : "돌")} (프레임 {dt:F3}초)";
+                                int stand = Go(One(), null, dt), duck = Go(One(), x => x.Slide(true), dt), bot = Go(One(), x => Bot(x), dt);
+                                Expect(stand == 1, $"{name} 은 서 있으면 맞는다 ({stand})");
+                                Expect(duck == (way == 1 ? 0 : 1), $"{name} 은 엎드리면 {(way == 1 ? "지나간다" : "맞는다")} ({duck})");
+                                Expect(bot == 0, $"{name} 은 맞게 하면 안 맞는다 ({bot})");
+                                if (way == 0 && dt > 1 / 40.0) continue;
+                                if (way == 0) // 조금 이르게·늦게 뛰어도 넘는다 (가운데서 가장 높이 뜨는 때에서 0.08초씩)
+                                    foreach (double off in new[] { -.08, .08 })
+                                    {
+                                        var r = One();
+                                        var t = r.Things[0];
+                                        bool jumped = false;
+                                        int hits = Go(r, x => { if (!jumped && (t.X + t.W / 2.0 - x.PetX) / (x.Speed * t.Fast) <= air / 2 + off) { x.Jump(); jumped = true; } }, dt);
+                                        Expect(hits == 0, $"{name} 을 {(off < 0 ? "0.08초 늦게" : "0.08초 일찍")} 뛰어도 넘는다");
+                                    }
+                            }
+
+                    // ── 구덩이: 뛰어넘는다. 걷거나 엎드려 지나가면 빠진다 (한 번 맞고 튕겨 나온다) ──
+                    foreach (double wide in new[] { Runner.PitMin * scale, speed * .26 })
+                    {
+                        Runner One(out Thing pit) { var r = Lay(); pit = r.AddPit(r.PetX + 400 * u, r.PitTiles(wide)); return r; }
+                        var walk = One(out var p);
+                        string name = $"{at}: 구덩이(폭 {p.W})";
+                        double peak = 0;
+                        int hits = Go(walk, x => peak = Math.Max(peak, x.Lift));
+                        Expect(hits == 1 && peak > 0 && walk.Landed && walk.Lift == 0, $"{name} 를 걸어가면 빠진다 = 한 번 맞고 튕겨 나온다 (맞음 {hits}, 튄 높이 {peak:F0})");
+                        Expect(Go(One(out _), x => x.Slide(true)) == 1, $"{name} 를 엎드려 지나가도 빠진다");
+                        foreach (double dt in new[] { 1 / 60.0, 1 / 30.0 }) Expect(Go(One(out _), x => Bot(x), dt) == 0, $"{name} 를 맞춰 뛰면 넘는다 (프레임 {dt:F3}초)");
+                        // 가장 늦게(구멍 바로 앞에서), 가장 일찍(건너자마자 내려서게) 뛰어도 넘는다
+                        var late = One(out var lp);
+                        bool jumped = false;
+                        Expect(Go(late, x => { if (!jumped && lp.X + x.PitEdge - x.PetX <= x.Speed / 60 * 1.5) { x.Jump(); jumped = true; } }) == 0 && jumped, $"{name} 바로 앞에서 뛰어도 넘는다");
+                        var early = One(out var ep);
+                        jumped = false;
+                        Expect(Go(early, x => { if (!jumped && ep.X + ep.W - x.PitEdge - x.PetX <= x.Speed * (air - 2.5 / 60)) { x.Jump(); jumped = true; } }) == 0 && jumped, $"{name} 를 건너자마자 내려서게 일찍 뛰어도 넘는다");
+                        pitWindow = Math.Min(pitWindow, air - (p.W - 2 * walk.PitEdge) / speed);
+                    }
+
+                    // ── 동굴: Shift 를 누른 채 기어간다. 서 있거나 안에서 뛰면 머리 콩. 미리 뛰면 지붕에 올라선다 ──
+                    {
+                        Runner One(out Thing cave) { var r = Lay(); cave = r.AddCave(r.PetX + 400 * u, r.CaveTiles(speed * 1.2), 3); return r; }
+                        var crawl = One(out var c);
+                        for (int i = 0; i < 4; i++) crawl.Add(ThingKind.Seed, "icon/seed", crawl.Px(1), c.X + c.W / 2.0 + i * 34 * u, crawl.Ground - 10 * u);
+                        string name = $"{at}: 동굴(길이 {c.W})";
+                        foreach (double dt in new[] { 1 / 60.0, 1 / 30.0 })
+                        {
+                            var r = dt > 1 / 40.0 ? One(out _) : crawl;
+                            Expect(Go(r, x => x.Slide(true), dt) == 0 && (r != crawl || r.Seeds == 4), $"{name} 을 엎드려 지나가면 안 맞고 안의 씨앗을 먹는다 (프레임 {dt:F3}초)");
+                            Expect(Go(One(out _), x => Bot(x), dt) == 0, $"{name} 을 맞게 하면 안 맞는다 (프레임 {dt:F3}초)");
+                        }
+                        int stand = Go(One(out _));
+                        Expect(stand >= 1 && stand <= 3, $"{name} 에 서서 들어가면 머리를 찧는다 ({stand}번)");
+                        // 안에서 뛰면 머리를 찧고 그 자리에 있다 (천장을 뚫지 못한다). 다시 엎드리면 더 안 맞는다
+                        var hop = One(out var hc);
+                        bool jumped = false;
+                        double peak = 0;
+                        int hits = Go(hop, x =>
+                        {
+                            peak = Math.Max(peak, x.Lift);
+                            x.Slide(true);
+                            if (!jumped && hc.X + hc.W / 2.0 < x.PetX) { x.Jump(); jumped = true; }
+                        });
+                        Expect(hits == 1 && peak == 0 && jumped && hop.Jumps == 0, $"{name} 안에서 뛰면 머리를 찧는다: 한 번 맞고 천장을 뚫지 못한다 (맞음 {hits}, 뜬 높이 {peak:F0})");
+                        // 미리 뛰면 지붕에 올라서서 그 위로 달린다 (Shift 를 눌러도 뚫고 내려가지 않는다). 끝나면 땅으로 떨어진다
+                        var roof = One(out var rc);
+                        double top = roof.TopOf(rc), rise = Rise(v1, top + 2 * scale, grav);
+                        jumped = false;
+                        bool on = false, kept = true;
+                        string trace = "";
+                        roof.OnEvent = e => { if (e is "hit" or "jump" or "land") trace += $" {e}@{roof.Clock:F2}s 높이 {roof.Lift:F0} 동굴 {rc.X - roof.PetBox.Right:F0}"; };
+                        hits = Go(roof, x =>
+                        {
+                            if (!jumped && rc.X - x.PetBox.Right <= x.Speed * (rise + 2.5 / 60)) { x.Jump(); jumped = true; }  // 입구가 닿기 두 프레임 전에는 윗면보다 높이 떠 있게
+                            if (x.Under == rc) { on = true; x.Keys(false, true, 1 / 60.0); kept &= x.Under == rc && x.Lift == top && !x.Sliding; }
+                        }, tail: .6);
+                        Expect(on && kept && hits == 0 && roof.Landed && roof.Lift == 0, $"{name} 지붕(윗면 {top:F0})에 미리 뛰어 올라서면 그 위로 달리고, 끝나면 땅에 내려선다 (맞음 {hits}, 올라섬 {on}, 그대로 {kept}:{trace})");
+                        // 너무 늦게 뛰면 입구에 부딪힌다: 맞고, 지붕에 올라가지도 천장을 뚫지도 못한다
+                        var bump = One(out var bc);
+                        jumped = on = false;
+                        peak = 0;
+                        hits = Go(bump, x =>
+                        {
+                            if (!jumped && bc.X - x.PetBox.Right <= x.Speed / 60 * 2) { x.Jump(); jumped = true; }
+                            on |= x.Under == bc;
+                            if (bc.X < x.PetBox.Left && bc.X + bc.W > x.PetBox.Right) peak = Math.Max(peak, x.Lift);
+                        });
+                        Expect(hits >= 1 && !on && peak < top, $"{name} 입구 바로 앞에서 뛰면 부딪힌다 (맞음 {hits}, 안에서 뜬 높이 {peak:F0})");
+                    }
+
+                    // ── 길에 나오는 그대로 (처음 보는 꼴 → 그 뒤의 꼴 여러 번): 가만히 있으면 뜻한 대로 맞고, 잘하는 사람은 안 맞는다 ──
+                    foreach (var what in Enum.GetValues<Gimmick>())
+                    {
+                        var lazy = Lay();
+                        int bounces = 0;
+                        lazy.OnEvent = e => { if (e == "bounce") bounces++; };
+                        lazy.AddBunch(what);
+                        int hits = Go(lazy, null, 1 / 60.0, what == Gimmick.Pad ? 1.3 : .4);
+                        if (what == Gimmick.Pad)
+                        {
+                            Expect(hits == 0 && bounces == 1 && lazy.Seeds >= 5 && lazy.Landed && lazy.Lift == 0, $"{at}: 길에 나온 버섯을 밟으면 튀어서 씨앗 줄을 먹고 안 다친다 (씨앗 {lazy.Seeds}/7)");
+                            arcLeast = Math.Min(arcLeast, lazy.Seeds);
+                        }
+                        else Expect(what == Gimmick.Cave ? hits >= 1 : hits == 1, $"{at}: 길에 처음 나온 {names[(int)what]} 은 가만히 있으면 맞는다 ({hits})");
+                        var good = Lay();
+                        hits = 0;
+                        for (int n = 0; n < 6; n++)
+                        {
+                            good.AddBunch(what);
+                            hits += Go(good, x => Bot(x), n % 2 == 0 ? 1 / 60.0 : 1 / 30.0, what == Gimmick.Pad ? 1.3 : .4);
+                        }
+                        Expect(hits == 0, $"{at}: 길에 나온 {names[(int)what]} 을 잘하는 사람은 안 맞는다 (6번에 {hits}번 맞음)");
+                    }
+                }
+            }
+        }
+
+        // ── 열리는 차례와 잦기: 체력이 안 닳게 하고 가만히 세워 둔다 (레벨이 그대로다). 레벨 1 은 기믹이 없고, 레벨마다 하나씩 열린다 ──
+        var child = BodyOf("child");
+        var rate = new List<string>();
+        double lastRate = -1, slowest = 0;
+        var spansAll = new List<Span>();
+        foreach (int level in new[] { 1, 2, 3, 4, 5, 6, 8, 12 })
+        {
+            var met = new int[5];
+            double sec = 0;
+            for (int seed = 0; seed < 6; seed++)
+            {
+                var r = new Runner(area, TestGround, 120, child, new Random(500 + seed), measure, level);
+                var first = new double[5];
+                r.OnGimmick = (g, fresh) =>
+                {
+                    Expect(level >= Runner.UnlockOf(g), $"Lv{level}: {names[(int)g]} 은 Lv{Runner.UnlockOf(g)} 부터 나온다");
+                    Expect(fresh == (first[(int)g] == 0), $"Lv{level}: 이 판에서 처음 나온 {names[(int)g]} 만 「처음」 꼴이다");
+                    if (first[(int)g] == 0) first[(int)g] = r.Clock;
+                    met[(int)g]++;
+                };
+                string who = $"Lv{level} 씨 {500 + seed} 세워 둠";
+                for (int i = 0; i < 60 * 75; i++)
+                {
+                    (r.Energy, r.Seeds) = (100, 0);   // 안 지치고, 주운 씨앗으로 레벨이 오르지도 않게
+                    r.Update(1 / 60.0);
+                    if (i % 5 == 0) Fair(r, spansAll, who);
+                }
+                Expect(r.Level == level, $"Lv{level}: 세워 둔 판은 레벨이 그대로다");
+                sec += r.Clock;
+                if (level is >= 2 and <= 6)
+                {
+                    double debut = first[level - 2];
+                    Expect(debut > 0 && debut < 12, $"Lv{level} 씨 {500 + seed}: 새로 열린 {names[level - 2]} 은 시작하고 곧 나온다 ({debut:F1}초)");
+                    slowest = Math.Max(slowest, debut);
+                }
+            }
+            int all = met.Sum();
+            Expect(level > 1 || all == 0, "Lv1 에는 기믹이 없다");
+            for (int g = 0; g < 5; g++) Expect(met[g] > 0 == (level >= 2 + g), $"Lv{level}: {names[g]} {(level >= 2 + g ? "이 나온다" : "은 아직 안 나온다")} ({met[g]}번)");
+            double perMin = all / (sec / 60);
+            if (level is not (1 or 2 or 4 or 6 or 12)) continue; // 두 레벨씩 건너 견준다 (한 레벨 차이는 씨에 따라 뒤집히기도 한다)
+            Expect(perMin > lastRate, $"레벨이 오르면 기믹이 잦아진다: Lv{level} 1분에 {perMin:F1}번 (앞 {lastRate:F1}번)");
+            lastRate = perMin;
+            if (level > 1) rate.Add($"Lv{level} {perMin:F1}번({string.Join("·", met.Where((_, g) => level >= 2 + g))})");
+        }
+
+        // 다른 크기의 모니터에 세워 둔 판: 넓으면 말벌·돌이 멀리서 출발하고(뒤 묶음이 그만큼 기다린다), 좁으면 덜 빠르다
+        foreach (var (mon, scales) in Monitors)
+            foreach (int scale in scales)
+                foreach (int level in new[] { 4, 12 })
+                    for (int seed = 0; seed < 3; seed++)
+                    {
+                        var r = new Runner(mon, mon.Bottom - 50, 40 * scale, child, new Random(600 + seed), measure, level);
+                        string who = $"화면 {mon.Width}×{mon.Height} 배율 {scale} Lv{level} 씨 {600 + seed} 세워 둠";
+                        for (int i = 0; i < 60 * 60; i++)
+                        {
+                            (r.Energy, r.Seeds) = (100, 0);
+                            r.Update(1 / 60.0);
+                            if (i % 5 == 0) Fair(r, spansAll, who);
+                            if (i % 30 == 0)
+                                foreach (var t in r.Things)
+                                    if (t.Kind is ThingKind.Wasp or ThingKind.Rock)
+                                    {
+                                        double see = (r.Track.Right - r.PetX) / (r.Speed * t.Fast), least = (r.Track.Right - r.PetX) / (r.Speed * 1.1);
+                                        Expect(t.Fast >= 1.1 && t.Fast <= 1 + (t.Kind == ThingKind.Wasp ? Runner.WaspFast : Runner.RockFast) && see >= Math.Min(Runner.MinSee * .85, least * .85),
+                                            $"{who}: {t.Kind} 는 길보다 {t.Fast:F2}배 빨리 오고, 화면에 들어와 닿기까지 {see:F2}초 보인다");
+                                    }
+                        }
+                    }
+
+        var all2 = played;
+        int gimHits = all2.Hits.Skip(1).Sum(), gimMet = all2.Met.Sum();
+        Expect(gimMet > 3000 && all2.Met.All(n => n > 200) && all2.Fresh.All(n => n > 50), $"한 판 해 보기에서 기믹을 넉넉히 만났다: {string.Join("·", all2.Met)} (처음 {string.Join("·", all2.Fresh)})");
+        Expect(gimHits <= gimMet * .01, $"잘하는 사람은 기믹에 거의 안 맞는다: {gimMet}번 만나 {gimHits}번 맞음 (말벌 {all2.Hits[1]}·돌 {all2.Hits[2]}·구덩이 {all2.Hits[3]}·동굴 {all2.Hits[4]})");
+        Expect(all2.PadFloor > 50, $"2층 앞 버섯을 넉넉히 밟아 봤다: {all2.PadFloor}번");
+        return $"달리기 기믹: {combos}조합 × 가장 느릴 때·가장 빠를 때 ({cases}번 달려 봄) — 버섯 점프대는 밟아도 위에 내려서도 튀고 안 다침(튀는 높이 {bounceUp:F1}칸px = 뛰는 높이의 {bounceUp / 62.67:F2}배, 길에 나온 씨앗 줄 7개 중 {arcLeast}개 이상 먹음, 2층 앞에서는 그 발판에 내려섬), "
+            + $"말벌·돌은 낮게 오면 뛰어넘고 높게 오면 엎드려 지나감(엎드린 머리 위 틈 말벌 {waspRoom:F1}·돌 {rockRoom:F1}칸px 이상, 넘을 때 맞출 틈 {overTime:F2}초 이상, 서 있으면 맞음), "
+            + $"구덩이는 뛰어넘고 걷거나 엎드리면 빠짐(뛸 때를 고를 틈 {pitWindow:F2}초 이상), 동굴은 엎드려 지나가고 서거나 안에서 뛰면 머리 콩(천장 못 뚫음), 미리 뛰면 지붕에 올라섬(여유 {roofRoom:F1}칸px 이상)\n"
+            + $"  열리는 차례: Lv1 없음 → Lv2 버섯 → Lv3 말벌 → Lv4 돌 → Lv5 구덩이 → Lv6 동굴 (새로 열린 것은 가장 늦어도 {slowest:F1}초에 처음 나옴). 1분에 기믹 묶음 {string.Join(" · ", rate)}\n"
+            + $"  한 판 해 보기 {all2.Runs}판({all2.Sec / 60:F0}분)에서 기믹 묶음 {gimMet}번(버섯 {all2.Met[0]}·말벌 {all2.Met[1]}·돌 {all2.Met[2]}·구덩이 {all2.Met[3]}·동굴 {all2.Met[4]}), 맞은 수 말벌 {all2.Hits[1]}·돌 {all2.Hits[2]}·구덩이 {all2.Hits[3]}·동굴 {all2.Hits[4]} (기믹 아닌 것 {all2.Hits[0]}), 버섯 {all2.Bounces}번 밟음(2층 앞 {all2.PadFloor}번 모두 그 발판에 내려섬)\n"
+            + $"  공정 검사 {all2.Checks}번: 묶음 사이 가장 짧게 {all2.MinGap:F2}초(버섯으로 튀거나 동굴 지붕에서 떨어져 내려선 뒤로는 {all2.MinLand:F2}초), 처음 보는 기믹은 혼자·앞뒤 가장 짧게 {all2.MinFresh:F2}초, 말벌·돌이 뒤의 것을 앞지르지 않음\n"
+            + "  배율 3 (화면 px):\n" + string.Join("\n", table);
+    }
+
     enum Ride { Seek, Plain, Walk, Leap }
+
+    // 검사에 쓰는 다른 모니터들 (작업 영역)과 거기서 쓸 만한 볼록이 배율
+    static readonly (Rectangle Area, int[] Scales)[] Monitors =
+    {
+        (new Rectangle(0, 0, 1366, 728), new[] { 2, 3 }), (new Rectangle(0, 0, 1280, 680), new[] { 4 }),
+        (new Rectangle(0, 0, 2560, 1400), new[] { 3, 4 }), (new Rectangle(0, 0, 3840, 2100), new[] { 3, 6 }),
+    };
 
     // 여러 판에 걸친 2층 통계
     sealed class FloorStat
@@ -601,6 +1083,20 @@ sealed partial class RunGame
         game.Command(new[] { "run", "stop" });
         Expect(!game.Running && game.scores.Count == 4 && pet.Mode == Mode.Wander, "디버그 stop 은 바로 끝나고 기록에 안 남는다");
 
+        // 디버그 「run lv 6」: 그 레벨에서 해 본다. 끝까지 달려도 기록에 안 남고 저장된 레벨도 그대로다
+        int kept = game.scores.Count, keptLevel = game.level, keptBest = game.best;
+        game.Command(new[] { "run", "lv", "6" });
+        Expect(game.run is { Level: 6 } && game.trial && !game.auto && game.level == keptLevel, "디버그 run lv 6 은 6레벨에서 시작한다 (저장된 레벨은 그대로)");
+        game.run!.Seeds = 500; // 실제 조작(Session.Open)으로 열렸다: 프레임은 돌리지 않는다
+        game.Stop(false);
+        Expect(game.run == null && game.scores.Count == kept && game.level == keptLevel && game.best == keptBest && !game.trial, "해 본 판은 끝내도 기록에 안 남는다");
+        pet.Hush();
+        game.Command(new[] { "run", "lv", "9", "auto" });
+        Expect(game.run is { Level: 9 } && game.trial && game.auto, "run lv 9 auto 는 9레벨을 알아서 달린다");
+        game.Command(new[] { "run", "stop" });
+        Expect(!game.Running && game.scores.Count == kept && pet.Mode == Mode.Wander, "해 보던 판을 멈춰도 기록은 그대로다");
+        pet.Hush();
+
         // Ctrl+Shift 를 0.5초 누르는 옛 끝내기: 점수는 안 띄우고 기록은 남는다
         var hold = Seat(7);
         down.Add(Keys.ControlKey); down.Add(Keys.ShiftKey);
@@ -691,7 +1187,69 @@ sealed partial class RunGame
         down.Clear();
         upper.Command(new[] { "run", "stop" });
         pet.Hush();
-        return "달리기 모듈: Ctrl·Shift 만 읽음, 보스 키는 점수 없이 바로, 끝난 점수 2.5초 동안 녹화 숨김 유지, 옛 기록 넘어옴, 바뀐 자리만 다시 칠해도 화면이 맞음 (2층 발판을 타고 뛸 때도)";
+
+        // 기믹 그림: 여러 장짜리(버섯·말벌·돌)는 모든 장이 첫 장의 상자 안에 든다 (다시 칠할 자리가 첫 장 상자다). 동굴 가운데 조각 세 가지는 같은 상자다
+        var stamps = Stamps.Of(sp);
+        foreach (int k in Scales)
+        {
+            foreach (var (name, frames) in new[] { ("run/shroom", 2), ("run/wasp", 2), ("run/rock", 4) })
+            {
+                var row = stamps.Row(name, k);
+                Expect(row.Length == frames && row.All(f => row[0].Box(0, 0).Contains(f.Box(0, 0))), $"{name}×{k}: {frames}장 모두 첫 장의 상자 안에 그려진다");
+            }
+            var mid = stamps.Row("run/cave_m", k);
+            Expect(mid.Length == 3 && mid.All(f => f.Box(0, 0) == mid[0].Box(0, 0)) && mid[0].Bmp.Width == sp.Cell * k, $"run/cave_m×{k}: 가운데 조각 세 가지는 크기가 같고 칸을 꽉 채운다");
+        }
+        Expect(Enumerable.Range(0, 40).Select(n => CaveLook(new Thing { Way = 3 }, n)).Distinct().Count() == 3, "동굴 천장에 고드름돌·박쥐·큰 고드름돌이 섞여 나온다");
+
+        // 기믹: 놓아둔 버섯·말벌·돌·구덩이·동굴을 알아서 달리는 동안(튀고, 뛰어넘고, 엎드리고) 바뀐 자리만 다시 칠해도 화면이 맞다. 튈 때 본체도 같이 올라간다
+        var trick = new RunGame(host);
+        var gim = New(sp, area, TestGround, 3, "child", new Random(21), 12);
+        gim.Things.Clear();
+        gim.Mute = true;
+        trick.Begin(gim, Session.Fake(area));
+        trick.auto = true;
+        double far = gim.PetX + 500;
+        gim.AddPad(far);
+        gim.AddMover(ThingKind.Wasp, 0, far += 1300, gim.FastOf(Runner.WaspFast));
+        gim.AddMover(ThingKind.Wasp, 1, far += 700, gim.FastOf(Runner.WaspFast));
+        gim.AddMover(ThingKind.Rock, 0, far += 700, gim.FastOf(Runner.RockFast));
+        gim.AddMover(ThingKind.Rock, 1, far += 700, gim.FastOf(Runner.RockFast));
+        gim.AddPit(far += 600, gim.PitTiles(160));
+        var den = gim.AddCave(far += 800, gim.CaveTiles(900), 3);
+        for (int i = 0; i < 4; i++) gim.Add(ThingKind.Seed, "icon/seed", 1, den.X + 300 + i * 34, gim.Ground - 10);
+        using var ov3 = host.Overlay(trick);
+        int bounced = 0, struck = 0;
+        double peak = 0, petPeak = 0;
+        bool crawled = false, squashed = false;
+        gim.OnEvent += e => { if (e == "bounce") bounced++; else if (e == "hit") struck++; };
+        var (bad3, first3) = SceneKit.Repaint(ov3, trick, strip, () =>
+        {
+            trick.Frame(1 / 60.0);
+            pet.EmoteUntil = 0;
+            (peak, petPeak) = (Math.Max(peak, gim.Lift), Math.Max(petPeak, gim.Ground - pet.Y));
+            crawled |= gim.Sliding && pet.Pose == "land" && den.X < gim.PetX && den.X + den.W > gim.PetX;
+            squashed |= gim.Things.Any(t => t.Kind == ThingKind.Pad && Cel(gim, t) == 1);
+            return trick.run != null && (gim.Caves.Count > 0 || gim.Clock < 3);
+        }, 60 * 30, every: 2);
+        Expect(bad3 == 0, $"기믹이 지나가는 동안에도 바뀐 자리만 다시 칠하면 화면이 맞다: {bad3}번 다름 (처음 {first3}프레임)");
+        Expect(bounced == 1 && struck == 0 && squashed && peak > gim.JumpUp * 1.4 && petPeak == peak && crawled && gim.Seeds == 4 && gim.Pits.Count == 0 && gim.Things.Count == 0,
+            $"알아서 달리면 버섯에 튀고(본체도 그 높이로) 말벌·돌·구덩이를 넘고 동굴을 기어간다: 튐 {bounced}, 맞음 {struck}, 가장 높이 {peak:F0}, 씨앗 {gim.Seeds}");
+        trick.Command(new[] { "run", "stop" });
+        pet.Hush();
+        // 길에 저절로 나오는 대로 (12레벨, 알아서 달린다) 30초
+        var mix = new RunGame(host);
+        var wild = New(sp, area, TestGround, 3, "child", new Random(22), 12);
+        mix.Begin(wild, Session.Fake(area));
+        mix.auto = true;
+        int kinds = 0;
+        wild.OnGimmick = (g, _) => kinds |= 1 << (int)g;
+        using var ov4 = host.Overlay(mix);
+        var (bad4, first4) = SceneKit.Repaint(ov4, mix, strip, () => { mix.Frame(1 / 60.0); pet.EmoteUntil = 0; return mix.run != null && wild.Clock < 30; }, 60 * 40, every: 3);
+        Expect(bad4 == 0 && System.Numerics.BitOperations.PopCount((uint)kinds) >= 3, $"12레벨을 알아서 달리는 30초 동안 바뀐 자리만 다시 칠해도 화면이 맞다: {bad4}번 다름 (처음 {first4}프레임), 나온 기믹 {System.Numerics.BitOperations.PopCount((uint)kinds)}가지");
+        mix.Command(new[] { "run", "stop" });
+        pet.Hush();
+        return "달리기 모듈: Ctrl·Shift 만 읽음, 보스 키는 점수 없이 바로, 끝난 점수 2.5초 동안 녹화 숨김 유지, 옛 기록 넘어옴, 바뀐 자리만 다시 칠해도 화면이 맞음 (2층 발판을 타고 뛸 때도, 기믹 다섯 가지가 지나갈 때도)";
     }
 
     // 달리기 한 프레임 값: 규칙(Update)·다시 칠할 자리(Sync)·그리기(Render)를 따로 재고, 프레임마다 새로 잡는 메모리도 센다.
@@ -701,6 +1259,10 @@ sealed partial class RunGame
     // 2층 발판을 넣은 뒤 (2026-11-13): 프레임마다 잡는 메모리는 그대로 (달릴 때 6B·0B·0B), 발판이 지나는 동안만 긴 띠 하나를 더 칠한다 —
     //   --mode-bench run (8레벨 한 판 2971프레임): 규칙 2.8 → 3.2µs, 그리기 98 → 100µs, 다시 칠한 넓이 64.8 → 77.5천px²/프레임, 메모리 6B/프레임 그대로.
     //   말풍선 그림(하트·부딪힘)은 앱 것이라 빼고 잰다: 화면 없이 잴 때는 볼록이 시계가 안 가서 한 번 뜨면 끝까지 남아 값을 흐린다
+    // 기믹(버섯·말벌·돌·구덩이·동굴)을 넣은 뒤 (2026-11-13): --mode-bench run (8레벨 한 판 2971프레임) 규칙 3.2 → 4.6µs, 그리기 105 → 106µs,
+    //   다시 칠한 넓이 77.5 → 68.6천px²/프레임, 메모리 6 → 7B/프레임 (Thing 이 다섯 칸 커졌다), 가장 느린 프레임 2.2 → 4.7ms.
+    //   규칙 값과 가장 느린 프레임은 기믹 코드가 처음 불릴 때의 JIT 한 번(2.5ms쯤)이 들어간 것이다: 규칙을 미리 한 판 돌려 두고 재면 규칙 1.9µs, 가장 느린 프레임 2.1ms.
+    //   말벌·돌은 프레임마다 높이 식(말벌은 Math.Cos 한 번)을 한 번씩, 구덩이·동굴은 지나가는 동안 띠 하나씩 더 칠한다
     static string Perf(SceneHost host)
     {
         var (area, sp) = (TestArea, host.Sprites);
@@ -767,9 +1329,12 @@ sealed partial class RunGame
     // 2층 (가장 낮은 발판, 가장 높은 발판 위의 볼록이와 씨앗 무지개·하트, 그 밑으로 선 볼록이와 보통 장애물. 노란 점선은 한 번 뛰어 오르는 높이).
     // 빨간 테두리는 볼록이 판정, 파란 테두리는 부딪히는 자리.
     // 형태 하나만 자세히 (GameModes.SceneArg, 옛 --run-scene <그림.png> <배율> <형태>): 두 배로 키워 왼쪽·오른쪽 두 장으로 (<이름>-1.png, <이름>-2.png)
+    // 기믹은 따로 한 장 더 (<이름>-gimmick.png, 형태 하나만이면 <이름>-gimmick-1~4.png): GimmickScene
+    // 실제로 달리는 모습 (--mode-scene run <그림.png> live[레벨]): 알아서 달리는 한 판에서 기믹 묶음이 다가올 때마다 한 줄씩 찍는다: LiveScene
     public static void Scene(string path, int scale)
     {
         string? only = GameModes.SceneArg;
+        if (only != null && only.StartsWith("live", StringComparison.Ordinal)) { LiveScene(path, scale, int.TryParse(only[4..], out int lv) ? lv : 12); return; }
         var forms = Forms().Where(f => only == null || f == only).ToList();
         double u = scale / 3.0;
         int width = (int)(2460 * u), rowH = (int)(440 * u);
@@ -850,6 +1415,7 @@ sealed partial class RunGame
             ov.Render(g);
             g.Restore(whole);
         }
+        GimmickScene(path, scale, forms, only != null);
         if (only == null) { bmp.Save(path); return; }
         for (int half = 0; half < 2; half++)
         {
@@ -859,5 +1425,168 @@ sealed partial class RunGame
             zg.DrawImage(bmp, new Rectangle(0, 0, width, rowH * 2), new Rectangle(half * width / 2, 0, width / 2, rowH), GraphicsUnit.Pixel);
             zoom.Save(Path.Combine(Path.GetDirectoryName(path) ?? "", $"{Path.GetFileNameWithoutExtension(path)}-{half + 1}.png"));
         }
+    }
+
+    // 기믹 장면 (<이름>-gimmick.png): 형태마다 두 줄.
+    //   윗줄: 버섯 점프대(밟는 자리의 볼록이, 튄 길을 따라 놓인 씨앗, 꼭대기의 볼록이. 왼쪽은 밟혀 눌린 버섯) · 낮게 오는 말벌(뛰어넘는다) · 높게 오는 말벌(엎드린다)
+    //   아랫줄: 낮게 튀는 돌(뛰어넘는다) · 높게 튀는 돌(엎드린다) · 구덩이(가장 좁은 것 위를 뛰어넘는 볼록이, 오른쪽은 넓은 것) · 동굴(안에 엎드린 볼록이와 씨앗, 지붕 위의 볼록이)
+    //   말벌·돌은 볼록이에게 닿은 것과, 같은 것이 오는 길 위의 여러 자리를 함께 그린다 (높이는 남은 거리로만 정해진다).
+    //   빨간 테두리는 볼록이 판정, 파란 테두리는 부딪히는(빠지는) 자리, 노란 점선은 한 번 뛰는 높이(버섯 칸에서는 튀는 높이도)
+    static void GimmickScene(string path, int scale, List<string> forms, bool zoom)
+    {
+        double u = scale / 3.0;
+        int width = (int)(2460 * u), highH = (int)(440 * u), lowH = (int)(270 * u), rowH = highH + lowH;
+        using var bmp = new Bitmap(width, rowH * forms.Count);
+        using var g = Graphics.FromImage(bmp);
+        g.Clear(Color.FromArgb(150, 160, 170));
+        using var red = new Pen(Color.FromArgb(230, 40, 60));
+        using var blue = new Pen(Color.FromArgb(40, 90, 230));
+        using var line = new Pen(Color.FromArgb(110, 118, 128));
+        using var limit = new Pen(Color.FromArgb(250, 185, 40)) { DashStyle = DashStyle.Dash };
+        for (int row = 0; row < forms.Count; row++)
+            for (int half = 0; half < 2; half++)
+            {
+                string form = forms[row];
+                int h = half == 0 ? highH : lowH, ground = h - (int)(half == 0 ? 30 * u : 40 * u), cell = 40 * scale;
+                var whole = g.Save();
+                g.TranslateTransform(0, row * rowH + half * highH);
+                var host = new SceneHost(form, scale);
+                var (sp, brain) = (host.Sprites, host.Pet);
+                var game = new RunGame(host);
+                var modes = new IGameMode[] { game };
+                using var ov = new Overlay(brain, () => sp, new Rectangle(0, 0, width, h)) { Modes = () => modes };
+                g.DrawLine(line, 0, ground, width, ground);
+                g.DrawLine(line, 0, h - 1, width, h - 1);
+                // 칸 하나: 볼록이는 칸 왼쪽에서 22% 자리에 있다
+                Runner Panel(int left, int w, int level = 12)
+                {
+                    var r = New(sp, new Rectangle((int)(left * u), 0, (int)(w * u), h), ground, scale, form, new Random(1), level);
+                    (r.Mute, r.Clock, r.Energy) = (true, 10, 60);
+                    r.Things.Clear();
+                    g.DrawLine(line, (int)(left * u), 0, (int)(left * u), h);
+                    return r;
+                }
+                void Show(Runner r) { game.run = r; ov.Render(g); }
+                void PetAt(Runner r, double x, string pose, double lift = 0)
+                {
+                    g.DrawImageUnscaled(sp.Get($"{form}/0/{pose}", 0, scale), (int)(x - cell / 2.0), (int)(ground - lift) - cell);
+                    int tall = pose == "land" ? r.DuckPx : r.StandPx;
+                    g.DrawRectangle(red, (int)(x - r.BoxW / 2.0), (int)(ground - lift) - tall, r.BoxW - 1, tall - 1);
+                }
+                void Box(Rectangle b) => g.DrawRectangle(blue, b.X, b.Y, b.Width - 1, b.Height - 1);
+                void Dash(Runner r, double up) => g.DrawLine(limit, r.Track.Left + 4, ground - (int)up, r.Track.Right - 4, ground - (int)up);
+                // 말벌·돌을 볼록이에게서 d(칸px) 떨어진 자리에: 닿은 것(0)부터 오는 길을 따라
+                void Trail(Runner r, ThingKind kind, int way, params int[] ds)
+                {
+                    foreach (int d in ds)
+                    {
+                        var t = r.AddMover(kind, way, 0, 1.3);
+                        t.X = r.PetX + d * scale - t.W / 2.0;
+                        t.Y = r.Ground - r.UpOf(t);
+                    }
+                    Dash(r, r.JumpUp);
+                    double sf = u;
+                    if (way == 0) for (int i = 0; i < 3; i++) r.Add(ThingKind.Seed, "icon/seed", r.Px(1), r.PetX + (i - 1) * 34 * sf - 6 * sf, ground - r.LowTop(r.Things[0]) - (i == 1 ? 70 : 50) * sf);
+                    else for (int i = 0; i < 4; i++) r.Add(ThingKind.Seed, "icon/seed", r.Px(1), r.PetX + (i - 1.5) * 34 * sf - 6 * sf, ground - 10 * sf);
+                    Show(r);
+                    PetAt(r, r.PetX, way == 0 ? "happy" : "land", way == 0 ? r.LowTop(r.Things[0]) + 14 * u : 0);
+                    Box(Runner.Hard(r.Things[0]));
+                }
+
+                if (half == 0)
+                {
+                    // 버섯 점프대: 길에 나오는 그대로 (가장 느릴 때)를 밟는 자리로 옮겨 놓는다
+                    var pad = Panel(0, 620, 1);
+                    pad.AddBunch(Gimmick.Pad);
+                    var shroom = pad.Things.First(t => t.Kind == ThingKind.Pad);
+                    double shift = shroom.X + shroom.W / 6.0 - (pad.PetX + pad.BoxW / 2.0);
+                    foreach (var t in pad.Things) t.X -= shift;
+                    pad.AddPad(pad.PetX - 110 * u).Hot = pad.Clock; // 밟혀 눌린 그림
+                    Dash(pad, pad.JumpUp);
+                    Dash(pad, pad.BounceUp);
+                    Show(pad);
+                    PetAt(pad, pad.PetX, "walk");
+                    PetAt(pad, pad.PetX + pad.Speed * Runner.BounceSec / 2, "happy", pad.BounceUp);
+                    Trail(Panel(620, 920), ThingKind.Wasp, 0, 0, 55, 110, 165, 220);
+                    Trail(Panel(1540, 920), ThingKind.Wasp, 1, 0, 55, 110, 165, 220);
+                }
+                else
+                {
+                    Trail(Panel(0, 520), ThingKind.Rock, 0, 0, 54, 108);
+                    Trail(Panel(520, 920), ThingKind.Rock, 1, 0, 40, 80, 120, 160, 200);
+                    // 구덩이: 가장 좁은 것(뛰어넘는 중)과 가장 빠를 때의 넓은 것
+                    var pit = Panel(1440, 440);
+                    var narrow = pit.AddPit(0, pit.PitTiles(Runner.PitMin * scale));
+                    narrow.X = pit.PetX - narrow.W / 2.0;
+                    var wide = pit.AddPit(pit.PetX + 90 * u, pit.PitTiles(Runner.MaxSpeedOf(12) * u * .26));
+                    for (int i = 0; i < 3; i++) pit.Add(ThingKind.Seed, "icon/seed", pit.Px(1), pit.PetX + (i - 1) * 34 * u - 6 * u, ground - (i == 1 ? 70 : 50) * u);
+                    Dash(pit, pit.JumpUp);
+                    Show(pit);
+                    PetAt(pit, pit.PetX, "happy", 64 * u);
+                    foreach (var p in new[] { narrow, wide }) g.DrawLine(blue, (int)p.X + pit.PitEdge, ground, (int)(p.X + p.W) - pit.PitEdge, ground);
+                    // 동굴: 안에 엎드린 볼록이와 씨앗, 지붕 위의 볼록이
+                    var cave = Panel(1880, 580);
+                    var c = cave.AddCave(cave.PetX - 70 * u, 3, 1);
+                    for (int i = 0; i < 4; i++) cave.Add(ThingKind.Seed, "icon/seed", cave.Px(1), cave.PetX + (70 + i * 34) * u, ground - 10 * u);
+                    Dash(cave, cave.JumpUp);
+                    Show(cave);
+                    PetAt(cave, cave.PetX, "land");
+                    PetAt(cave, cave.PetX + 270 * u, "walk", cave.TopOf(c));
+                    Box(new Rectangle((int)c.X + cave.CaveEdge, c.Box.Y, c.W - 2 * cave.CaveEdge, c.H));
+                }
+                game.run = null;
+                g.Restore(whole);
+            }
+        string name = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(path) ?? "", System.IO.Path.GetFileNameWithoutExtension(path));
+        if (!zoom) { bmp.Save(name + "-gimmick.png"); return; }
+        for (int n = 0; n < 4; n++) // 형태 하나만: 두 배로 키워 윗줄 왼쪽·오른쪽, 아랫줄 왼쪽·오른쪽
+        {
+            int top = n < 2 ? 0 : highH, tall = n < 2 ? highH : lowH;
+            using var big = new Bitmap(width, tall * 2);
+            using var zg = Graphics.FromImage(big);
+            (zg.InterpolationMode, zg.PixelOffsetMode) = (InterpolationMode.NearestNeighbor, PixelOffsetMode.Half);
+            zg.DrawImage(bmp, new Rectangle(0, 0, width, tall * 2), new Rectangle(n % 2 * width / 2, top, width / 2, tall), GraphicsUnit.Pixel);
+            big.Save($"{name}-gimmick-{n + 1}.png");
+        }
+    }
+
+    // 실제로 달리는 모습: 그 레벨에서 알아서 달리는 한 판 (어린이, 같은 씨). 기믹 묶음이 볼록이 앞 화면 한가운데쯤 왔을 때마다 달리는 띠를 한 줄씩 찍는다 (열두 줄까지).
+    // 길에 저절로 나온 그대로라 묶음 사이 틈·씨앗 놓임·말벌과 돌이 오는 길을 눈으로 본다
+    static void LiveScene(string path, int scale, int level)
+    {
+        var host = new SceneHost("child", scale);
+        var (sp, pet) = (host.Sprites, host.Pet);
+        var game = new RunGame(host);
+        var r = New(sp, TestArea, TestGround, scale, "child", new Random(31), level);
+        game.Begin(r, Session.Fake(TestArea));
+        game.auto = true;
+        using var ov = host.Overlay(game);
+        double u = scale / 3.0;
+        var view = new Rectangle(0, TestGround - (int)(400 * u), TestArea.Width, (int)(450 * u));
+        const int Rows = 12;
+        using var bmp = new Bitmap(view.Width, (view.Height + 6) * Rows);
+        using var g = Graphics.FromImage(bmp);
+        using var frame = new Bitmap(ov.Width, ov.Height);
+        using var fg = Graphics.FromImage(frame);
+        using var line = new Pen(Color.FromArgb(110, 118, 128));
+        g.Clear(Color.White);
+        var spans = new List<Span>();
+        int shot = 0, lastBunch = 0, cell = 40 * scale;
+        for (int i = 0; i < 60 * 120 && shot < Rows && game.run != null; i++)
+        {
+            game.Frame(1 / 60.0);
+            pet.EmoteUntil = 0;
+            Spans(r, spans);
+            Thing? near = null;
+            foreach (var x in spans) if (x.T.Bunch > lastBunch && x.Front > 0 && x.T.X - r.PetX < TestArea.Width * .3) near = x.T;
+            if (near == null) continue;
+            lastBunch = near.Bunch;
+            fg.Clear(Color.FromArgb(150, 160, 170));
+            fg.DrawLine(line, 0, TestGround, ov.Width, TestGround);
+            ov.Render(fg);
+            fg.DrawImageUnscaled(sp.Get($"child/0/{pet.Pose}", 0, scale), (int)(pet.X - cell / 2.0), (int)pet.Y - cell); // 본체는 그림 창 위에 따로 뜬다
+            g.DrawImage(frame, new Rectangle(0, shot++ * (view.Height + 6), view.Width, view.Height), view, GraphicsUnit.Pixel);
+        }
+        bmp.Save(path);
     }
 }
