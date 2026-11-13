@@ -1,8 +1,8 @@
 namespace Bolok;
 
-public enum ThingKind { Block, Fly, Seed, Heart }
+public enum ThingKind { Block, Fly, Seed, Heart, Floor }
 
-// 길 위의 것: 장애물(땅·공중), 씨앗, 하트. X 는 왼쪽, Y 는 바닥선(화면 좌표)
+// 길 위의 것: 장애물(땅·공중), 씨앗, 하트, 2층 발판. X 는 왼쪽, Y 는 바닥선(화면 좌표)
 public sealed class Thing
 {
     public ThingKind Kind;
@@ -30,6 +30,16 @@ public readonly record struct RunArt(string Sprite, int Scale, int W, int H, int
 // 체력은 저절로 닳고 부딪히면 크게 닳는다. 레벨마다 목표 점수가 있고, 넘기면 그 판 안에서 바로 다음 레벨로 올라 더 어려워진다.
 // 레벨은 저장해서 다음 판은 그 레벨에서 시작한다. 화면과 무관한 규칙이라 --selfcheck 로 검사한다.
 // 판정은 몸 크기를 따른다 (YELL 2026-11-13): 아기는 낮고 좁게, 어른은 크게. 구름·장애물·씨앗 높이도 선 키(S)에 맞춘다
+//
+// 2층 (YELL 2026-11-13 「달리기는 중간에 2층도 나오게」): 가끔 길 위에 발판이 뜬다. 꼭 올라가야 하는 길이 아니라 더 좋은 길이다
+//   - 한쪽으로만 막힌다: 내려오다가 윗면에 닿을 때만 선다. 밑에서 뛰면 뚫고 올라가 그 위에 선다. 발판 밑면은 선 볼록이 머리보다 높아 밑으로 그냥 달려도 된다
+//   - 윗면 높이는 FloorLow~FloorHigh: 선 키 + 머리 위 11칸px(귀가 가장 긴 캐릭터도 안 닿게) + 두께 7칸px 에서 3칸px 더까지.
+//     한 번 뛰어 오르는 높이(JumpUp, 62.7칸px)의 0.8배를 넘지 않는다: 가장 큰 통통이도 윗면 위에 0.35초 넘게 떠 있다
+//   - 위에는 씨앗 줄·씨앗 무지개, 가끔 하트만 있다 (장애물 없음). 밑으로는 보통 땅 장애물이 계속 온다 (구름·키 큰 것은 안 온다)
+//   - 발판이 끝나면 땅으로 떨어진다. 끝난 뒤 (떨어지는 시간 + 0.75초) 거리에는 장애물을 두지 않는다: 가만히 떨어져도 다음 것을 보고 뛸 틈이 있다
+//   - 발판 앞도 비어 있다 (앞 묶음과의 틈). 연달아 둘이 나오면 사이는 0.3초 거리: 뛰어 건너거나, 떨어져도 그 밑은 비어 있다
+//   - 조작은 그대로다. 발판 위에서 Shift 를 새로 누르면 뚫고 내려간다 (누른 채로 올라서면 안 내려간다). 발판 끝에서 떨어질 때도 두 번 뛸 수 있다
+//   - 첫 2층은 6~12초에. 그 뒤로 레벨 1 은 22~32초에 한 번, 레벨이 오를 때마다 0.9초씩 잦아져 12레벨부터 12~22초에 한 번 (1분에 두세 번)
 public sealed class Runner
 {
     public readonly Rectangle Track;    // 달리는 모니터
@@ -40,9 +50,16 @@ public sealed class Runner
     public readonly int BoxW, StandPx, DuckPx;  // 판정 상자 (화면 px): 폭은 몸 폭의 0.8, 높이는 선 키·엎드린 키
     public readonly double CloudUp;     // 구름 바닥 높이: 선 키와 엎드린 키의 한가운데 — 서면 맞고 엎드리면 지나가는 여유가 위아래 같다
     public readonly double NormalMax, TallMax;  // 땅 장애물 높이 한도: 보통은 선 키의 0.85배, 키 큰 것은 1.3배
+    public readonly double JumpUp;      // 한 번 뛰어 오르는 높이 (화면 px)
+    public readonly int FloorLow, FloorHigh, FloorThick;    // 2층 발판: 윗면 높이 범위(땅에서), 두께
     readonly double sf;                 // 속도·거리 배율 (배율 3 이 1)
 
     public double Lift, Vy, Speed, Energy = 100, Distance, Clock, HurtUntil, InvUntil, LevelAt = -9;
+    public double Rest;                 // 서 있는 곳의 높이: 땅이면 0, 발판이면 그 윗면
+    public bool Landed => Vy == 0 && Lift == Rest;  // 땅이나 발판을 딛고 있다
+    public Thing? Under;                // 딛고 선 발판 (땅·공중이면 null)
+    Thing? through;                     // Shift 로 뚫고 내려가는 발판: 발이 윗면 밑으로 갈 때까지 없는 셈 친다
+    public readonly List<Thing> Floors = new();     // 2층 발판 (앞에서부터 차례로). W 는 길이, H 는 두께
     public int Jumps, Seeds, Level;
     public bool Sliding, Over;
     public int Score => Seeds * 10 + (int)(Distance / (100 * sf));
@@ -62,10 +79,13 @@ public sealed class Runner
     public IReadOnlyList<int> NormalBlocks => normal;
     public IReadOnlyList<int> TallBlocks => tall;
     readonly int seedArt, heartArt, cloudArt;
+    public readonly (int L, int M, int R) LedgeArt;     // 발판 그림: 왼쪽 끝, 이어 붙이는 가운데, 오른쪽 끝
+    double floorAt;                     // 다음 2층이 나올 때 (Clock)
+    public const double FloorHead = 11, FloorVary = 3, FloorReach = .8, FloorGap = .3, Runway = .75, FloorHeart = .4;
 
     // 0.8초 가까이 떠 있어서 넘을 타이밍에 여유가 있다
     public const double Gravity = 2400, JumpSpeed = 950, Drain = 2, HeartGain = 15, QuitHold = .5;
-    bool ctrlWas;
+    bool ctrlWas, shiftWas;
     double bothHeld;
     static readonly string[] Ground1 = { "prop/acorn", "prop/mushroom", "prop/cactus", "prop/cheese", "prop/strawberry", "prop/cupcake", "prop/apple" };
 
@@ -79,6 +99,7 @@ public sealed class Runner
     static double TimeGapOf(int level) => 1 - .04 * Step(level);       // 묶음 사이 틈(초): 내려와서 다음 것을 볼 시간. 빨라져도 시간은 같다
     static double HeartChanceOf(int level) => .35 - .02 * Step(level);
     public static int GoalOf(int level) => 700 + 40 * (level - 1);     // 이번 레벨에서 이만큼 벌면 다음 레벨. 실수 없이 달리면 한 판에 1200점쯤
+    public static (double From, double To) FloorEveryOf(int level) => (22 - .9 * Step(level), 32 - .9 * Step(level));  // 2층이 나오는 사이(초)
 
     public Runner(Rectangle track, double ground, int cell, RunBody body, Random rng, Func<string, int, (int, int, int, int)> measure, int level = 1)
     {
@@ -115,6 +136,15 @@ public sealed class Runner
         if (normal.Count == 0) normal.Add(lowest);  // 몸이 아주 작아도 넘을 것은 있어야 한다
         if (small.Count == 0) small.AddRange(normal);
         if (tall.Count == 0) { int top = normal[0]; foreach (int id in normal) if (arts[id].H > arts[top].H) top = id; tall.Add(top); }
+
+        // 2층 발판: 그림은 볼록이 배율 그대로 (그림 1px = 칸 1px). 밑면이 머리 위 FloorHead 칸px, 윗면은 뛰어 닿는 높이 안
+        LedgeArt = (ArtOf("prop/ledge_l", Px(3)), ArtOf("prop/ledge_m", Px(3)), ArtOf("prop/ledge_r", Px(3)));
+        FloorThick = arts[LedgeArt.M].H;
+        JumpUp = JumpSpeed * JumpSpeed * sf / (2 * Gravity);
+        int reach = (int)(FloorReach * JumpUp);
+        FloorLow = Math.Min(StandPx + (int)Math.Round(FloorHead * u) + FloorThick, reach);
+        FloorHigh = Math.Min(FloorLow + (int)Math.Round(FloorVary * u), reach);
+        floorAt = Rand(6, 12);  // 첫 2층은 조금 달린 뒤에
     }
 
     // 그림 배율: 배율 3 에서 n 이던 것을 볼록이 배율에 맞춘다 (모니터 배율이 커지면 장애물도 같이 커진다)
@@ -147,14 +177,29 @@ public sealed class Runner
         OnEvent?.Invoke(Jumps == 1 ? "jump" : "jump2");
     }
 
-    public void Slide(bool on) => Sliding = on && Lift == 0;
+    public void Slide(bool on) => Sliding = on && Lift == 0 && Vy == 0;    // 땅에서만 엎드린다 (발판 위에는 구름이 없다)
 
-    // 키 상태를 받는다. Ctrl 누르는 순간 점프, Shift 누르는 동안 슬라이드, 둘을 0.5초 함께 누르면 끝 — 끝내려면 true.
-    // 슬라이드 중에 Ctrl 을 톡 쳐서 뛰는 건 짧아서 안 끝난다
+    // 발판 위에서 뚫고 내려간다
+    public void Drop()
+    {
+        if (Over || Under == null || !Landed) return;
+        (through, Under) = (Under, null);
+        OnEvent?.Invoke("drop");
+    }
+
+    // 발판 윗면 높이 (땅에서)
+    public double TopOf(Thing floor) => Ground - floor.Y + floor.H;
+
+    // 발판 윗면에서 땅까지 떨어지는 시간(초)
+    public double FallSec(double top) => Math.Sqrt(2 * top / (Gravity * sf));
+
+    // 키 상태를 받는다. Ctrl 누르는 순간 점프, Shift 누르는 동안 슬라이드(발판 위에서는 누르는 순간 뚫고 내려가기),
+    // 둘을 0.5초 함께 누르면 끝 — 끝내려면 true. 슬라이드 중에 Ctrl 을 톡 쳐서 뛰는 건 짧아서 안 끝난다
     public bool Keys(bool ctrl, bool shift, double dt)
     {
         if (ctrl && !ctrlWas) Jump();
-        ctrlWas = ctrl;
+        if (shift && !shiftWas) Drop();
+        (ctrlWas, shiftWas) = (ctrl, shift);
         Slide(shift);
         bothHeld = ctrl && shift ? bothHeld + dt : 0;
         return bothHeld >= QuitHold;
@@ -225,6 +270,52 @@ public sealed class Runner
         nextSpawn = Distance + (end - x) + Speed * TimeGapOf(Level) * Rand(1, 1.4);
     }
 
+    // 발판 하나를 놓는다: left 는 왼쪽 끝, tiles 는 가운데 조각 수, top 은 윗면 높이(땅에서)
+    public Thing AddFloor(double left, int tiles, double top)
+    {
+        var (l, m, r) = (arts[LedgeArt.L], arts[LedgeArt.M], arts[LedgeArt.R]);
+        var f = new Thing { Kind = ThingKind.Floor, Sprite = m.Sprite, Art = LedgeArt.M, Scale = m.Scale, W = l.W + Math.Max(1, tiles) * m.W + r.W, H = m.H, X = left, Y = Ground - top + m.H };
+        Floors.Add(f);
+        return f;
+    }
+
+    // 2층 묶음: 발판 하나, 또는 연달아 둘 (어려운 묶음 몫만큼). 위에는 씨앗과 가끔 하트, 밑으로는 보통 장애물이 계속 온다
+    void SpawnFloors()
+    {
+        double x = Track.Right + 40, at = x + 40 * sf, step = 34 * sf;
+        int count = rng.NextDouble() < HardShareOf(Level) ? 2 : 1;
+        double first = at, end = at, fall = 0;
+        Span<double> ends = stackalloc double[2];
+        for (int n = 0; n < count; n++)
+        {
+            double sec = count == 1 ? Rand(1.7, 2.4) : Rand(1.2, 1.6);
+            int top = rng.Next(FloorLow, FloorHigh + 1);
+            var f = AddFloor(at, (int)Math.Ceiling(Speed * sec / arts[LedgeArt.M].W), top);
+            ends[n] = end = f.X + f.W;
+            fall = FallSec(top);
+            double bow = f.X + Speed * (count == 1 ? .6 : .3);
+            if (count == 1) for (int i = 0; i < 4; i++) Put(ThingKind.Seed, seedArt, f.X + Speed * .2 + i * step, Ground - top - 18 * sf);   // 올라서자마자 한 줄
+            for (int i = 0; i < 6; i++) Put(ThingKind.Seed, seedArt, bow + i * step, Ground - top - (.3 + .7 * Math.Sin(i / 5.0 * Math.PI)) * StandPx);
+            // 하트는 뛰어야 닿는다. 뛰고 나서 같은 발판에 다시 내려설 만큼 남았을 때만 둔다
+            double heart = bow + 100 * sf;
+            if (n == count - 1 && end - heart >= Speed * .95 && rng.NextDouble() < FloorHeart) Put(ThingKind.Heart, heartArt, heart, Ground - top - 2 * StandPx);
+            at = end + Speed * FloorGap;
+        }
+        // 밑으로 오는 땅 장애물. 발판이 끝나는 자리부터 (떨어지는 시간 + Runway) 거리는 비운다
+        double clear = Speed * (FallSec(FloorHigh) + Runway);
+        for (double b = first + Speed * Rand(.6, .9); ; b += Speed * Rand(1, 1.35))
+        {
+            int art = normal[rng.Next(normal.Count)], w = arts[art].W;
+            for (int n = 0; n < count; n++) if (b + w > ends[n] && b < ends[n] + clear) b = ends[n] + clear;
+            if (b + w > end) break;
+            for (int i = 0; i < 3; i++) Put(ThingKind.Seed, seedArt, b - (4 - i) * step, Ground - 18 * sf);
+            Put(ThingKind.Block, art, b, Ground);
+        }
+        (double from, double to) = FloorEveryOf(Level);
+        floorAt = Clock + Rand(from, to);
+        nextSpawn = Distance + (end - x) + Speed * Math.Max(TimeGapOf(Level) * Rand(1, 1.4), fall + Runway);
+    }
+
     double Rand(double a, double b) => a + rng.NextDouble() * (b - a);
 
     // 부딪히는 자리. 살짝 봐준다: 땅 장애물은 사방 1/6, 구름은 가로만 (구름 바닥은 눈에 보이는 그대로여야 엎드린 머리 위 틈이 맞다)
@@ -241,19 +332,48 @@ public sealed class Runner
         Distance += Speed * dt;
         Speed = Math.Min(MaxSpeedOf(Level) * sf, Speed + AccelOf(Level) * sf * dt); // 점점 빨라진다
         Energy -= Drain * dt;
-        if (Distance >= nextSpawn) Spawn();
+        if (Distance >= nextSpawn) { if (Clock >= floorAt) SpawnFloors(); else Spawn(); }
+        double move = Speed * dt, off = Track.Left - 20;
 
-        if (Lift > 0 || Vy < 0) // 점프: 중력으로 내려온다
+        // 발밑: 땅(0)이거나, 몸 밑에 걸친 발판 가운데 발보다 높지 않은 가장 높은 윗면
+        double rest = 0;
+        Thing? on = null;
+        if (Floors.Count > 0)
+        {
+            double left = PetX - BoxW / 2.0, right = left + BoxW;
+            int kept = 0;
+            for (int i = 0; i < Floors.Count; i++)
+            {
+                var f = Floors[i];
+                f.X -= move;
+                if (f.X + f.W < off) { if (f == through) through = null; continue; }
+                Floors[kept++] = f;
+                if (f == through || f.X >= right || f.X + f.W <= left) continue;
+                double top = TopOf(f);
+                if (top <= Lift && top > rest) (rest, on) = (top, f);
+            }
+            if (kept < Floors.Count) Floors.RemoveRange(kept, Floors.Count - kept);
+        }
+        if (Lift > rest || Vy < 0) // 공중: 중력으로 내려온다. 내려오다 발밑에 닿으면 선다 (발판은 위에서 내려올 때만 막힌다)
         {
             Vy += Gravity * sf * dt;
-            Lift -= Vy * dt;
-            if (Lift <= 0) { Lift = 0; Vy = 0; Jumps = 0; OnEvent?.Invoke("land"); }
+            double next = Lift - Vy * dt;
+            if (Vy > 0 && next <= rest)
+            {
+                (Lift, Rest, Vy, Jumps, Under, through) = (rest, rest, 0, 0, on, null);
+                OnEvent?.Invoke("land");
+            }
+            else
+            {
+                (Lift, Under) = (next, null);
+                if (through != null && Lift < TopOf(through)) through = null;
+            }
         }
+        else (Rest, Under) = (rest, on);
 
         // 한 번 돌면서 옮기고, 부딪힘·줍기를 보고, 지나간 것·먹은 것은 그 자리에서 빼낸다 (프레임마다 새로 잡는 메모리가 없게)
         var me = PetBox;
         var grab = Rectangle.Inflate(me, (int)(8 * sf), (int)(8 * sf));
-        double move = Speed * dt, off = Track.Left - 20;
         bool safe = Clock < InvUntil;
         int keep = 0;
         for (int i = 0; i < Things.Count; i++)
