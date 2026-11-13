@@ -334,6 +334,7 @@ public sealed class PetForm : Form, IGameHost
             menu.Items.Add(parent);
         }
         if (showcase != null) { menu.Items.Add(new ToolStripSeparator()); menu.Items.Add(showcase.Menu(menuTexts, () => InGame, a => BeginInvoke(a))); }
+        if (debug) menu.Items.Add(EnvMenu());
         menu.Items.Add(new ToolStripSeparator());
         Add("menu.settings", () => ShowSettings());
         updateItem.Click += (_, _) => { Save(); Updater.Restart(); };
@@ -876,6 +877,35 @@ public sealed class PetForm : Form, IGameHost
         double now = Environment.TickCount64 / 1000.0;
         var (x, y) = clover.FallPos(now, b.X, b.HeadY, b.CellPx);
         return (clover.Kind, x, y, true, clover.Flip(now));
+    }
+
+    // 디버그 앱 메뉴 「환경」(YELL 2026-11-13: 환경 제어를 컨텍스트 메뉴에서 고르게, 디버그 모드에서만): 날씨·머리 장식·밤 모자·자리 비움.
+    // 디버그 전용이라 글은 한국어 그대로 (lang.json 에 넣지 않는다)
+    ToolStripMenuItem EnvMenu()
+    {
+        var env = new ToolStripMenuItem("환경 (디버그)");
+        ToolStripMenuItem Group(string text) { var g = new ToolStripMenuItem(text); env.DropDownItems.Add(g); return g; }
+        void Item(ToolStripMenuItem g, string text, Action act) => g.DropDownItems.Add(text, null, (_, _) => BeginInvoke(() => { act(); Dbg.Log("env-menu", ("item", g.Text + "/" + text)); }));
+        void Wake() { if (dev != null) dev.ForceAfk = false; if (b.P.Asleep) b.Care("wake"); } // 보여 주려면 깨어 있어야 한다
+        var w = Group("날씨");
+        Item(w, "눈", () => { Wake(); WeatherCommand(new[] { "weather", "snow" }); });
+        Item(w, "눈 (머리에 바로 다 쌓기)", () => { Wake(); WeatherCommand(new[] { "weather", "snow", "pile" }); });
+        Item(w, "비 — 잎 우산", () => { Wake(); WeatherCommand(new[] { "weather", "rain", "umbrella" }); });
+        Item(w, "비 — 그냥 맞기", () => { Wake(); WeatherCommand(new[] { "weather", "rain", "wet" }); });
+        Item(w, "비 — 창 뒤로 피하기", () => { Wake(); WeatherCommand(new[] { "weather", "rain", "shelter" }); });
+        Item(w, "그치기", () => WeatherCommand(new[] { "weather", "off" }));
+        var h = Group("머리 장식");
+        foreach (var (kind, text) in new[] { ("sprout", "새싹 돋기"), ("clover", "네잎클로버 돋기"), ("sunflower", "해바라기 돋기"),
+                                              ("fallen", "낙엽(잎맥 잎) 내려오기"), ("ginkgo", "은행잎 내려오기"), ("maple", "단풍잎 내려오기"), ("redmaple", "빨간 단풍잎 내려오기") })
+            Item(h, text, () => { Wake(); CloverCommand(new[] { "clover", kind }); });
+        Item(h, "낙엽 더미 (땅에 떨구기)", () => CloverCommand(new[] { "clover", "drop", new[] { "fallen", "ginkgo", "maple", "redmaple" }[Random.Shared.Next(4)] }));
+        Item(h, "벗기", () => CloverCommand(new[] { "clover", "off" }));
+        var etc = Group("그 밖");
+        Item(etc, "밤 수면 모자 켜기/끄기", () => { ForceNight = !ForceNight; capSpot.Clear(); Invalidate(); });
+        Item(etc, "자리 비움: 안 함 (계속 깨어 있기)", () => { if (dev != null) dev.ForceAfk = false; });
+        Item(etc, "자리 비움: 바로 (잠들기)", () => { if (dev != null) dev.ForceAfk = true; });
+        Item(etc, "자리 비움: 자동", () => { if (dev != null) dev.ForceAfk = null; });
+        return env;
     }
 
     // 디버그: clover [clover|sprout|sunflower|fallen|ginkgo|maple|redmaple] (지금 돋기, 낙엽 넷은 내려오기) / clover wear [종류] (바로 머리에) / clover drop / clover off
