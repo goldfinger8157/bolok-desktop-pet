@@ -544,6 +544,160 @@ def ledge(part):
     return g
 
 
+# ── 달리기 기믹 (YELL 2026-11-13): 버섯 점프대, 말벌, 굴러오는 돌, 구덩이, 동굴. 그림 1px = 볼록이 칸 1px (말벌만 2/3) ──
+def turn(g, cw=True):
+    """칸을 90도 돌린다 (cw: 시계 방향 — 아래를 보던 것이 왼쪽을 본다)"""
+    r = Canvas()
+    for y in range(CELL):
+        for x in range(CELL):
+            if g.p[y][x]:
+                if cw:
+                    r.p[x][CELL - 1 - y] = g.p[y][x]
+                else:
+                    r.p[CELL - 1 - x][y] = g.p[y][x]
+    return r
+
+
+def run_shroom(squash):
+    """버섯 점프대: 보라 갓에 노란 점, 용수철 기둥 (얼굴 없음 — 얼굴 있는 빨간 버섯은 장애물). 밟히면 갓이 내려앉는다.
+    눌린 장은 선 장의 상자 안에 들어야 한다 (다시 칠할 자리가 선 장 상자다)"""
+    g = Canvas()
+    cap, light, spot, coil = (150, 110, 220), (196, 168, 244), (255, 232, 130), (150, 150, 160)
+    d = 2 if squash else 0
+    g.ell(20, 31 + d, 11, 4.6, cap)
+    clip_rows(g, lambda x, y: y < 32 + d)  # 갓 아랫면을 평평하게
+    g.ell(20, 28.6 + d, 7, 1.3, light, True)
+    for x, y in ((14, 30), (15, 30), (20, 28), (21, 28), (25, 30), (26, 30), (11, 31), (29, 31)):
+        g.put(x, y + d, spot, True)
+    for i, y in enumerate(range(32 + d, 36)):  # 용수철: 밝은 줄과 어두운 줄이 번갈아
+        for x in range(17, 23) if i % 2 == 0 else range(16, 24):
+            g.put(x, y, C['cream'] if i % 2 == 0 else coil)
+    for x in range(15, 25):
+        g.put(x, 35, C['cream'])
+    g.outline(C['line'])
+    return g
+
+
+def run_rock(quarter):
+    """굴러오는 돌: 동그란 바위. 네 장이 90도씩 돌아 있다 (왼쪽으로 구르니 시계 반대 방향)"""
+    g = Canvas()
+    base, light, dark, line = (156, 146, 136), (196, 188, 176), (114, 104, 98), (70, 58, 50)
+    g.ell(20, 20, 10, 10, base)
+    g.ell(16.5, 16.5, 5.5, 5, light, True)
+    g.ell(25, 25, 5, 4.5, dark, True)
+    g.ell(14.5, 14.5, 1.6, 1.6, (232, 226, 214), True)
+    g.pix(line, (22, 12), (23, 13), (23, 14), (24, 15), (25, 15), (13, 23), (14, 24), (15, 24), (16, 25), (20, 27), (21, 27))
+    g.pix(dark, (27, 18), (28, 19), (12, 19), (18, 21), (19, 21))
+    g.outline(line)
+    for _ in range(quarter):
+        g = turn(g, cw=False)
+    return g
+
+
+def run_pit(part):
+    """구덩이: 화면에 뚫린 구멍처럼 까맣고 그을린 가장자리 (2px 덩어리로 들쭉날쭉). 'l' 왼쪽 끝 · 'm' 가운데(폭 8, 이어 붙인다) · 'r' 오른쪽 끝.
+    열 줄: 위 두 줄은 땅 위로 올라온 턱, 아래 여덟 줄은 땅 밑. 턱은 밝은 돌빛이다 — 배경이 없는 게임이라 어두운 창 위에서도 구멍이 보여야 한다"""
+    g = Canvas()
+    top, hole, soot, chip = 15, (14, 16, 22), (70, 60, 52), (206, 198, 186)
+
+    def col(i, a, b, x0=16):  # 덩어리 한 줄: 위에서 a 번째부터 b 번째까지 (0~4). 맨 위·맨 아래 덩어리는 그을린 가장자리
+        for n in range(a, b + 1):
+            for y in range(2):
+                for x in range(2):
+                    g.put(x0 + 2 * i + x, top + 2 * n + y, soot if n in (a, b) else hole)
+
+    if part == 'm':
+        for i, (a, b) in enumerate(((0, 4), (1, 4), (0, 3), (0, 4))):
+            col(i, a, b)
+    else:
+        cols = ((2, 2), (1, 3), (0, 4), (1, 4))  # 바깥에서 안으로: 금 하나, 둥근 모서리
+        for i, (a, b) in enumerate(cols):
+            col(i if part == 'l' else 3 - i, a, b)
+        for n in (1, 2, 3):  # 모서리 덩어리는 통째로 그을음
+            col(1 if part == 'l' else 2, n, n)
+    for x in range(CELL):  # 턱(맨 위 덩어리)을 밝게, 그 아랫줄은 그을음
+        for y in range(top, top + 6):
+            if g.p[y][x]:
+                g.p[y][x] = g.p[y + 1][x] = chip
+                if g.p[y + 2][x] == hole:
+                    g.p[y + 2][x] = soot
+                break
+    return g
+
+
+def run_cave(part, look=0):
+    """동굴 천장: 두께 20 의 바위. 윗줄은 올라설 수 있는 평평한 선, 아랫줄(고드름돌 끝)이 머리가 닿는 선이다.
+    'l' 입구(이끼 낀 턱이 미리 보인다) · 'm' 가운데(폭 40, 이어 붙인다. look 0 고드름돌 · 1 박쥐 · 2 큰 고드름돌) · 'r' 출구.
+    박쥐·고드름돌은 그림일 뿐이고 아랫줄보다 내려오지 않는다"""
+    g = Canvas()
+    top, deep = 10, 20
+    base, light, dark, line = (130, 124, 148), (172, 166, 190), (98, 92, 116), (58, 52, 70)
+    moss, dmoss = P['green'], P['dgreen']
+    floor = [top + 12] * CELL  # 칸마다 바위가 내려오는 줄 (고드름돌이 없는 곳은 일곱 줄 얕다)
+
+    def spike(c, half, length):
+        for x in range(max(0, c - half), min(CELL, c + half + 1)):
+            floor[x] = max(floor[x], top + 12 + round(length * (1 - abs(x - c) / (half + 1))))
+
+    if part == 'm':
+        for c, half, length in {0: ((6, 2, 4), (15, 3, 7), (25, 2, 3), (33, 3, 7)),
+                                1: ((6, 3, 7), (34, 3, 7), (28, 1, 2)),
+                                2: ((5, 2, 3), (19, 6, 7), (32, 2, 5), (36, 1, 7))}[look]:
+            spike(c, half, length)
+        cols = range(CELL)
+    else:
+        lip = (top + 16, top + 18, top + 19, top + 19, top + 19, top + 17, top + 14, top + 12)  # 입구 턱: 바깥쪽이 끝줄까지 내려온다
+        cols = range(32, 40) if part == 'l' else range(0, 8)
+        for i, x in enumerate(cols if part == 'l' else reversed(cols)):
+            floor[x] = lip[i]
+    for i, x in enumerate(cols):
+        edge = min(i, len(cols) - 1 - i) if part == 'm' else (i if part == 'l' else len(cols) - 1 - i)
+        cut = max(0, 3 - edge) if part != 'm' else 0  # 끝 조각은 윗모서리를 둥글게
+        for y in range(top + cut, floor[x] + 1):
+            g.put(x, y, base)
+    # 무늬: 밝은 윗면, 어두운 얼룩, 금
+    for x in cols:
+        g.put(x, top + 1, light, True)
+        if x % 9 in (2, 3, 4):
+            g.put(x, top + 2, light, True)
+    for cx, cy, rx, ry in ((6, 17, 4, 2), (21, 15, 5, 2.4), (33, 19, 4, 2), (14, 21, 3, 1.6), (28, 22, 3, 1.5)):
+        g.ell(cx + (look * 5 if part == 'm' else 0) % 9, cy, rx, ry, dark, True)
+    for x, y in ((11, 14), (12, 15), (12, 16), (25, 18), (26, 19), (37, 15), (36, 16), (2, 20), (3, 21)):
+        g.put(x, y, line, True)
+    for x in cols:  # 고드름돌 끝은 밝게, 맨 아랫줄과 윗줄·옆은 선
+        if floor[x] > top + 13:
+            g.put(x, floor[x] - 1, light, True)
+    for x in cols:
+        for y in range(top, floor[x] + 1):
+            if g.p[y][x] and (y == floor[x] or y == top or not g.p[y - 1][x]
+                             or (part == 'l' and (x == 32 or not g.p[y][x - 1])) or (part == 'r' and (x == 7 or not g.p[y][x + 1]))
+                             or (part == 'm' and ((x > 0 and floor[x - 1] < y) or (x < CELL - 1 and floor[x + 1] < y)))):
+                g.put(x, y, line)
+    if part == 'm' and look == 1:  # 박쥐: 얕은 곳에 거꾸로 매달려 잔다 (날개를 접고, 노란 눈만 반짝)
+        bat, wing, eye = (64, 46, 92), (108, 84, 140), (255, 222, 90)
+        rows = ('..b.b..', '.wbbbw.', 'wwbbbww', 'wwbbbww', '.wbebw.'.replace('e', 'b'), '.bebeb.', '.b...b.')
+        for j, row in enumerate(rows):
+            for i, ch in enumerate(row):
+                if ch != '.':
+                    g.put(17 + i, top + 12 + j, {'b': bat, 'w': wing, 'e': eye}[ch])
+    if part == 'm' and look == 2:  # 큰 고드름돌은 속까지 밝다
+        for x in range(15, 24):
+            for y in range(top + 12, floor[x] - 1):
+                g.put(x, y, light, True)
+    if part != 'm':  # 입구·출구 윗면의 이끼, 입구에는 늘어진 덩굴
+        for i, x in enumerate(cols):
+            if g.p[top + 3][x]:
+                y = min(yy for yy in range(top, top + 4) if g.p[yy][x])
+                g.put(x, y, dmoss)
+                g.put(x, y + 1, moss)
+        if part == 'l':
+            for x, n in ((33, 7), (35, 4), (37, 2)):
+                y0 = min(yy for yy in range(top, top + 6) if g.p[yy][x]) + 2
+                for y in range(y0, y0 + n):
+                    g.put(x, y, moss if (y - y0) % 3 else dmoss, True)
+    return g
+
+
 def gun(rows, pivot=(10, 21)):
     """총: 손잡이(pivot) 가 칸의 (10, 21) 에 오게 놓는다. 앱은 이 점을 축으로 돌린다"""
     g = Canvas()
@@ -653,6 +807,10 @@ def build():
     rows += [('game/flash', [art('..y..|.yyy.|yywyy|.yyy.|..y..', 'r')])]
     rows += [('game/muzzle', [muzzle(a) for a in MUZZLE])]
     rows += [(f'prop/ledge_{k}', [ledge(k)]) for k in 'lmr']
+    rows += [('run/shroom', [run_shroom(0), run_shroom(1)]), ('run/wasp', [turn(critter('wasp', i)) for i in range(2)]),
+             ('run/rock', [run_rock(i) for i in range(4)])]
+    rows += [(f'run/pit_{k}', [run_pit(k)]) for k in 'lmr']
+    rows += [('run/cave_l', [run_cave('l')]), ('run/cave_m', [run_cave('m', i) for i in range(3)]), ('run/cave_r', [run_cave('r')])]
     return rows
 
 

@@ -4,6 +4,7 @@ using System.Text.Json;
 namespace Bolok;
 
 // 달리기 모듈: 앱에 붙이기(조작·볼록이·녹화 숨김), 그리기, 기록, 디버그 명령. 규칙은 Runner.cs, 자가 검사·장면·속도 재기는 RunCheck.cs
+// 기믹(버섯 점프대·말벌·굴러오는 돌·구덩이·동굴, 레벨마다 하나씩)도 조작은 같다: 그림만 더 그린다 (글자 없음, 볼록이는 말하지 않는다)
 // 판이 없다: 일하던 창은 초점도 그대로 두고, 어느 창에서든 Ctrl(점프)·Shift(앉기, 2층 발판 위에서는 뚫고 내려가기)만 읽는다 (Session, layer: false).
 // 볼록이는 본체 창 그대로 Puppet 으로 제자리에서 달리고, 그림 창에는 길 위의 것과 발밑의 가는 체력 막대만 그린다 (점수판·배경 없음).
 // 끝: Esc(보스 키 → Stop(true))는 점수·표정 없이 바로. 체력이 다 닳아 끝나면 머리 위에 점수를 2.5초 띄운다 —
@@ -20,6 +21,8 @@ sealed partial class RunGame : IGameMode
     int best, last, level = 1;
     List<Played> scores = new();
     bool auto;                  // 디버그: 알아서 달린다 (기록 안 남김)
+    bool trial;                 // 디버그: 고른 레벨에서 해 보는 판 (기록 안 남김, 저장된 레벨도 그대로)
+    bool Kept => !auto && !trial;
     Watch bar, note;            // 체력 막대·안내 말풍선: 바뀐 프레임에만 다시 칠한다
     string[] guide = Array.Empty<string>();
     double scoreLeft;           // 끝난 점수를 머리 위에 띄워 둘 남은 시간
@@ -29,7 +32,7 @@ sealed partial class RunGame : IGameMode
 
     static readonly Dictionary<string, Sound> Sounds = new()
     {
-        ["jump"] = Sound.Tap, ["jump2"] = Sound.Tap, ["seed"] = Sound.Hit, ["hit"] = Sound.Hurt, ["heart"] = Sound.Pick, ["level"] = Sound.Pick,
+        ["jump"] = Sound.Tap, ["jump2"] = Sound.Tap, ["seed"] = Sound.Hit, ["hit"] = Sound.Hurt, ["heart"] = Sound.Pick, ["level"] = Sound.Pick, ["bounce"] = Sound.Tap,
     };
 
     public RunGame(IGameHost host)
@@ -43,13 +46,15 @@ sealed partial class RunGame : IGameMode
     public bool Running => run != null || scoreLeft > 0;
     public string HudLine => last > 0 ? $"달리기 Lv.{level} {last} (최고 {best})" : "";
 
-    public void Start()
+    public void Start() => StartAt(level); // 저장된 레벨에서 시작
+
+    void StartAt(int from)
     {
         if (run != null) return;    // 달리는 중에 또 고르면 그대로 달린다
         EndScore();                 // 끝난 점수가 떠 있으면 지우고 새 판
         var b = host.Pet;
         var area = b.Area;          // 볼록이가 있는 모니터 아래쪽
-        var r = New(host.Sprites, area, area.Bottom - b.K.FloorGap, b.Scale, b.P.Stage, new Random(), level); // 저장된 레벨에서 시작
+        var r = New(host.Sprites, area, area.Bottom - b.K.FloorGap, b.Scale, b.P.Stage, new Random(), from);
         var s = Session.Open(host, area, () => Stop(true), layer: false);
         s.Tick();
         r.Keys(s.Ctrl, false, 0);   // 메뉴를 고를 때 눌려 있던 Ctrl 로 바로 뛰지 않게
@@ -81,7 +86,7 @@ sealed partial class RunGame : IGameMode
 
     void Begin(Runner r, Session s)
     {
-        (run, ses, auto) = (r, s, false);
+        (run, ses, auto, trial) = (r, s, false, false);
         (bar, note) = (default, default);
         guide = new[] { L.T("note.run_level", r.Level, Runner.GoalOf(r.Level)), L.T("note.run_jump"), L.T("note.run_duck"), L.T("note.esc") };
         DropGuide();
@@ -139,13 +144,13 @@ sealed partial class RunGame : IGameMode
         // 손으로 잡아 옮기거나 던지는 동안은 가는 대로 둔다 (길은 계속 흐른다). 내려앉으면 다시 달린다
         if (b.Mode == Mode.Puppet) Pose(r);
         else if (b.Mode is not (Mode.Held or Mode.Thrown)) Hold();
-        if (r.Over || quit) End(quiet: false, keep: !auto);
+        if (r.Over || quit) End(quiet: false, keep: Kept);
     }
 
     // quit(보스 키): 점수·표정 없이 바로 끝낸다. 기록은 조용히 남긴다. 끝난 점수만 떠 있을 때면 그것을 바로 지운다
     public void Stop(bool quit)
     {
-        if (run != null) End(quit, keep: !auto);
+        if (run != null) End(quit, keep: Kept);
         else EndScore();
     }
 
@@ -178,7 +183,7 @@ sealed partial class RunGame : IGameMode
         }
         else EndScore();
         Dbg.Log("mode-end", ("id", Id));
-        auto = false;
+        auto = trial = false;
         if (keep) host.Save();
     }
 
@@ -195,7 +200,10 @@ sealed partial class RunGame : IGameMode
     Sprites? artOf;
     Runner? artRun;
     Stamp[] pics = Array.Empty<Stamp>();    // 길 위 그림 (Runner.Arts 순서): 프레임마다 이름으로 찾지 않는다
+    Stamp[][] cels = Array.Empty<Stamp[]>(); // 같은 순서로 그 그림의 모든 장 (말벌 날갯짓·구르는 돌·눌린 버섯)
     Stamp star = null!, ledgeL = null!, ledgeM = null!, ledgeR = null!;    // 2층 발판은 왼쪽 끝 + 가운데 여러 장 + 오른쪽 끝
+    Stamp pitL = null!, pitM = null!, pitR = null!, caveL = null!, caveR = null!;   // 구덩이·동굴도 이어 붙인다
+    Stamp[] caveM = Array.Empty<Stamp>();   // 동굴 가운데: 고드름돌 · 박쥐 · 큰 고드름돌
     Overlay? guideOn;
     Rectangle guideRect;
     Bitmap? guidePic;                       // 안내 말풍선: 4초 동안 안 바뀌니 한 번만 그려 둔다
@@ -207,8 +215,11 @@ sealed partial class RunGame : IGameMode
         var stamps = Stamps.Of(o.Art);
         (artOf, artRun) = (o.Art, r);
         pics = new Stamp[r.Arts.Count];
-        for (int i = 0; i < pics.Length; i++) pics[i] = stamps.Get(r.Arts[i].Sprite, 0, r.Arts[i].Scale);
+        cels = new Stamp[r.Arts.Count][];
+        for (int i = 0; i < pics.Length; i++) pics[i] = (cels[i] = stamps.Row(r.Arts[i].Sprite, r.Arts[i].Scale))[0];
         (ledgeL, ledgeM, ledgeR) = (pics[r.LedgeArt.L], pics[r.LedgeArt.M], pics[r.LedgeArt.R]);
+        (pitL, pitM, pitR) = (pics[r.PitArt.L], pics[r.PitArt.M], pics[r.PitArt.R]);
+        (caveL, caveM, caveR) = (pics[r.CaveArt.L], cels[r.CaveArt.M], pics[r.CaveArt.R]);
         star = stamps.Get("game/star", 0, r.PetScale);
         stamps.Digits(r.PetScale);
         stamps.Digits(ScoreK);
@@ -285,6 +296,18 @@ sealed partial class RunGame : IGameMode
     int ScoreK => GameHud.Small(host.Pet.Scale);
     Stamp? Crown(Overlay o) => scoreBest ? Stamps.Of(o.Art).Get("game/crown", 0, ScoreK) : null;
 
+    // 여러 장짜리 그림의 지금 장: 버섯은 밟힌 직후 눌린 장, 말벌은 날갯짓, 돌은 굴러온 거리만큼 돈다 (왼쪽으로 구르니 시계 반대 방향)
+    static int Cel(Runner r, Thing t)
+    {
+        if (t.Kind == ThingKind.Pad) return r.Clock - t.Hot < Runner.PadSquash ? 1 : 0;
+        if (t.Kind == ThingKind.Wasp) return (int)(r.Clock * 14) & 1;
+        double rolled = (t.X + t.W / 2.0 - r.PetX) * (t.Fast - 1) / t.Fast; // 땅 위를 구른 거리 (볼록이 자리에서 0)
+        return -(int)Math.Floor(rolled / (Math.PI * t.W / 4)) & 3;
+    }
+
+    // 동굴 천장의 n 번째 가운데 조각이 어느 무늬인지 (동굴마다 다르게, 박쥐와 큰 고드름돌은 가끔)
+    static int CaveLook(Thing cave, int n) => ((cave.Way + n * 7) % 5) switch { 1 => 1, 3 => 2, _ => 0 };
+
     public void Dirty(Overlay o, List<Rectangle> rs)
     {
         if (run is not { } r)
@@ -298,6 +321,16 @@ sealed partial class RunGame : IGameMode
         int right = r.Track.Right;
         foreach (var t in r.Things) if (!t.Gone && t.X < right) rs.Add(o.Client(Rectangle.Inflate(t.Box, 1, 1))); // 지난 자리는 지난 프레임 목록이 지운다
         foreach (var f in r.Floors) // 발판은 길다: 달리는 모니터에 들어온 만큼만
+        {
+            var box = Rectangle.Intersect(Rectangle.Inflate(f.Box, 1, 1), r.Track);
+            if (!box.IsEmpty) rs.Add(o.Client(box));
+        }
+        foreach (var f in r.Pits)
+        {
+            var box = Rectangle.Intersect(Rectangle.Inflate(f.Box, 1, 1), r.Track);
+            if (!box.IsEmpty) rs.Add(o.Client(box));
+        }
+        foreach (var f in r.Caves)
         {
             var box = Rectangle.Intersect(Rectangle.Inflate(f.Box, 1, 1), r.Track);
             if (!box.IsEmpty) rs.Add(o.Client(box));
@@ -328,12 +361,38 @@ sealed partial class RunGame : IGameMode
             for (; x < stop; x += w) if (x < clip.Right && x + w > clip.Left) g.DrawImageUnscaled(ledgeM.Bmp, x, box.Y);
             g.DrawImageUnscaled(ledgeR.Bmp, stop, box.Y);
         }
+        foreach (var f in r.Pits) // 구덩이: 땅의 까만 구멍 (체력 막대보다 먼저)
+        {
+            if (f.X >= right) continue;
+            var box = o.Client(f.Box);
+            if (!box.IntersectsWith(clip)) continue;
+            int stop = box.Right - pitR.Bmp.Width, x = box.X + pitL.Bmp.Width, w = pitM.Bmp.Width;
+            g.DrawImageUnscaled(pitL.Bmp, box.X, box.Y);
+            for (; x < stop; x += w) if (x < clip.Right && x + w > clip.Left) g.DrawImageUnscaled(pitM.Bmp, x, box.Y);
+            g.DrawImageUnscaled(pitR.Bmp, stop, box.Y);
+        }
+        foreach (var f in r.Caves) // 동굴 천장: 입구 + 가운데 여러 장(박쥐·고드름돌은 그림일 뿐) + 출구
+        {
+            if (f.X >= right) continue;
+            var box = o.Client(f.Box);
+            if (!box.IntersectsWith(clip)) continue;
+            int stop = box.Right - caveR.Bmp.Width, x = box.X + caveL.Bmp.Width, w = caveM[0].Bmp.Width;
+            g.DrawImageUnscaled(caveL.Bmp, box.X, box.Y);
+            for (int n = 0; x < stop; x += w, n++) if (x < clip.Right && x + w > clip.Left) g.DrawImageUnscaled(caveM[CaveLook(f, n)].Bmp, x, box.Y);
+            g.DrawImageUnscaled(caveR.Bmp, stop, box.Y);
+        }
         foreach (var t in r.Things)
         {
             if (t.Gone || t.X >= right) continue; // 아직 화면 밖
             var box = o.Client(t.Box);
             if (!box.IntersectsWith(clip)) continue; // 다시 칠하는 곳 밖은 건너뛴다
-            g.DrawImageUnscaled(pics[t.Art].Bmp, box.X, box.Y);
+            var pic = pics[t.Art];
+            if (t.Kind is ThingKind.Pad or ThingKind.Wasp or ThingKind.Rock) // 여러 장짜리: 첫 장의 상자 안에서 제자리에
+            {
+                var cel = cels[t.Art][Cel(r, t)];
+                g.DrawImageUnscaled(cel.Bmp, box.X + cel.Dx - pic.Dx, box.Y + cel.Dy - pic.Dy);
+            }
+            else g.DrawImageUnscaled(pic.Bmp, box.X, box.Y);
         }
         GameHud.Bar(o, g, BarRect(r), r.PetScale, r.Energy / 100, r.Energy < 25 ? Pal.Red : Pal.Gold);
         if (r.Clock < Session.GuideSec)
@@ -349,14 +408,20 @@ sealed partial class RunGame : IGameMode
     }
 
     // 디버그: run / run auto (알아서 달린다, 기록 안 남김) / run stop (바로 끝, 기록 안 남김)
+    //         run lv <레벨> [auto] (그 레벨에서 해 본다 — 기믹을 바로 보려고. 기록 안 남김, 저장된 레벨도 그대로)
     public bool Command(string[] a)
     {
         if (a.Length == 0 || a[0] != Id) return false;
         if (a.Length > 1 && a[1] == "stop") { if (run != null) End(quiet: true, keep: false); else EndScore(); }
         else
         {
-            if (run == null && (Running || !host.Busy)) Start();
-            if (a.Length > 1 && a[1] == "auto") auto = run != null;
+            int from = a.Length > 2 && a[1] == "lv" && int.TryParse(a[2], out int lv) ? Math.Max(1, lv) : 0;
+            if (run == null && (Running || !host.Busy))
+            {
+                StartAt(from > 0 ? from : level);
+                trial = from > 0 && run != null;
+            }
+            if (a.Length > 1 && a[^1] == "auto") auto = run != null;
         }
         return true;
     }
@@ -388,14 +453,16 @@ sealed partial class RunGame : IGameMode
     // 늦게 뛰어서 다음 장애물 앞에 내려설 틈이 없으면 닿기 직전에 한 번 더 뛴다 (더블 점프) — 어려운 레벨에서 연달아 올 때 쓴다.
     // 2층 (seek): 뛰면 발판에 내려설 수 있을 때 올라가고, 발판 위에서는 밑의 장애물을 보지 않는다. 하트는 뛰어서 먹고, 다음 발판이 이어지면 끝에서 건너뛴다.
     //     seek 를 끄면 2층을 일부러 찾지 않는다 (장애물을 넘다 올라서게 되면 그냥 끝까지 간다) — 자가 검사가 둘을 견준다
+    // 기믹: 낮게 오는 말벌·돌과 구덩이는 땅 장애물처럼 뛰어넘고, 높게 오는 말벌·돌과 동굴은 구름처럼 엎드린다. 버섯은 그냥 밟는다.
+    //     길보다 빨리 오는 것은 「닿을 때까지 남은 길」로 바꿔서 가만히 있는 것과 같은 식으로 잰다
     static void Bot(Runner r, bool seek = true)
     {
         var me = r.PetBox;
         double sf = r.PetScale / 3.0, g = Runner.Gravity * sf, v1 = Runner.JumpSpeed * sf, v2 = v1 * .85;
-        if (r.Under is { } on && r.Landed) // 발판 위
+        if (r.Under is { } on && r.Landed) // 발판 위 (동굴 천장 위면 그냥 달린다)
         {
             r.Slide(false);
-            if (!seek) return;
+            if (!seek || on.Kind != ThingKind.Floor) return;
             bool hop = on.X + on.W - me.Left <= r.Speed * .08; // 곧 끝난다: 다음 발판이 닿으면 건너뛴다
             if (!hop)
                 foreach (var x in r.Things) // 머리 위 하트: 올라가는 길에 스친다
@@ -409,12 +476,32 @@ sealed partial class RunGame : IGameMode
         foreach (var x in r.Things)
         {
             if (x.X + x.W <= me.Left) continue;
-            if (x.Kind == ThingKind.Fly && x.X < me.Right + r.Speed * .1) cloud = true;
-            if (x.Kind == ThingKind.Fly && x.X < me.Right + r.Speed * .25) low = true;          // 뛰어오르는 길에 구름이 있다
-            if (x.Kind != ThingKind.Block) continue;
-            if (x.X - me.Right < r.Speed * (Rise(v1, x.H, g) + .03)) low = true;                // 뛰어도 그 위로 못 올라갈 만큼 가깝다
-            if (!any) (from, to, top, any) = (x.X, x.X + x.W, x.H, true);
-            else if (x.X >= from && x.X - to < r.Speed * .45) (to, top) = (Math.Max(to, x.X + x.W), Math.Max(top, x.H));
+            bool mover = x.Kind is ThingKind.Wasp or ThingKind.Rock;
+            double left = x.X, right = x.X + x.W, high = x.H;
+            if (mover) (left, right, high) = (me.Right + (left - me.Right) / x.Fast, me.Left + (right - me.Left) / x.Fast, r.LowTop(x));
+            if (x.Kind == ThingKind.Fly || mover && x.Way == 1)
+            {
+                if (left < me.Right + r.Speed * .1) cloud = true;
+                if (left < me.Right + r.Speed * .25) low = true;        // 뛰어오르는 길에 구름이 있다
+                continue;
+            }
+            if (x.Kind != ThingKind.Block && !mover) continue;
+            if (left - me.Right < r.Speed * (Rise(v1, high, g) + .03)) low = true;              // 뛰어도 그 위로 못 올라갈 만큼 가깝다
+            if (!any) (from, to, top, any) = (left, right, high, true);
+            else if (left >= from && left - to < r.Speed * .45) (to, top) = (Math.Max(to, right), Math.Max(top, high));
+        }
+        foreach (var p in r.Pits) // 구덩이: 몸 가운데가 구멍 위에 있는 동안 떠 있으면 된다 (높이 0 인 장애물인 셈). 가장 가까운 것만 본다
+        {
+            double left = p.X + r.PitEdge + me.Width / 2.0, right = p.X + p.W - r.PitEdge - me.Width / 2.0;
+            if (right <= me.Left) continue;
+            if (!any || right < from) (from, to, top, any) = (left, right, 0, true);
+            break;
+        }
+        foreach (var c in r.Caves) // 동굴: 들어가기 직전부터 나올 때까지 엎드린다. 곧 들어갈 때는 뛰어오르지 않는다
+        {
+            if (c.X + c.W <= me.Left) continue;
+            if (c.X < me.Right + r.Speed * .15) cloud = true;
+            if (c.X < me.Right + r.Speed * .5) low = true;
         }
         r.Slide(cloud);
         if (seek && !low && r.Landed && r.Floors.Count > 0 && Lands(r, me, 0, -v1, g, .3)) { r.Jump(); return; } // 2층으로
