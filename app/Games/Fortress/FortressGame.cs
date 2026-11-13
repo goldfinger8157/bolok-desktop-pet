@@ -547,13 +547,16 @@ sealed partial class FortressGame : IGameMode
 
     // ── 자리 (화면 좌표): 그리기와 다시 칠할 자리가 같은 계산을 쓴다 ──
     // ── 바람 상자 자리 (YELL 2026-11-13: 판 위 가운데는 조준할 때 보는 곳에서 멀다 → 볼록이 가까이로) ──
-    //  0 머리 위: 체력 막대·힘 막대·조준경이 도는 둘레·안내 말풍선보다 위, 볼록이 바로 위에
+    //  0 머리 위: 체력 막대·힘 막대(지난 힘 세모)·대포 그림·조준경이 도는 둘레·안내 말풍선보다 위로 HudLift 만큼 더 띄워서
+    //    (YELL 2026-11-13: "상태창이 펫과 너무 가깝다. 조금더 위로 올리고 작게" → 12칸 더 위로, 크기는 한 배율 작게. 위가 모자라면 판 위 끝까지만 올린다)
     //  1 발 아래: 머리 위에 자리가 없을 때 (섬이 화면 위쪽에 붙어 있다). 말풍선 아랫변 밑, 라이벌 반대쪽으로 뻗는다 (앞쪽·위쪽을 겨누는 조준경에 안 걸린다)
     //  2 조준경 둘레 아래: 뒤쪽이 판 끝이라 1 도 못 쓸 때
     // 한번 고른 쪽은 자리가 있는 한 그대로 쓴다 (위아래로 오락가락하지 않게).
     // 볼록이가 걷고 뛰고 날아가는 동안에는 제자리에 있고, 멈춰 선 뒤(HudRest 초)에만 새 자리로 스르륵 옮겨 간다:
     // 걸음마다 따라다니면 바람을 읽을 수 없고 프레임마다 상자를 다시 칠하게 된다. 조금(6칸px 안) 움직인 것으로는 옮기지 않는다
-    const int HudW = 92, HudH = 14;     // × 배율
+    const int HudW = 96, HudH = 14;     // × HudU (상자 안 그림의 한 칸)
+    const int HudLift = 12;             // 머리 위에 둘 때 더 띄우는 높이 (× 배율)
+    static int HudU(int k) => k <= 2 ? k : k - 1; // 볼록이보다 한 배율 작게. 배율 2 는 구름 그림(가장 작은 것이 22px)이 들어가야 해서 그대로
     const double HudRest = .25, HudGlide = 14; // 멈춰 서고 이만큼 지나야 자리를 다시 잡는다 · 옮겨 가는 빠르기 (1/초: 0.3초쯤이면 다 간다)
     int hudMode = -1, hudBack;          // -1 아직 안 잡았다. hudBack: 라이벌 반대쪽 (-1 왼쪽 · 1 오른쪽)
     double hudX, hudY, hudClock;        // 지금 그려지는 자리 (왼쪽 위)
@@ -562,18 +565,22 @@ sealed partial class FortressGame : IGameMode
     double hudForX, hudForY;            // 그 자리를 잡았을 때의 볼록이 발
     double noteHalf;                    // 안내 말풍선 높이의 절반
 
-    Rectangle HudRect(Fortress w) => new((int)Math.Round(hudX), (int)Math.Round(hudY), HudW * w.K, HudH * w.K);
+    Rectangle HudRect(Fortress w) => new((int)Math.Round(hudX), (int)Math.Round(hudY), HudW * HudU(w.K), HudH * HudU(w.K));
     static int Back(Fortress w) => w.Me.X <= w.Cpu.X ? -1 : 1;
 
     // mode 쪽에 둘 때의 자리. 판 밖으로 나가면 빈 자리 (force: 그래도 판 안으로 밀어 넣어서)
     Rectangle HudAt(Fortress w, int mode, bool force = false)
     {
         var me = w.Me;
-        int k = w.K, hw = HudW * k, hh = HudH * k, x = (int)me.X, cy = (int)w.CenterY(me), reach = (int)(40 * k * .9) + 1;
+        int k = w.K, hw = HudW * HudU(k), hh = HudH * HudU(k), x = (int)me.X, cy = (int)w.CenterY(me), reach = (int)(40 * k * .9) + 1;
         var room = Rectangle.Inflate(w.Field, -2 * k, -2 * k);
         double noteMid = me.Y - host.Pet.CellPx * .4;
         int left = x - hw / 2, top;
-        if (mode == 0) top = Math.Min(Math.Min(LabelRect(w, me).Top, cy - reach + aim.Dy), (int)(noteMid - noteHalf)) - k - hh;
+        if (mode == 0)
+        {
+            int close = Math.Min(Math.Min(LabelRect(w, me).Top, cy - reach + aim.Dy), (int)(noteMid - noteHalf)) - k - hh; // 바로 위에 붙였을 때
+            top = close < room.Top ? close : Math.Max(room.Top, close - HudLift * k);
+        }
         else if (mode == 1) (left, top) = (Back(w) < 0 ? x + 4 * k - hw : x - 4 * k, (int)Math.Ceiling(noteMid + noteHalf) + k);
         else top = cy + reach + aim.Dy + aim.Bmp.Height + k;
         int fit = Math.Clamp(left, room.Left, Math.Max(room.Left, room.Right - hw));
@@ -836,19 +843,19 @@ sealed partial class FortressGame : IGameMode
     // 바람 상자 (볼록이 가까이, 자리는 PlaceHud): 구름 + 바람 화살표(길이)와 세기 칸 다섯, 남은 시간, 지금 차례 대포
     void DrawHud(Overlay o, Graphics g, Fortress w)
     {
-        int k = w.K, small = GameHud.Small(k);
+        int u = HudU(w.K), small = GameHud.Small(w.K); // 상자 안은 u 칸으로 (볼록이보다 한 배율 작다). 숫자·포탄 그림은 다른 표시와 같은 small
         var at = HudRect(w);
         var hud = o.Client(at);
-        Bubble(g, hud, k);
+        Bubble(g, hud, u);
         int mid = hud.Y + hud.Height / 2, midY = at.Y + at.Height / 2;
-        cloud.Put(o, g, at.X + 9 * k, midY);
-        int wx = hud.X + 30 * k, len = (int)(Math.Abs(w.Wind) * 12 * k) + k, dir = w.Wind >= 0 ? 1 : -1;
-        g.FillRectangle(WindFill, Math.Min(wx, wx + dir * len), mid - k, len, 2 * k);
-        for (int i = 0; i < 4; i++) g.FillRectangle(WindFill, dir > 0 ? wx + len + i * k : wx - len - (i + 1) * k, mid - (4 - i) * k, k, 2 * (4 - i) * k); // 화살촉 (도트 계단)
+        cloud.Put(o, g, at.X + 9 * u, midY);
+        int wx = hud.X + 33 * u, len = (int)(Math.Abs(w.Wind) * 10 * u) + u, dir = w.Wind >= 0 ? 1 : -1; // 화살은 구름(왼쪽 18칸)과 세기 칸(50칸부터) 사이에서 좌우 15칸까지
+        g.FillRectangle(WindFill, Math.Min(wx, wx + dir * len), mid - u, len, 2 * u);
+        for (int i = 0; i < 4; i++) g.FillRectangle(WindFill, dir > 0 ? wx + len + i * u : wx - len - (i + 1) * u, mid - (4 - i) * u, u, 2 * (4 - i) * u); // 화살촉 (도트 계단)
         int bars = (int)Math.Round(Math.Abs(w.Wind) * 5);
-        for (int i = 0; i < 5; i++) g.FillRectangle(i < bars ? WindFill : Pal.Cream, hud.X + 48 * k + i * 3 * k, mid - 3 * k, 2 * k, 6 * k);
-        GameHud.Number(o, g, (int)Math.Ceiling(w.TimeLeft), at.X + 70 * k, midY, small);
+        for (int i = 0; i < 5; i++) g.FillRectangle(i < bars ? WindFill : Pal.Cream, hud.X + 50 * u + i * 3 * u, mid - 3 * u, 2 * u, 6 * u);
+        GameHud.Number(o, g, (int)Math.Ceiling(w.TimeLeft), at.X + 73 * u, midY, small);
         var gun = w.Active.Gun;
-        (gun.Look == 1 ? rocketBig : gun.Look >= 2 ? ball : rocketSmall).Put(o, g, at.X + 84 * k, midY);
+        (gun.Look == 1 ? rocketBig : gun.Look >= 2 ? ball : rocketSmall).Put(o, g, at.X + 87 * u, midY);
     }
 }

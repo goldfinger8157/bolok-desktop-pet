@@ -34,6 +34,7 @@ sealed partial class FortressGame
             bool mine = w.MyTurn && w.Stage == Fortress.Phase.Turn;
             if (shot == 1 && mine && w.Clock > 1.2) w.StartCharge();
             if (shot == 2 && mine && w.ChargeFrom >= 0 && w.Power > .68) w.ReleaseCharge();
+            if (shot == 4 && !w.MyTurn && w.Stage == Fortress.Phase.Turn) (w.MyTurn, mine) = (true, true); // 라이벌 차례는 건너뛴다 (이 장이 라이벌 솜씨에 달리지 않게)
             if (shot == 4 && mine && w.Clock - w.TurnAt > .5) { w.Aim = w.LastAim + .5; w.StartCharge(); } // 지난번보다 조금 낮게 겨누고 다시 힘을 모은다
             if (shot >= 5 && mine && w.Clock - w.TurnAt > .5) { var (a, p) = w.BotAim(seat); w.Fire(w.Me, a, p); }
             w.Update(1 / 60.0);
@@ -45,7 +46,7 @@ sealed partial class FortressGame
                 1 => w.Power > .55,
                 2 => w.Shells.Count > 0 && w.Shells[0].Vy > -150 * k / 3.0,                             // 꼭대기를 넘어 내려오기 시작
                 3 => w.Blasts.Count > 0 && w.Clock - w.Blasts[^1].At >= BlastArt.Sec * .3,              // 불덩이가 한창
-                4 => mine && w.ChargeFrom >= 0 && w.Power > .4,                                         // 지난 힘 세모까지 아직 덜 찼다
+                4 => mine && w.ChargeFrom >= 0 && w.Power > .4 || w.Stage is Fortress.Phase.Won or Fortress.Phase.Lost, // 지난 힘 세모까지 아직 덜 찼다 (첫 발에 판이 끝났으면 그 모습으로)
                 _ => w.Done || w.Booms >= 14 && w.Blasts.Count > 0 && w.Clock - w.Blasts[^1].At >= .1,  // 여러 번 터진 뒤 (작은 폭발이 한창일 때)
             };
         });
