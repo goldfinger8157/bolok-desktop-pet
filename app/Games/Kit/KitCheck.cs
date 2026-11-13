@@ -41,6 +41,25 @@ static class KitCheck
 
     public static string Check()
     {
+        // ── WindowPick.Arena: 시합장 창 하나 (가린 창·최대화·맨 위 고정·작은 창은 빼고 가장 넓은 것, 손잡이까지) ──
+        {
+            var field = new Rectangle(0, 0, 1920, 1040);
+            var screens = new[] { field };
+            Win W(int h, int x, int y, int w, int hh, bool top = false) => new(new IntPtr(h), new Rectangle(x, y, w, hh), top);
+            var cover = W(1, 900, 500, 300, 200);           // 맨 앞 (z 순서 첫째)
+            var under = W(2, 800, 400, 700, 500);           // cover 에 가린다
+            var small = W(3, 100, 300, 200, 150);           // 너무 작다
+            var pin = W(4, 100, 600, 700, 380, true);       // 맨 위 고정
+            var good = W(5, 1500, 200, 400, 300);
+            var max = W(6, 0, 0, 1920, 1040);
+            var (f, arena) = WindowPick.Arena(null, new[] { cover, under, small, pin, good, max }, field, screens, 120, 360, 240);
+            Expect(f == field && arena is { } g && g.H == good.H, $"시합장 창: 가린·작은·고정·최대화 창은 빼고 쓸 만한 것 ({arena?.H})");
+            Expect(WindowPick.Arena(null, new[] { max, small }, field, screens, 120, 360, 240).Arena == null, "쓸 만한 창이 없으면 null");
+            var used = W(7, 100, 150, 500, 300);       // 메뉴 열기 전 쓰던 창 (good 보다 좁아도 이 창)
+            var top = W(8, 1000, 20, 800, 400);        // 화면 위쪽에 붙은 창도 된다 (창 위 여유 기본 0)
+            Expect(WindowPick.Arena(used, new[] { used, good }, field, screens, 120, 360, 240).Arena?.H == used.H, "쓰던 창이 되면 그 창");
+            Expect(WindowPick.Arena(null, new[] { top }, field, screens, 120, 360, 240).Arena?.H == top.H, "위쪽에 붙은 창도 시합장이 된다");
+        }
         // ── Ragged: 반지름 배수 0.65~1.35, 넓이는 동그라미 ±5%, 같은 씨 같은 모양, ICBM 구멍은 전과 같은 모양 ──
         double lo = 9, hi = 0, worstArea = 0;
         for (int seed = 0; seed < 40; seed++)

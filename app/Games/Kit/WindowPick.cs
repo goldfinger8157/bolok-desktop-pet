@@ -27,4 +27,19 @@ static class WindowPick
         }
         return (field, list);
     }
+
+    // 시합장이 될 창 하나 (모래성, 나중에 배구·버그 떼도): 섬과 같은 규칙(창모드·다른 창에 안 가림·최대화 아님)에
+    // 너비·높이가 minW×minH 이상인 것. ==메뉴를 열기 전 쓰던 창(used)이 되면 그 창==, 아니면 가장 넓은 창.
+    // 손잡이(H)까지 돌려주니 게임 중 창이 움직이면 따라갈 수 있다. 창 위 여유(topRoom)는 기본 0 — 창 위에 무엇을 얹는 게임은 자리가 없을 때를 스스로 다룬다
+    // (섬 기본값 1칸을 그대로 쓰니 화면 위쪽에 붙은 창이 모두 빠져 「쓸 창 없음」이 됐다, 2026-11-13 시험).
+    // 없으면 Arena 가 null — 그때 무엇을 할지(바탕화면 판, 「X 표 창」 그림)는 게임이 정한다
+    public static (Rectangle Field, Win? Arena) Arena(Win? used, IReadOnlyList<Win> wins, Rectangle petArea, IReadOnlyList<Rectangle> screens, int cell, int minW, int minH, double topRoom = 0)
+    {
+        var (field, list) = Islands(used, wins, petArea, screens, cell, int.MaxValue, topRoom);
+        if (used is { } u && list.Contains(Rectangle.Intersect(u.R, field)) && u.R.Width >= minW && u.R.Height >= minH) return (field, u);
+        foreach (var r in list.Where(r => r.Width >= minW && r.Height >= minH).OrderByDescending(r => r.Width * (long)r.Height))
+            foreach (var w in wins)
+                if (Rectangle.Intersect(w.R, field) == r) return (field, w);
+        return (field, null);
+    }
 }

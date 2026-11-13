@@ -187,7 +187,7 @@ public sealed class Overlay : Form
             var p = ToClient(h.X, h.Y);
             g.DrawImageUnscaled(sp.Get("icon/heart", 0, 1), p.X - sp.Cell / 2, p.Y - sp.Cell);
         }
-        if (b.Emoting)
+        if (b.Emoting && sp.Has("emo/" + b.EmoteName)) // 없는 표정 이름이면 건너뛴다 — 예외가 나면 그 뒤(게임 그림까지) 한 프레임도 안 그려진다 (2026-11-13 모래성 「x」)
         {
             var r = EmoteRect();
             g.DrawImageUnscaled(sp.Get("emo/" + b.EmoteName, 0, b.Scale), r.X, r.Y);
