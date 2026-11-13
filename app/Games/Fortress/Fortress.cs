@@ -20,7 +20,9 @@ public sealed class Fortress
     // 체력은 대포가 셀수록 적다 (YELL 2026-11-13 네 가지 추가):
     //  멀티 200 = 9발이 다 맞으면 198 · 왕 300 = 한 발 90, 구멍 85 · 일반 400 = 한 발 60 (기준)
     //  튕김 350 = 일반보다 조금 약한 한 발(55)이지만 언덕 너머로 튕겨 넣는다 · 집속 250 = 새끼 탄 넷이 다 맞으면 104, 넓게 덮는다
-    //  드릴 350 = 땅속 45px 에서 크게(65) 터져 발밑을 무너뜨린다. 땅속이라 몸까지 멀어 피해(70)는 일반대포보다 덜 닿는다 · 밀치기 300 = 피해는 20뿐이지만 가까이 맞으면 섬 밖까지 날린다
+    //  드릴 350 = 땅속 45px 에서 크게(65) 터져 발밑을 무너뜨린다. 땅속이라 몸까지 멀어 피해(70)는 일반대포보다 덜 닿는다
+    //  밀치기 300 = 피해는 20뿐이지만 바로 옆에 맞으면 일반대포의 두 배쯤(200px 안팎) 밀려 섬 끝에 서 있으면 빠진다. 40px 넘게 빗나가면 거의 안 밀린다
+    //   (처음엔 반지름 60·세기 1.8배였는데 라이벌이 첫두 발에 볼록이를 빠뜨리는 판이 열에 여섯이라 줄였다)
     public static readonly Gun[] Guns =
     {
         new("multi", "멀티캐논", 200, 9, 3, 28, 22) { Look = 2 },   // 체력은 처음 정한 것의 두 배 (YELL: 판이 너무 빨리 끝났다)
@@ -29,7 +31,7 @@ public sealed class Fortress
         new("bounce", "튕김탄", 350, 1, 0, 45, 55) { Bounces = 2, Look = 3 },
         new("cluster", "집속탄", 250, 1, 0, 32, 26) { Split = 4 },
         new("drill", "드릴탄", 350, 1, 0, 65, 70) { Drill = 45 },
-        new("push", "밀치기탄", 300, 1, 0, 60, 20) { Crater = .4, Knock = 1.8, Look = 3 },
+        new("push", "밀치기탄", 300, 1, 0, 50, 20) { Crater = .45, Knock = 1.5, Look = 3 },
     };
     public static Gun GunOf(string? name)
     {
@@ -53,6 +55,7 @@ public sealed class Fortress
         public double Age, Fuse = -1;               // Fuse: 처음 튕긴 뒤 터질 때까지 남은 시간 (-1 이면 안 잰다)
         public double Drill, DrillLeft = -1, Dug;   // DrillLeft: 땅속을 파고드는 중이면 남은 길이 (-1 이면 날고 있다) · Dug: 마지막으로 굴을 판 자리
         public bool Bounced;                        // 방금 튕겼다 (소리용. 읽은 쪽이 지운다)
+        public bool Boost, Powered;                 // Boost: 파워업 폭풍을 지나 세졌다 · Powered: 방금 세졌다 (소리·폭풍 끝내기용. 읽은 쪽이 지운다)
     }
     public sealed class Blast { public double X, Y, R, At; public bool Quiet; } // Quiet: 드릴탄이 판 굴 (불덩이·소리 없이 땅만 깎였다)
     public enum Phase { Turn, Flying, Settle, Won, Lost }
@@ -62,6 +65,11 @@ public sealed class Fortress
     public const double BounceKeep = .6, BounceFuse = 2.5;     // 튕길 때마다 남는 빠르기 · 처음 튕기고 이만큼 지나면 어디서든 터진다
     public const double SplitAge = .12, SplitSpread = 90;      // 쏘자마자 갈라지지 않게 · 새끼 탄이 옆으로 벌어지는 빠르기 (px/초, 배율 3 기준)
     public const double DrillSpeed = 240, TunnelR = 9;         // 파고드는 빠르기 · 굴 반지름 (배율 3 기준)
+    // 파워업 폭풍 (YELL 2026-11-13): 가끔 둘 사이 하늘에 노란 폭풍이 뜨고, 그 안을 지난 포탄은 세진다 (누가 쏜 것이든)
+    //  · 양쪽 첫 발이 끝난 뒤부터, 폭풍이 없는 차례가 시작될 때 25% 로 뜬다. 두 차례(양쪽 한 번씩) 떠 있다가 사라지고, 한 발이라도 세지게 했으면 그 발이 끝날 때 사라진다
+    //  · 세진 포탄: 폭발 반지름·피해 1.5배, 드릴탄은 파고드는 길이도 1.5배, 밀치는 세기 1.3배. 집속탄은 새끼 탄이 물려받고, 멀티캐논은 지나간 발마다 세진다
+    public const double StormChance = .25, StormSize = 55, BoostBlast = 1.5, BoostKnock = 1.3;
+    public const int StormTurns = 2;
     public const double BlastSec = .6;  // 폭발은 이만큼 지나면 목록에서 지운다 (불덩이 그림은 BlastArt.Sec 동안. 깎인 땅은 칸에 남는다)
 
     public readonly Rectangle Field;
@@ -81,6 +89,11 @@ public sealed class Fortress
     public double LastAim, LastPower = -1;        // 내가 지난번에 쏜 각도·힘 (놓은 그대로. 아직 안 쐈으면 힘이 -1). 라이벌이 쏜 것은 적지 않는다
     public bool HasLast => LastPower >= 0;
     public Phase Stage = Phase.Turn;
+    public double StormX, StormY, StormR;         // 파워업 폭풍 가운데와 반지름
+    public int StormLeft;                         // 폭풍이 떠 있을 남은 차례 수 (0 이면 없다)
+    public bool StormUsed;                        // 이번 발을 세지게 했다: 차례가 넘어갈 때 사라진다
+    public bool StormOn => StormLeft > 0;
+    public int Turns { get; private set; }        // 지금이 몇 번째 차례인가 (첫 차례가 1)
     public Action<string>? OnEvent;
     public Hog Active => MyTurn ? Me : Cpu;
     public bool Done => Stage is Phase.Won or Phase.Lost && Clock - EndAt > 2.5;
@@ -229,7 +242,7 @@ public sealed class Fortress
     {
         (s.Kind, s.X, s.Y, s.Vx, s.Vy, s.R, s.Damage, s.Crater, s.Knock) = (gun.Name, x, y, vx, vy, gun.Radius * sf, gun.Damage, gun.Crater, gun.Knock);
         (s.Look, s.Bounces, s.Split, s.Drill) = (gun.Look, gun.Bounces, gun.Split, gun.Drill * sf);
-        (s.Age, s.Fuse, s.DrillLeft, s.Dug, s.Bounced) = (0, -1, -1, 0, false);
+        (s.Age, s.Fuse, s.DrillLeft, s.Dug, s.Bounced, s.Boost, s.Powered) = (0, -1, -1, 0, false, false, false);
     }
 
     // 집속탄이 갈라질 때 i 번째 새끼 탄: 어미 자리에서 옆으로 고르게 벌어지고 살짝 튀어 오른다. 작은 쇠공, 더 갈라지지 않는다
@@ -238,7 +251,53 @@ public sealed class Fortress
         (into.Kind, into.X, into.Y, into.R, into.Damage, into.Crater, into.Knock) = (from.Kind, from.X, from.Y, from.R, from.Damage, from.Crater, from.Knock);
         (into.Vx, into.Vy) = (from.Vx + (i - (of - 1) / 2.0) * SplitSpread * sf, from.Vy - 40 * sf);
         (into.Look, into.Bounces, into.Split, into.Drill) = (2, 0, 0, 0);
-        (into.Age, into.Fuse, into.DrillLeft, into.Dug, into.Bounced) = (from.Age, -1, -1, 0, false);
+        (into.Age, into.Fuse, into.DrillLeft, into.Dug, into.Bounced, into.Boost, into.Powered) = (from.Age, -1, -1, 0, false, from.Boost, false); // 세진 것은 물려받는다 (R·Damage 에 이미 들어 있다)
+    }
+
+    // 폭풍을 지난 포탄이 세진다 (한 번만)
+    static void Boost(Shell s) => (s.Boost, s.Powered, s.R, s.Damage, s.Drill, s.Knock) = (true, true, s.R * BoostBlast, s.Damage * BoostBlast, s.Drill * BoostBlast, s.Knock * BoostKnock);
+
+    // ── 파워업 폭풍 ──
+    // 그 자리에 폭풍을 둘 수 있나: 판 안이고, 섬·햄스터와 겹치지 않는다
+    public bool StormFits(double x, double y, double r)
+    {
+        if (x - r < Field.Left || x + r > Field.Right || y - r < Field.Top + 4 * sf || y + r > Field.Bottom) return false;
+        if (TooClose(Me) || TooClose(Cpu)) return false;
+        bool TooClose(Hog h) => !h.Out && Math.Sqrt((h.X - x) * (h.X - x) + (CenterY(h) - y) * (CenterY(h) - y)) < r + BodyR * 3;
+        double reach = r + 2 * Cell;
+        int gx0 = Math.Max(0, (int)((x - reach - fx) / Cell)), gx1 = Math.Min(Gw - 1, (int)((x + reach - fx) / Cell));
+        int gy0 = Math.Max(0, (int)((y - reach - fy) / Cell)), gy1 = Math.Min(Gh - 1, (int)((y + reach - fy) / Cell));
+        for (int gy = gy0; gy <= gy1; gy++)
+            for (int gx = gx0; gx <= gx1; gx++)
+            {
+                if (!solid[gy * Gw + gx]) continue;
+                double cx = fx + (gx + .5) * Cell - x, cy = fy + (gy + .5) * Cell - y;
+                if (cx * cx + cy * cy < reach * reach) return false;
+            }
+        return true;
+    }
+
+    // 둘 사이 하늘, 포탄이 흔히 지나는 높이(높은 쪽 발에서 130~350px 위)에 폭풍을 띄운다. 자리가 없으면 안 띄운다
+    public bool SpawnStorm()
+    {
+        double r = StormSize * sf;
+        for (int tries = 0; tries < 8; tries++)
+        {
+            double x = (Me.X + Cpu.X) / 2 + (rng.NextDouble() - .5) * (Cpu.X - Me.X) * .3;
+            double y = Math.Min(Me.Y, Cpu.Y) - (130 + rng.NextDouble() * 220) * sf;
+            if (PlaceStorm(x, y)) return true;
+        }
+        return false;
+    }
+
+    // 정한 자리에 (검사·장면·디버그용. 못 두는 자리면 false)
+    public bool PlaceStorm(double x, double y)
+    {
+        double r = StormSize * sf;
+        if (!StormFits(x, y, r)) return false;
+        (StormX, StormY, StormR, StormLeft, StormUsed) = (x, y, r, StormTurns, false);
+        OnEvent?.Invoke("storm");
+        return true;
     }
 
     // 포탄 한 걸음: 바람에 밀리고, 땅이나 햄스터에 닿으면 터진다. 0 아직 난다 · 1 터졌다(터진 자리는 s.X, s.Y) · 2 화면 밖으로 사라졌다 · 3 지금 갈라진다(집속탄)
@@ -277,6 +336,13 @@ public sealed class Fortress
             }
             else hit = 1;
             break;
+        }
+        if (StormLeft > 0 && !s.Boost) // 이 걸음에 지나온 길이 폭풍에 닿았나
+        {
+            double ux = x - s.X, uy = y - s.Y, len2 = ux * ux + uy * uy;
+            double t = len2 > 0 ? Math.Clamp(((StormX - s.X) * ux + (StormY - s.Y) * uy) / len2, 0, 1) : 0;
+            double cx = s.X + ux * t - StormX, cy = s.Y + uy * t - StormY;
+            if (cx * cx + cy * cy < StormR * StormR) Boost(s);
         }
         (s.X, s.Y) = (x, y);
         return hit;
@@ -379,11 +445,12 @@ public sealed class Fortress
     }
 
     // 날려 본 포탄이 터진 자리의 점수 (작을수록 좋다): 노리는 자리까지의 거리. 제 발밑이면 못 쓴다
+    // 폭풍을 지나 세진 포탄은 폭발이 1.5배 넓으니 그만큼 가까운 것으로 친다: 폭풍을 지나가는 길이 쓸 만하면 그쪽을 고른다
     double PlanScore(Shell s)
     {
         double d = Math.Sqrt((s.X - planAimX) * (s.X - planAimX) + (s.Y - planAimY) * (s.Y - planAimY));
         double self = Math.Sqrt((s.X - Cpu.X) * (s.X - Cpu.X) + (s.Y - CenterY(Cpu)) * (s.Y - CenterY(Cpu)));
-        return self < s.R * 1.6 ? d + 10000 : d;
+        return self < s.R * 1.6 ? d + 10000 : s.Boost ? d / BoostBlast : d;
     }
 
     void PlanStep(int rows)
@@ -453,6 +520,9 @@ public sealed class Fortress
     {
         (MyTurn, TurnAt, ChargeFrom, Stage) = (mine, Clock, -1, Phase.Turn);
         Wind = Math.Round((rng.NextDouble() * 2 - 1) * 10) / 10;
+        Turns++;
+        if (StormOn) { if (StormUsed || --StormLeft <= 0) (StormLeft, StormUsed) = (0, false); }
+        else if (Turns > 2 && rng.NextDouble() < StormChance) SpawnStorm();
         (cpuStep, cpuAt, planning) = (0, Clock + 1.2, false);
         OnEvent?.Invoke("turn");
     }
@@ -476,6 +546,11 @@ public sealed class Fortress
                     var s = Shells[i];
                     int hit = Fly(s, dt, Wind);
                     if (s.Bounced) { s.Bounced = false; OnEvent?.Invoke("bounce"); }
+                    if (s.Powered) // 폭풍을 지나 세졌다. 소리는 그 발의 첫 포탄에만 (멀티캐논 아홉 발이 줄줄이 울리지 않게)
+                    {
+                        s.Powered = false;
+                        if (!StormUsed) { StormUsed = true; OnEvent?.Invoke("power"); }
+                    }
                     if (s.DrillLeft >= 0 && hit != 2) Tunnel(s);
                     if (hit == 0) continue;
                     Shells.RemoveAt(i--);
@@ -486,7 +561,6 @@ public sealed class Fortress
                         OnEvent?.Invoke("split");
                     }
                 }
-
                 if (Shells.Count == 0) (Stage, settleFor) = (Phase.Settle, 0);
                 break;
             case Phase.Settle: // 다 내려앉으면 판정하고 다음 차례
