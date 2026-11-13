@@ -23,9 +23,9 @@ Get **`Bolok.exe`** from the [latest release](https://github.com/goldfinger8157/
 ## What it does
 
 - **Lives on your screen:** wanders across all monitors, naps on top of windows, hides behind them and peeks out, and gets out of the way of the window you are working in.
-- **Needs care:** hunger, mood and energy change over the day. Neglect it and it starts eating holes in your screen.
+- **Needs care:** hunger, mood and energy change over the day. Food comes from a basket that refills over time (up to 5). When it isn't full it nibbles holes in your screen now and then, never in the window you are working in; feed it or shake it and it spits them back.
 - **Reacts to you:** click to pet, drag to carry, fling it and it bounces off the screen edges, shake it and it gets dizzy.
-- **Grows up:** egg → baby → child → one of three adult forms, depending on how you raised it.
+- **Grows up:** egg → baby → child → one of four adult forms (chubby, sweetie, rascal, grumpy), depending on the mix of care it got: feeding, petting, playing and tossing, or rough handling and hunger.
 - **46 kinds of pets:** hamster, cat (plus ragdoll, Scottish fold and exotic shorthair), shiba (plus Jindo, malamute, retriever, Welsh corgi, pug and Pomeranian), fox, moon bear, penguin, owl, squirrel, otter, duck, frog, hedgehog, raccoon, baby dragon, dragon, sheep, deer, goat, beaver, quokka, capybara, koala, panda, red panda, alpaca, pig, octopus — and fantasy friends: slime, ghost, little golem, unicorn, mushroom sprite, little imp, dream spirit, shadow devil, gumiho (nine-tailed fox), little dokkaebi (Korean goblin). You don't pick one — you find out when the egg hatches, and each pet comes in one of three colors (a black cat, a white winter hamster, an arctic fox…). When it's time, **release** your pet to nature (Settings → 도감) and a new mystery egg arrives. The collection book shows who you've met. Once a day, one of the friends you released comes back to visit for about five minutes — they walk around together, and nap side by side if your pet is asleep. They leave a little gift behind, and sometimes send a picture postcard the next day. Now and then a little sprout — or, more rarely, a lucky four-leaf clover — pops up nearby while your pet wanders; it runs over, picks it up and wears it on its head for the rest of the day (if you toss your pet, it falls off and gets picked up again).
 - **Memories:** gifts, a growth album (a photo every time your pet grows) and postcards are kept in Settings → Memories. Your pet dreams of its friends while it sleeps, wears a nightcap at night, and greets you in the morning. Visiting friends earn friendship hearts — after five visits they bring their baby along.
 - **Languages:** English, 한국어, 日本語, 简体中文, 繁體中文, Español, Deutsch, Français, Português, Русский (follows Windows, changeable in Settings → General). In-game visuals use pictures, numbers and symbols only.
@@ -36,13 +36,13 @@ Get **`Bolok.exe`** from the [latest release](https://github.com/goldfinger8157/
 | Game | What happens | Controls |
 | --- | --- | --- |
 | Shooting (총쏘기 게임) | 20 seconds to hit the fleeing hamster inside one window. It ducks behind other windows, and the smaller it is, the more forgiving the hit area | Mouse to aim, left-click to fire, right-click to reload |
-| Runner (달리기 게임) | Cookie-Run-style runner along the bottom of the screen, with levels. Your work window keeps the focus | Ctrl to jump, Shift to duck |
+| Runner (달리기 게임) | Cookie-Run-style runner along the bottom of the screen, with levels. Ledges to jump onto, and each level unlocks a new gimmick: bouncy mushrooms, wasps, rolling boulders, pits and caves. Your work window keeps the focus | Ctrl to jump, Shift to duck |
 | Breakout (벽돌깨기) | Your windows become bricks; the hamster carries the paddle | Mouse to move, left-click to throw the ball |
 | Minigun (미니건) | Unlimited minigun, missiles and grenades versus your windows. No score, just stress relief | Mouse to aim, hold left to fire, right-click for a missile, Shift + right-click for a grenade |
 | ICBM (ICBM 발사) | The hamster presses the red button, a mushroom cloud follows, then it walks over and repairs the crater | Just pick it from the menu (pick it again for one more) |
 | Bug Raid (버그 습격) | A classic fixed shooter in a small box next to your pet: bug squadrons swoop in, line up and dive at you. It fires automatically | Mouse or ← → to move |
-| Bug Swarm (버그 떼) | Bugs pour in from every side of a small arena around your pet. The gun and sword attack on their own. Pick up gems to level up and hold out for three minutes | Arrow keys to move |
-| Fortress (포트리스) | Turn-based artillery on window islands, with wind | Mouse to aim, hold left and release to fire, ← → to walk, ↑ to jump |
+| Bug Swarm (버그 떼) | Bugs pour in from every side of a small arena around your pet. The gun and sword attack on their own. Pick up gems to level up, grab magnets and sneakers, and hold out for three minutes | Arrow keys to move |
+| Fortress (포트리스) | Turn-based artillery on window islands, with wind. Seven cannons (bouncing, cluster, drill and push shells among them) and a yellow power-up storm | Mouse to aim, hold left and release to fire, ← → to walk, ↑ to jump |
 
 **Esc always quits instantly** (the boss key): whichever window has the focus, everything the game drew disappears at once, with no result screen, and your pet goes back to what it was doing. Games only use the mouse, the arrow keys, Ctrl, Shift and Esc — no letter keys.
 
@@ -86,9 +86,9 @@ out\Bolok.exe
 ### 하는 일
 
 - **화면에서 살아요:** 모니터를 넘나들며 돌아다니고, 창 위에서 자고, 창 뒤에 숨어 빼꼼 내다보고, 일하는 창은 피해 줘요.
-- **돌봐야 해요:** 배고픔, 기분, 기운이 하루 동안 변해요. 내버려 두면 화면을 뜯어 먹어요.
+- **돌봐야 해요:** 배고픔, 기분, 기운이 하루 동안 변해요. 밥은 시간이 지나면 채워지는 바구니(최대 5개)에서 꺼내 줘요. 배가 덜 차면 가끔 화면을 뜯어 먹는데(일하는 창은 안 먹어요), 밥을 주거나 잡아 흔들면 퉤 하고 뱉어요.
 - **반응해요:** 클릭하면 쓰다듬기, 끌면 들기, 던지면 화면 끝에서 튕기고, 흔들면 어지러워해요.
-- **자라요:** 알 → 아기 → 어린이 → 키운 방식에 따라 세 가지 어른 모습 중 하나가 돼요.
+- **자라요:** 알 → 아기 → 어린이 → 돌봄의 비율(밥·쓰다듬기·놀아주기와 던지기·거칠게 다루기와 배고픔)에 따라 통통이·애교쟁이·장난꾸러기·심술이 중 하나가 돼요.
 - **46종 친구들:** 햄스터, 고양이(렉돌·스코티시폴드·엑조틱숏헤어도), 시바견(진돗개·말라뮤트·리트리버·웰시코기·퍼그·포메라니안도), 여우, 반달가슴곰, 펭귄, 부엉이, 다람쥐, 수달, 오리, 개구리, 고슴도치, 너구리, 아기 용, 드래곤, 양, 사슴, 염소, 비버, 쿼카, 카피바라, 코알라, 판다, 레서판다, 알파카, 돼지, 문어, 그리고 판타지 친구들 슬라임, 유령, 꼬마 골렘, 유니콘, 버섯 요정, 꼬마 악마, 몽마, 까망 악마, 구미호, 꼬마 도깨비. 고를 수는 없고, 알이 깨져야 누가 나올지 알아요. 때가 되면 설정 → 도감에서 **풀어주기**로 자연에 보내 주고, 무엇이 나올지 모르는 새 알을 키워요. 도감에는 만나 본 친구들이 남아요. 하루에 한 번, 자연으로 보낸 친구 하나가 5분쯤 놀러 와요 — 둘이 같이 돌아다니고, 볼록이가 자면 옆에서 같이 자요. 돌아갈 땐 작은 선물을 두고 가고, 다음 날 그림 엽서를 보내기도 해요. 돌아다니다 가끔 근처에 새싹이나(드물게는 행운의 네잎클로버가) 돋으면, 볼록이가 달려가 주워서 그날 하루 머리에 꽂고 다녀요(던지면 떨어뜨렸다가 다시 주워요). 종마다 색도 세 벌이라 같은 종이라도 까만 고양이, 흰 겨울 햄스터, 북극여우처럼 다른 색으로 깨어날 수 있어요.
 - **추억:** 선물, 성장 앨범(자랄 때마다 사진), 엽서가 설정 → 추억에 모여요. 잘 때는 친구 꿈을 꾸고, 밤엔 수면 모자를 쓰고, 아침엔 기지개로 반겨요. 놀러 올 때마다 우정 하트가 쌓이고, 다섯 번째부터는 아기를 데리고 와요.
 - **언어:** 영어, 한국어, 일본어, 중국어(간체·번체), 스페인어, 독일어, 프랑스어, 포르투갈어, 러시아어 (윈도우 언어를 따르고, 설정 → 일반에서 바꿀 수 있어요). 게임 화면에는 글자 없이 그림·숫자·기호만 써요.
@@ -99,13 +99,13 @@ out\Bolok.exe
 | 게임 | 내용 | 조작 |
 | --- | --- | --- |
 | 총쏘기 게임 | 20초 동안 창 하나 안에서 도망 다니는 볼록이 맞히기. 다른 창 뒤로 숨기도 하고, 몸이 작을수록 넉넉하게 맞아요 | 마우스로 조준, 왼쪽 클릭 쏘기, 오른쪽 클릭 장전 |
-| 달리기 게임 | 화면 아래를 달리는 쿠키런식 게임. 레벨이 올라요. 일하던 창은 그대로 쓸 수 있어요 | Ctrl 점프, Shift 앉기 |
+| 달리기 게임 | 화면 아래를 달리는 쿠키런식 게임. 2층 발판이 있고, 레벨마다 버섯 점프대·말벌·굴러오는 돌·구덩이·동굴이 하나씩 열려요. 일하던 창은 그대로 쓸 수 있어요 | Ctrl 점프, Shift 앉기 |
 | 벽돌깨기 | 창이 벽돌이 되고, 볼록이가 쟁반으로 쇠공을 튕겨요 | 마우스로 움직이기, 왼쪽 클릭 던지기 |
 | 미니건 | 탄창 없는 미니건과 미사일·수류탄으로 창 부수기. 점수 없이 스트레스 풀기용이에요 | 마우스로 조준, 왼쪽 누르고 있으면 쏘기, 오른쪽 클릭 미사일, Shift+오른쪽 클릭 수류탄 |
 | ICBM 발사 | 볼록이가 빨간 버튼을 누르면 버섯구름이 피고, 볼록이가 걸어가서 고쳐요 | 메뉴에서 고르기만 (또 고르면 한 발 더) |
 | 버그 습격 | 볼록이 옆 작은 판에서 하는 고전 슈팅이에요. 버그 편대가 날아들어 줄을 서고 내려와 공격해요. 쏘는 건 자동이에요 | 마우스나 ← → 로 움직이기 |
-| 버그 떼 | 볼록이 둘레 작은 판으로 벌레가 사방에서 몰려와요. 총과 칼은 알아서 싸워요. 보석을 주워 세지면서 3분을 버티면 이겨요 | 방향키로 움직이기 |
-| 포트리스 | 창이 섬이 되는 턴제 포격전. 바람이 불어요 | 마우스로 조준, 왼쪽 누르고 있다 놓으면 쏘기, ← → 걷기, ↑ 점프 |
+| 버그 떼 | 볼록이 둘레 작은 판으로 벌레가 사방에서 몰려와요. 총과 칼은 알아서 싸워요. 보석을 주워 세지고, 자석·신발도 주우며 3분을 버티면 이겨요 | 방향키로 움직이기 |
+| 포트리스 | 창이 섬이 되는 턴제 포격전. 바람이 불어요. 대포 일곱 가지(튕김탄·집속탄·드릴탄·밀치기탄 포함)와 노란 파워업 폭풍 | 마우스로 조준, 왼쪽 누르고 있다 놓으면 쏘기, ← → 걷기, ↑ 점프 |
 
 **Esc 는 언제나 바로 끝내기**(보스 키)예요. 어느 창을 쓰고 있든 게임이 그린 것이 한꺼번에 사라지고, 결과 화면 없이 볼록이는 하던 대로 돌아가요. 게임은 마우스·방향키·Ctrl·Shift·Esc 만 써요 (글자 키는 안 써요).
 
