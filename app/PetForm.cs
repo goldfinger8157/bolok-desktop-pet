@@ -129,7 +129,6 @@ public sealed class PetForm : Form, IGameHost
         hud.SpeciesName = () => b.P.Stage == "egg" ? "" : L.Species(species);
         if (!debug) // 새 버전을 받아 바꿔 두면 메뉴에 알린다. 그냥 둬도 다음에 켤 때 새 버전이다
             Updater.Start(() => autoUpdate, tag => BeginInvoke(() => { updateTag = tag; updateItem.Text = L.T("menu.update", tag); updateItem.Visible = true; settings?.ShowReady(); }));
-        foreach (var o in overlays) { o.Guest = () => visitor; o.GuestSprites = () => visitorSprites; o.Present = () => present; o.Clover = CloverShown; o.LeafPile = LeafPileShown; o.Dreams = Dreams; o.Modes = () => modes; }
         hud.PlaceAt(area);
         if (runDir != null) dev = new DevLink(runDir, assetsDir!, b, this);
 
@@ -191,9 +190,14 @@ public sealed class PetForm : Form, IGameHost
     static string DescribeScreens() => string.Join(" ", Screen.AllScreens.Select(s =>
         $"{s.WorkingArea.X},{s.WorkingArea.Y},{s.WorkingArea.Width}x{s.WorkingArea.Height}@{Native.DpiAt(new Point(s.Bounds.X + 10, s.Bounds.Y + 10))}"));
 
-    void BuildOverlays()
+    void BuildOverlays() // 처음과 모니터가 바뀔 때 (연결도 여기서 다 한다: 다시 만들 때 친구·선물·머리 장식·꿈·게임 그림이 빠지던 것)
     {
-        foreach (var s in Screen.AllScreens) overlays.Add(new Overlay(b, () => sprites, s.Bounds) { Sky = () => weather });
+        foreach (var sc in Screen.AllScreens)
+        {
+            var o = new Overlay(b, () => sprites, sc.Bounds) { Sky = () => weather };
+            o.Guest = () => visitor; o.GuestSprites = () => visitorSprites; o.Present = () => present; o.Clover = CloverShown; o.LeafPile = LeafPileShown; o.Dreams = Dreams; o.Modes = () => modes;
+            overlays.Add(o);
+        }
     }
 
     void ShowOverlays()
