@@ -148,7 +148,7 @@ sealed class BreakoutGame : IGameMode
         return PlateTopAt(b.Y, top, sp.Cell, b.Scale);
     }
 
-    static int PawTop(Sprites sp, string name) => Props.Trim(Props.Solid(sp.Get(name, 0, 1))).Y0;
+    static int PawTop(Sprites sp, string name) => Ui.Opaque(sp.Get(name, 0, 1), 0).Top;
     static double PlateTopAt(double feet, int top, int cell, int k) => feet - (cell - top) * k - 3 * k;
 
     // 한 판의 시간 재기: 규칙(Frame), 다시 칠할 자리(Dirty), 그리기(Draw). 판이 끝나면 break-perf 로 남긴다

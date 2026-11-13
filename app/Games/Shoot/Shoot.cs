@@ -2,14 +2,17 @@ namespace Bolok;
 
 // 무기. Bloom 은 한 발마다 탄이 퍼지는 반지름이 커지는 양, MaxBloom 은 그 한계 (배율 3 기준 px). Kick 은 총이 들썩이는 정도.
 // Pellets 는 한 번에 나가는 탄알 수, Spread 는 산탄이 퍼지는 반지름
-public sealed record Weapon(string Name, int Mag, double ReloadSec, double Interval, double Bloom, double MaxBloom, double Kick, bool Auto,
+sealed record Weapon(string Name, int Mag, double ReloadSec, double Interval, double Bloom, double MaxBloom, double Kick, bool Auto,
     int Pellets = 1, double Spread = 0);
 
-// 총쏘기 게임 한 판: 3·2·1 → 20초 → 조준경 폭발 → 결과(클릭하면 닫힘). 화면과 무관한 규칙이라 --selfcheck 로 검사한다.
-// Doom 처럼 조준점은 마우스에서 벗어나지 않는다. 반동은 총이 들썩이고 탄이 퍼지는 것으로만 보여 준다
-public sealed class Game
+// 총쏘기 게임 한 판: 3·2·1 → 20초 → 조준경 폭발 → 결과(클릭하면 닫힘). 화면과 무관한 규칙이라 --selfcheck 로 검사한다 (ShootGame.Check).
+// Doom 처럼 조준점은 마우스에서 벗어나지 않는다. 반동은 총이 들썩이고 탄이 퍼지는 것으로만 보여 준다.
+// 하는 동안 메모리를 새로 잡지 않는다 (탄흔·쏜 자리 표시는 미리 잡아 둔 자리에)
+sealed class Shoot
 {
     public enum Phase { Count, Play, Boom, Result, Done }
+    public struct Hole { public int X, Y, Kind; }                      // 빗나간 자리의 탄흔
+    public struct Mark { public int X, Y; public bool Hit; public double At; }  // 쏜 자리 표시 (잠깐)
 
     // 장전은 빠르게 (YELL 2026-11-11): 권총 0.7→0.45, 기관총 1.4→0.9, 산탄총 1.1→0.7초
     public static readonly Weapon Pistol = new("pistol", 6, .45, .16, 9, 18, 1, false);
@@ -18,13 +21,14 @@ public sealed class Game
     public static readonly Weapon[] Guns = { Pistol, MachineGun, Shotgun };
     public const int MaxHoles = 120;
     public const double CountSec = 1.8, PlaySec = 20, BoomSec = .9, ResultMinSec = .8, ResultSec = 3.5;
+    public const double HitMarkSec = .3, MissMarkSec = .12;
 
-    public readonly Rectangle Arena;    // 볼록이가 도망 다니는 모니터
+    public readonly Rectangle Arena;    // 볼록이가 도망 다니는 창 (창이 없으면 모니터)
     public readonly Weapon Gun;
     public readonly string Theme;       // 소품 묶음 (Props.Sets)
     public readonly int Scale;
     public Point GunPivot;              // 총 손잡이 자리: 게임 창 아래 테두리 가운데
-    public List<Prop> Decor = new();    // 창 윗변에 앉힌 작은 소품
+    public List<Prop> Decor = new();    // 창 윗변·바닥에 앉힌 작은 소품
     public double GunKick, GunRise;     // 쏠 때 총이 뒤로 밀리는 거리, 총구가 들리는 각도. 금방 돌아온다
     public double FlashUntil, HitUntil; // 총구 불꽃, 명중 표시(조준경이 빨개진다)
     public Phase Stage = Phase.Count;
@@ -32,14 +36,16 @@ public sealed class Game
     public int Ammo, Hits, Shots, Best;
     public bool NewBest, Trigger;
     public double ReloadLeft, Bloom, AimX, AimY, BoomX, BoomY;
-    public readonly List<(int X, int Y, int Kind)> Holes = new();             // 빗나간 자리의 탄흔
-    public readonly List<(int X, int Y, bool Hit, double At)> Marks = new();  // 쏜 자리 표시 (잠깐)
-    public int Version;                 // 탄흔이 바뀌면 오른다
-    public Action<string, int, int>? OnShot;
+    public readonly Hole[] Holes = new Hole[MaxHoles];   // 처음 HoleCount 개가 찬 자리. 꽉 차면 가장 오래된 자리에 덮어쓴다
+    public int HoleCount { get; private set; }
+    public readonly Bag<Mark> Marks = new(64);
+    public Action<string, int, int>? OnShot;  // hit·miss·empty·reload·loaded·boom
+    public Action<int, int>? OnHole;          // 탄흔이 생기거나 지워진 자리 (그 둘레를 다시 칠한다)
     double lastShot = -9, nextAuto;
+    int oldest;
     readonly Random rng;
 
-    public Game(Rectangle arena, int best, int scale, Random rng, Weapon? gun = null, string? theme = null)
+    public Shoot(Rectangle arena, int best, int scale, Random rng, Weapon? gun = null, string? theme = null)
     {
         (Arena, Best, Scale, this.rng) = (arena, best, scale, rng);
         Gun = gun ?? Guns[rng.Next(Guns.Length)];
@@ -88,7 +94,15 @@ public sealed class Game
         GunRise *= Math.Exp(-dt / .09);
         if (!(Trigger && Gun.Auto)) Bloom *= Math.Exp(-dt / .18); // 쏘기를 멈추면 퍼짐이 금방 모인다
         (AimX, AimY) = (mouse.X, mouse.Y);
-        Marks.RemoveAll(m => Clock - m.At > (m.Hit ? .3 : .12));
+        int keep = 0;
+        for (int i = 0; i < Marks.Count; i++) // 쏜 자리 표시는 잠깐만
+        {
+            ref var m = ref Marks[i];
+            if (Clock - m.At > (m.Hit ? HitMarkSec : MissMarkSec)) continue;
+            if (keep != i) Marks[keep] = m;
+            keep++;
+        }
+        Marks.Trim(keep);
 
         switch (Stage)
         {
@@ -96,7 +110,7 @@ public sealed class Game
                 (Stage, T) = (Phase.Play, 0);
                 break;
             case Phase.Play:
-                if (Trigger && Gun.Auto && Clock >= nextAuto) Shoot(hitsPet);
+                if (Trigger && Gun.Auto && Clock >= nextAuto) Shoot1(hitsPet);
                 if (T >= PlaySec) { (Stage, T, Trigger, BoomX, BoomY) = (Phase.Boom, 0, false, AimX, AimY); OnShot?.Invoke("boom", (int)AimX, (int)AimY); } // 조준경이 터지며 끝을 알린다
                 break;
             case Phase.Boom when T >= BoomSec:
@@ -114,10 +128,10 @@ public sealed class Game
         if (Hits > Best) { Best = Hits; NewBest = true; }
     }
 
-    // 나가기 버튼 또는 Esc
+    // 나가기 버튼, 게임하던 창이 사라졌을 때: 결과 화면으로. 결과 화면에서는 닫는다
     public void Finish()
     {
-        if (Stage is Phase.Result or Phase.Boom) Stage = Phase.Done;
+        if (Stage == Phase.Result) Stage = Phase.Done;
         else if (Stage != Phase.Done) ToResult();
     }
 
@@ -129,7 +143,7 @@ public sealed class Game
         if (Stage != Phase.Play) return "wait";
         Trigger = true;
         (AimX, AimY) = (x, y);
-        return Shoot(hitsPet);
+        return Shoot1(hitsPet);
     }
 
     public void Release() => Trigger = false;
@@ -139,7 +153,16 @@ public sealed class Game
         if (Stage == Phase.Play && ReloadLeft == 0 && Ammo < Gun.Mag) { ReloadLeft = Gun.ReloadSec; OnShot?.Invoke("reload", 0, 0); }
     }
 
-    string Shoot(Func<int, int, bool> hitsPet)
+    void AddHole(int x, int y)
+    {
+        bool full = HoleCount == MaxHoles;
+        int i = full ? oldest++ % MaxHoles : HoleCount++;
+        if (full) OnHole?.Invoke(Holes[i].X, Holes[i].Y); // 덮어쓰는 가장 오래된 탄흔 자리
+        Holes[i] = new Hole { X = x, Y = y, Kind = rng.Next(3) };
+        OnHole?.Invoke(x, y);
+    }
+
+    string Shoot1(Func<int, int, bool> hitsPet)
     {
         if (Clock - lastShot < Gun.Interval * .9) return "wait"; // 권총을 아무리 빨리 눌러도 연사 속도 이상은 안 나간다
         nextAuto = Clock + Gun.Interval;
@@ -156,13 +179,8 @@ public sealed class Game
             int x = (int)(AimX + Math.Cos(a) * r), y = (int)(AimY + Math.Sin(a) * r);
             bool h = hitsPet(x, y);
             if (h && !hit) { hit = true; hitAt = (x, y); }
-            else if (!h)
-            {
-                Holes.Add((x, y, rng.Next(3)));
-                if (Holes.Count > MaxHoles) Holes.RemoveAt(0);
-                Version++;
-            }
-            Marks.Add((x, y, h, Clock));
+            else if (!h) AddHole(x, y);
+            if (!Marks.Full) Marks.Add() = new Mark { X = x, Y = y, Hit = h, At = Clock };
         }
         if (hit) { Hits++; HitUntil = Clock + .12; }
         Bloom = Math.Min(Gun.MaxBloom, Bloom + Gun.Bloom);
@@ -172,17 +190,5 @@ public sealed class Game
         OnShot?.Invoke(hit ? "hit" : "miss", hit ? hitAt.X : (int)AimX, hit ? hitAt.Y : (int)AimY);
         if (Ammo == 0) { ReloadLeft = Gun.ReloadSec; OnShot?.Invoke("reload", 0, 0); } // 다 쏘면 알아서 장전한다
         return hit ? "hit" : "miss";
-    }
-
-    // 스프라이트 픽셀로 명중 판정. 반지름만큼은 봐준다
-    public static bool HitBitmap(Bitmap bmp, int x, int y, int radius)
-    {
-        for (int dy = -radius; dy <= radius; dy += Math.Max(1, radius / 3))
-            for (int dx = -radius; dx <= radius; dx += Math.Max(1, radius / 3))
-            {
-                int px = x + dx, py = y + dy;
-                if (px >= 0 && py >= 0 && px < bmp.Width && py < bmp.Height && bmp.GetPixel(px, py).A > 0) return true;
-            }
-        return false;
     }
 }

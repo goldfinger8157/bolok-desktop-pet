@@ -54,7 +54,7 @@ sealed partial class FortressGame : IGameMode
         var screens = new List<Rectangle>();
         foreach (var s in Screen.AllScreens) screens.Add(s.WorkingArea);
         var (field, lands) = WindowPick.Islands(Native.Foreground(), Native.ListWindows(), b.Area, screens, b.CellPx, 4);
-        if (lands.Count == 0) // 섬이 될 창모드 창이 없다: 말 대신 「X 표 창」 그림과 고개 젓기 (PetForm.NoWindow 와 같다)
+        if (lands.Count == 0) // 섬이 될 창모드 창이 없다: 말 대신 「X 표 창」 그림과 고개 젓기 (펫은 말하지 않는다)
         {
             b.Emote("nowin", 3);
             b.ShakeUntil = b.Now + .5;

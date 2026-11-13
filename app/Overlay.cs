@@ -6,7 +6,6 @@ public sealed class Overlay : Form
 {
     readonly Brain b;
     readonly Func<Sprites> sprites;
-    readonly Func<Game?> game;
     public Func<Visitor?> Guest = () => null;           // 놀러 온 떠난 친구
     public Func<Sprites?> GuestSprites = () => null;
     public Func<(string Kind, string From, double X, double Y, double At)?> Present = () => null; // 친구가 두고 간 선물
@@ -14,18 +13,15 @@ public sealed class Overlay : Form
     public Func<IReadOnlyList<string>> Dreams = () => Array.Empty<string>();                     // 꿈 말풍선 그림들
     internal Func<IReadOnlyList<IGameMode>> Modes = () => Array.Empty<IGameMode>();               // 게임 모듈 (app/Games)
     public Sprites Art => sprites();
-    int gameSeen = -1;
-    readonly SolidBrush redFill = new(Color.FromArgb(232, 72, 92));
-    readonly SolidBrush barLine = new(Color.FromArgb(92, 58, 40)), barBack = new(Color.FromArgb(255, 243, 224)), barFill = new(Color.FromArgb(250, 185, 40));
-    readonly SolidBrush holeBrush = new(Color.FromArgb(7, 9, 12));
+    readonly SolidBrush barLine = new(Color.FromArgb(92, 58, 40));
+    readonly SolidBrush holeBrush = new(Color.FromArgb(7, 9, 12)), bitBrush = new(Color.White);
     List<Rectangle> last = new();
     int holesSeen = -1;
 
-    public Overlay(Brain brain, Func<Sprites> sprites, Func<Game?> game, Rectangle bounds)
+    public Overlay(Brain brain, Func<Sprites> sprites, Rectangle bounds)
     {
         b = brain;
         this.sprites = sprites;
-        this.game = game;
         AutoScaleMode = AutoScaleMode.None;
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
@@ -85,31 +81,12 @@ public sealed class Overlay : Form
         if (Clover() is { } cl) r.Add(Client(Around(cl.X, cl.Y - 10 * b.Scale, 16 * b.Scale, 16 * b.Scale)));
         if (b.Now < b.BasketUntil + .1) r.Add(Client(Around(b.BasketX, b.BasketY, 18 * b.Scale, 14 * b.Scale)));
         if (Dreams().Count > 0) r.Add(Client(DreamRect()));
-        if (game() is { } gm)
-        {
-            r.Add(Client(HudRect(gm)));
-            r.Add(Client(CenterRect(gm)));
-            r.Add(Client(gm.ExitButton()));
-            int m = 8 * b.Scale, aim = 30 * b.Scale / 3 * 2, boom = 20 * b.Scale * 2;
-            foreach (var mark in gm.Marks) { var p = ToClient(mark.X, mark.Y); r.Add(new Rectangle(p.X - m, p.Y - m, m * 2, m * 2)); }
-            int gun = 40 * b.Scale * 2 + 20 * b.Scale * 2; // 총 + 앞으로 뻗는 불꽃
-            var gp = ToClient(gm.GunPivot.X, gm.GunPivot.Y);
-            r.Add(new Rectangle(gp.X - gun, gp.Y - gun, gun * 2, gun + 20 * b.Scale)); // 총이 돌아가는 반원
-            if (gm.Stage == Game.Phase.Boom) { var p = ToClient(gm.BoomX, gm.BoomY); r.Add(new Rectangle(p.X - boom, p.Y - boom, boom * 2, boom * 2)); }
-        }
         return r;
     }
 
     public void Sync()
     {
         if (holesSeen != b.HolesVersion) { holesSeen = b.HolesVersion; Invalidate(); }
-        int seen = game()?.Version ?? -1;
-        if (seen != gameSeen) // 탄흔이 늘거나 게임이 끝나면 한 번 다시 칠한다
-        {
-            if (seen < 0 || gameSeen < 0) Invalidate();
-            else foreach (var h in game()!.Holes) Invalidate(HoleRect(h.X, h.Y));
-            gameSeen = seen;
-        }
         var now = Dirty();
         var once = dirtyOnce;
         once.Clear();
@@ -170,9 +147,9 @@ public sealed class Overlay : Form
             }
         foreach (var f in b.Bits)
         {
-            using var br = new SolidBrush(f.C == PetForm.Key ? Color.White : f.C);
+            bitBrush.Color = f.C == PetForm.Key ? Color.White : f.C; // 붓 하나를 색만 바꿔 쓴다 (조각마다 새로 만들지 않게)
             var p = ToClient(f.X, f.Y);
-            g.FillRectangle(br, p.X, p.Y, 8, 8);
+            g.FillRectangle(bitBrush, p.X, p.Y, 8, 8);
         }
         if (b.Now < b.BasketUntil) // 먹이 바구니: 씨앗을 꺼내 던지고 남은 수를 보인다. 비었으면 흔들어 보인다
         {
@@ -196,7 +173,6 @@ public sealed class Overlay : Form
             g.DrawImageUnscaled(sp.Get("emo/" + b.EmoteName, 0, b.Scale), r.X, r.Y);
         }
         if (b.Saying) DrawNoteAt(g, b.X, b.Y, b.Area, b.SayLines!);
-        if (game() is { } gm) DrawGame(g, gm);
         for (var (ms, i) = (Modes(), 0); i < ms.Count; i++) if (ms[i].Running) ms[i].Draw(this, g);
         if (Guest() is { } gv && GuestSprites() is { } gs) DrawGuest(g, gv, gs);
         if (Present() is { } pr) // 선물: 바닥에서 통통, 가끔 반짝
@@ -355,8 +331,6 @@ public sealed class Overlay : Form
         DrawNote(g, Client(r), lines, r.X < petX);
     }
 
-    readonly SolidBrush holeFill = new(Color.FromArgb(14, 16, 22)), holeEdge = new(Color.FromArgb(46, 50, 60)); // 구멍 속·턱 (ICBM·포트리스)
-
     // 구멍 너머 자연: 파란 하늘과 구름, 나무숲, 흐르는 냇물, 풀밭. px 칸 도트로, 자리마다 조금씩 다르게
     internal static void PaintNature(Graphics g, Rectangle box, int floor, int seed, double clock, int px)
     {
@@ -458,99 +432,11 @@ public sealed class Overlay : Form
             g.DrawString(lines[i], f, barLine, box.X + 3 * u, box.Y + 3 * u + i * f.Height, StringFormat.GenericTypographic);
     }
 
-    // ── 총쏘기 게임 ──
-
     public Rectangle Client(Rectangle r) => new(r.X - Left, r.Y - Top, r.Width, r.Height);
-
-    Rectangle HoleRect(int x, int y)
-    {
-        var p = ToClient(x, y);
-        int h = 7 * b.Scale;
-        return new Rectangle(p.X - h, p.Y - h, h * 2, h * 2);
-    }
-
-    // 위쪽 가운데: 남은 시간 막대, 총알, 맞힌 수
-    Rectangle HudRect(Game gm)
-    {
-        int k = b.Scale, w = 130 * k;
-        return new Rectangle(gm.Arena.Left + gm.Arena.Width / 2 - w / 2, gm.Arena.Top + 6 * k, w, 26 * k);
-    }
-
-    Rectangle CenterRect(Game gm)
-    {
-        int k = b.Scale;
-        return new Rectangle(gm.Arena.Left + gm.Arena.Width / 2 - 70 * k, gm.Arena.Top + gm.Arena.Height / 2 - 50 * k, 140 * k, 100 * k);
-    }
 
     public void Put(Graphics g, Bitmap bmp, int x, int y)
     {
         var p = ToClient(x, y);
         g.DrawImageUnscaled(bmp, p.X - bmp.Width / 2, p.Y - bmp.Height / 2);
-    }
-
-    void Number(Graphics g, int n, int cx, int cy, int k)
-    {
-        var text = n.ToString();
-        int step = 5 * k, x0 = cx - (text.Length - 1) * step / 2;
-        for (int i = 0; i < text.Length; i++) Put(g, sprites().Get("num/" + text[i], 0, k), x0 + i * step, cy);
-    }
-
-    // 게임 창 아래 테두리에 걸쳐 조준점을 향해 돌아가는 총. 쏘면 뒤로 밀리고 총구가 들리며 불꽃이 난다
-    void DrawGun(Graphics g, Game gm)
-    {
-        if (!Bounds.Contains(gm.GunPivot)) return;
-        double a = gm.GunAngle() - gm.GunRise * Math.Sign(Math.Cos(gm.GunAngle()));
-        var p = ToClient(gm.GunPivot.X, gm.GunPivot.Y);
-        int flash = gm.Clock < gm.FlashUntil ? (int)(gm.Clock * 30) % 2 : -1; // 기관총은 쏘는 동안 깜빡인다
-        GunArt.Draw(g, sprites(), gm.Gun.Name, p, a, gm.GunKick, b.Scale * 2, flash);
-    }
-
-    void DrawGame(Graphics g, Game gm)
-    {
-        var sp = sprites();
-        int k = b.Scale;
-        foreach (var p in gm.Decor) g.DrawImageUnscaled(sp.Get(p.Name, 0, p.Scale), p.Origin.X - Left, p.Origin.Y - Top);
-        foreach (var (x, y, kind) in gm.Holes) Put(g, sp.Get("game/hole" + kind, 0, k), x, y);
-        foreach (var m in gm.Marks) Put(g, sp.Get(m.Hit ? "game/hit" : "game/spark", 0, k), m.X, m.Y);
-
-        var hud = HudRect(gm);
-        int bx = hud.X + 5 * k, by = hud.Y + 3 * k, bw = 120 * k, bh = 4 * k;
-        var bar = ToClient(bx, by);
-        g.FillRectangle(barLine, bar.X - k, bar.Y - k, bw + 2 * k, bh + 2 * k);
-        g.FillRectangle(barBack, bar.X, bar.Y, bw, bh);
-        g.FillRectangle(barFill, bar.X, bar.Y, (int)(bw * gm.TimeLeft / Game.PlaySec), bh);
-        bool blink = gm.Ammo == 0 && gm.ReloadLeft == 0 && gm.Clock * 4 % 2 < 1; // 빈 탄창은 깜빡여 장전하라고 알린다
-        Put(g, sp.Get("game/" + gm.Gun.Name, 0, k), bx + 9 * k, by + 13 * k);
-        if (gm.Gun.Mag <= 8)
-            for (int i = 0; i < gm.Gun.Mag; i++)
-                Put(g, sp.Get((gm.Gun.Pellets > 1 ? "game/shell" : "game/bullet") + (i < gm.Loaded && !blink ? "" : "Off"), 0, k), bx + 22 * k + i * 6 * k, by + 13 * k);
-        else // 기관총: 탄창 눈금
-        {
-            var tick = ToClient(bx + 20 * k, by + 10 * k);
-            for (int i = 0; i < gm.Gun.Mag; i++)
-                g.FillRectangle(i < gm.Loaded && !blink ? barFill : barLine, tick.X + i * 2 * k, tick.Y, k, 6 * k);
-        }
-        Put(g, sp.Get("game/star", 0, k), bx + bw - 22 * k, by + 13 * k);
-        Number(g, gm.Hits, bx + bw - 8 * k, by + 13 * k, k);
-
-        var exit = gm.ExitButton();
-        Put(g, sp.Get("game/exit", 0, k), exit.X + exit.Width / 2, exit.Y + exit.Height / 2);
-
-        DrawGun(g, gm);
-        if (gm.Stage == Game.Phase.Boom)
-        {
-            int f = (int)(gm.T / (Game.BoomSec / 5));
-            Put(g, f < 4 ? sp.Get("game/boom", f, k * 2) : sp.Get("game/boom2", 0, k * 2), (int)gm.BoomX, (int)gm.BoomY);
-        }
-
-        int cx = gm.Arena.Left + gm.Arena.Width / 2, cy = gm.Arena.Top + gm.Arena.Height / 2;
-        if (gm.Stage == Game.Phase.Count) Number(g, gm.CountNumber, cx, cy, k * 5);
-        if (gm.Stage == Game.Phase.Result)
-        {
-            Put(g, sp.Get("game/star", 0, k * 3), cx - 18 * k, cy - 6 * k);
-            Number(g, gm.Hits, cx + 12 * k, cy - 6 * k, k * 3);
-            if (gm.NewBest) Put(g, sp.Get("game/crown", 0, k * 2), cx, cy - 32 * k); // 최고 기록
-            else { Put(g, sp.Get("game/crown", 0, k), cx - 8 * k, cy + 22 * k); Number(g, gm.Best, cx + 6 * k, cy + 22 * k, k); }
-        }
     }
 }

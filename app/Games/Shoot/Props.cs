@@ -2,8 +2,10 @@ using System.Drawing.Drawing2D;
 
 namespace Bolok;
 
+// 총쏘기 게임의 엄폐물과 소품 (창 윗변·바닥에 앉히는 작은 그림). 화면과 무관한 계산이라 --selfcheck 로 검사한다 (ShootGame.Check)
+
 // 볼록이가 숨는 창: 그 창과, 그보다 위에 있어 겹치는 창들이 함께 가린다
-public sealed class Cover
+sealed class Cover
 {
     public readonly Rectangle R;
     readonly Rectangle[] above;
@@ -11,7 +13,12 @@ public sealed class Cover
 
     public Cover(Rectangle r, Rectangle[] above) => (R, this.above) = (r, above);
 
-    public bool Contains(int x, int y) => R.Contains(x, y) || above.Any(a => a.Contains(x, y));
+    public bool Contains(int x, int y)
+    {
+        if (R.Contains(x, y)) return true;
+        foreach (var a in above) if (a.Contains(x, y)) return true;
+        return false;
+    }
 
     public Region Mask()
     {
@@ -23,7 +30,7 @@ public sealed class Cover
 }
 
 // 게임 소품 하나: 화면에 놓인 자리와, 칸(40×40) 안 어느 픽셀이 차 있는지
-public sealed class Prop
+sealed class Prop
 {
     public readonly string Name;
     public readonly int Scale;
@@ -63,7 +70,7 @@ public sealed class Prop
     }
 }
 
-public static class Props
+static class Props
 {
     public static readonly Dictionary<string, string[]> Sets = new()
     {

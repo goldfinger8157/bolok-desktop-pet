@@ -109,4 +109,36 @@ public sealed class Sprites
         if (flip) b.RotateFlip(RotateFlipType.RotateNoneFlipX);
         return cache[key] = b;
     }
+
+    // ── 그림 픽셀로 닿았는지 보기 (게임의 명중 판정) ──
+    // 그림 한 칸(배율 1)에서 찬 픽셀을 줄마다 비트로 적어 둔다. 그림마다 한 번만 읽는다
+    static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Bitmap, ulong[]> solids = new();
+
+    static ulong[] SolidRows(Bitmap cell) => solids.GetValue(cell, b =>
+    {
+        var rows = new ulong[b.Height];
+        var data = b.LockBits(new Rectangle(0, 0, b.Width, b.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+        try
+        {
+            var line = new int[b.Width];
+            for (int y = 0; y < b.Height; y++)
+            {
+                System.Runtime.InteropServices.Marshal.Copy(data.Scan0 + y * data.Stride, line, 0, b.Width);
+                for (int x = 0; x < Math.Min(64, b.Width); x++) if ((uint)line[x] >> 24 != 0) rows[y] |= 1UL << x;
+            }
+        }
+        finally { b.UnlockBits(data); }
+        return rows;
+    });
+
+    // 배율 1 그림 cell 의 칸 좌표 (x, y) 에서 둘레 pad 칸 안에 찬 픽셀이 있는가 (pad 0 이면 바로 그 칸)
+    public static bool Near(Bitmap cell, double x, double y, int pad)
+    {
+        var rows = SolidRows(cell);
+        int cx = (int)Math.Floor(x), cy = (int)Math.Floor(y), x0 = Math.Max(0, cx - pad), x1 = Math.Min(Math.Min(63, cell.Width - 1), cx + pad);
+        if (x0 > x1) return false;
+        ulong span = (x1 - x0 == 63 ? ulong.MaxValue : (1UL << (x1 - x0 + 1)) - 1) << x0;
+        for (int row = Math.Max(0, cy - pad), end = Math.Min(rows.Length - 1, cy + pad); row <= end; row++) if ((rows[row] & span) != 0) return true;
+        return false;
+    }
 }

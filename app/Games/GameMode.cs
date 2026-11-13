@@ -35,7 +35,7 @@ interface IGameHost
     void ShowPet(bool show);           // 게임이 볼록이를 판 위에 작게 직접 그릴 때 본체 창을 숨긴다
     Sprites? SpritesOf(string species); // 다른 종 그림 (데이터로 그리거나 받아 둔 것, 없으면 null)
     void Save();
-    bool HitPet(int x, int y);         // 화면 좌표가 본체 창에 그려진 볼록이 몸(그림 픽셀, 둘레 조금)에 닿는가
+    bool HitPet(int x, int y, int pad); // 화면 좌표가 본체 창에 그려진 볼록이 몸에 닿는가 (그림 픽셀로 본다. pad: 봐주는 둘레, 그림 칸 수)
     void HideFromCapture(bool on);     // 본체·그림 창·판을 화면 공유·녹화에 안 찍히게 (Session 이 판을 여닫을 때 부른다)
     IReadOnlyList<string> Friends { get; } // 자연으로 떠난 친구들 (종#색, 겹치지 않게)
     void Repaint();                    // 그림 창을 통째로 다시 칠한다 (판 없이 그리던 것을 한꺼번에 지울 때)
@@ -49,6 +49,7 @@ static class GameModes
     // 게임마다 한 줄. 메뉴에 이 순서로 나온다. 게임을 빼려면 폴더를 지우고 여기서 그 줄만 뺀다
     static readonly GameEntry[] All =
     {
+        new("shoot", h => new ShootGame(h), ShootGame.Check, ShootGame.Scene, ShootGame.BenchRun),
         new("run", h => new RunGame(h), RunGame.Check, RunGame.Scene, RunGame.BenchRun),
         new("breakout", h => new BreakoutGame(h), BreakoutGame.Check, BreakoutGame.Scene, BreakoutGame.BenchRun),
         new("minigun", h => new MinigunGame(h), MinigunGame.Check, MinigunGame.Scene, MinigunGame.BenchRun),

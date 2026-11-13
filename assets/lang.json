@@ -419,6 +419,42 @@
   "pt": "Esc: Sair",
   "ru": "Esc: выход"
  },
+ "note.shoot_aim": {
+  "en": "Mouse: Aim",
+  "ko": "마우스: 조준",
+  "ja": "マウス: ねらう",
+  "zh-Hans": "鼠标:瞄准",
+  "zh-Hant": "滑鼠:瞄準",
+  "es": "Ratón: Apuntar",
+  "de": "Maus: Zielen",
+  "fr": "Souris : Viser",
+  "pt": "Mouse: Mirar",
+  "ru": "Мышь: прицел"
+ },
+ "note.shoot_fire": {
+  "en": "Left-click: Fire",
+  "ko": "왼쪽 클릭: 쏘기",
+  "ja": "左クリック: うつ",
+  "zh-Hans": "左键:射击",
+  "zh-Hant": "左鍵:射擊",
+  "es": "Clic izquierdo: Disparar",
+  "de": "Linksklick: Schießen",
+  "fr": "Clic gauche : Tirer",
+  "pt": "Clique esquerdo: Atirar",
+  "ru": "Левый клик: огонь"
+ },
+ "note.shoot_reload": {
+  "en": "Right-click: Reload",
+  "ko": "오른쪽 클릭: 장전",
+  "ja": "右クリック: リロード",
+  "zh-Hans": "右键:装弹",
+  "zh-Hant": "右鍵:裝彈",
+  "es": "Clic derecho: Recargar",
+  "de": "Rechtsklick: Nachladen",
+  "fr": "Clic droit : Recharger",
+  "pt": "Clique direito: Recarregar",
+  "ru": "Правый клик: перезарядка"
+ },
  "note.gun_aim": {
   "en": "Mouse: Aim",
   "ko": "마우스: 조준",
