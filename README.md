@@ -33,16 +33,18 @@ Get **`Bolok.exe`** from the [latest release](https://github.com/goldfinger8157/
 
 ### Mini-games (right-click menu)
 
-| Game | What happens |
-| --- | --- |
-| Shooting (총쏘기 게임) | 10 seconds to hit the fleeing hamster inside one window |
-| Runner (달리기 게임) | Cookie-Run-style runner along the bottom of the screen, keyboard only, with levels |
-| Breakout (벽돌깨기) | Your windows become bricks; the hamster carries the paddle |
-| Minigun (미니건) | Unlimited minigun, missiles and grenades versus your windows. No score, just stress relief |
-| Bug Raid (버그 습격) | A classic fixed shooter in a small box next to your pet: bug squadrons swoop in, line up and dive at you. Move with the mouse or arrow keys; it fires automatically |
-| Bug Swarm (버그 떼) | Bugs pour in from every side of a small arena around your pet. Move with the arrow keys; the gun and sword attack on their own. Pick up gems to level up and hold out for three minutes |
-| Fortress (포트리스) | Turn-based artillery on window islands, with wind |
-| ICBM (ICBM 발사) | The hamster presses the red button, a mushroom cloud follows, then it walks over and repairs the crater |
+| Game | What happens | Controls |
+| --- | --- | --- |
+| Shooting (총쏘기 게임) | 20 seconds to hit the fleeing hamster inside one window. It ducks behind other windows, and the smaller it is, the more forgiving the hit area | Mouse to aim, left-click to fire, right-click to reload |
+| Runner (달리기 게임) | Cookie-Run-style runner along the bottom of the screen, with levels. Your work window keeps the focus | Ctrl to jump, Shift to duck |
+| Breakout (벽돌깨기) | Your windows become bricks; the hamster carries the paddle | Mouse to move, left-click to throw the ball |
+| Minigun (미니건) | Unlimited minigun, missiles and grenades versus your windows. No score, just stress relief | Mouse to aim, hold left to fire, right-click for a missile, Shift + right-click for a grenade |
+| ICBM (ICBM 발사) | The hamster presses the red button, a mushroom cloud follows, then it walks over and repairs the crater | Just pick it from the menu (pick it again for one more) |
+| Bug Raid (버그 습격) | A classic fixed shooter in a small box next to your pet: bug squadrons swoop in, line up and dive at you. It fires automatically | Mouse or ← → to move |
+| Bug Swarm (버그 떼) | Bugs pour in from every side of a small arena around your pet. The gun and sword attack on their own. Pick up gems to level up and hold out for three minutes | Arrow keys to move |
+| Fortress (포트리스) | Turn-based artillery on window islands, with wind | Mouse to aim, hold left and release to fire, ← → to walk, ↑ to jump |
+
+**Esc always quits instantly** (the boss key): whichever window has the focus, everything the game drew disappears at once, with no result screen, and your pet goes back to what it was doing. Games only use the mouse, the arrow keys, Ctrl, Shift and Esc — no letter keys.
 
 Nothing in the games touches your real windows: the damage is drawn on a click-through overlay and disappears when the game ends.
 
@@ -94,16 +96,18 @@ out\Bolok.exe
 
 ### 미니 게임 (오른쪽 클릭 메뉴)
 
-| 게임 | 내용 |
-| --- | --- |
-| 총쏘기 게임 | 20초 동안 창 하나 안에서 도망 다니는 볼록이 맞히기 |
-| 달리기 게임 | 화면 아래를 달리는 쿠키런식 게임. 키보드만 쓰고 레벨이 올라요 |
-| 벽돌깨기 | 창이 벽돌이 되고, 볼록이가 쟁반으로 쇠공을 튕겨요 |
-| 미니건 | 탄창 없는 미니건과 미사일·수류탄으로 창 부수기. 점수 없이 스트레스 풀기용이에요 |
-| 버그 습격 | 볼록이 옆 작은 판에서 하는 고전 슈팅이에요. 버그 편대가 날아들어 줄을 서고 내려와 공격해요. 마우스나 ← →로 움직이기만 하면 쏘는 건 자동이에요 |
-| 버그 떼 | 볼록이 둘레 작은 판으로 벌레가 사방에서 몰려와요. 방향키로 피해 다니면 총과 칼은 알아서 싸워요. 보석을 주워 세지면서 3분을 버티면 이겨요 |
-| 포트리스 | 창이 섬이 되는 턴제 포격전. 바람이 불어요 |
-| ICBM 발사 | 볼록이가 빨간 버튼을 누르면 버섯구름이 피고, 볼록이가 걸어가서 고쳐요 |
+| 게임 | 내용 | 조작 |
+| --- | --- | --- |
+| 총쏘기 게임 | 20초 동안 창 하나 안에서 도망 다니는 볼록이 맞히기. 다른 창 뒤로 숨기도 하고, 몸이 작을수록 넉넉하게 맞아요 | 마우스로 조준, 왼쪽 클릭 쏘기, 오른쪽 클릭 장전 |
+| 달리기 게임 | 화면 아래를 달리는 쿠키런식 게임. 레벨이 올라요. 일하던 창은 그대로 쓸 수 있어요 | Ctrl 점프, Shift 앉기 |
+| 벽돌깨기 | 창이 벽돌이 되고, 볼록이가 쟁반으로 쇠공을 튕겨요 | 마우스로 움직이기, 왼쪽 클릭 던지기 |
+| 미니건 | 탄창 없는 미니건과 미사일·수류탄으로 창 부수기. 점수 없이 스트레스 풀기용이에요 | 마우스로 조준, 왼쪽 누르고 있으면 쏘기, 오른쪽 클릭 미사일, Shift+오른쪽 클릭 수류탄 |
+| ICBM 발사 | 볼록이가 빨간 버튼을 누르면 버섯구름이 피고, 볼록이가 걸어가서 고쳐요 | 메뉴에서 고르기만 (또 고르면 한 발 더) |
+| 버그 습격 | 볼록이 옆 작은 판에서 하는 고전 슈팅이에요. 버그 편대가 날아들어 줄을 서고 내려와 공격해요. 쏘는 건 자동이에요 | 마우스나 ← → 로 움직이기 |
+| 버그 떼 | 볼록이 둘레 작은 판으로 벌레가 사방에서 몰려와요. 총과 칼은 알아서 싸워요. 보석을 주워 세지면서 3분을 버티면 이겨요 | 방향키로 움직이기 |
+| 포트리스 | 창이 섬이 되는 턴제 포격전. 바람이 불어요 | 마우스로 조준, 왼쪽 누르고 있다 놓으면 쏘기, ← → 걷기, ↑ 점프 |
+
+**Esc 는 언제나 바로 끝내기**(보스 키)예요. 어느 창을 쓰고 있든 게임이 그린 것이 한꺼번에 사라지고, 결과 화면 없이 볼록이는 하던 대로 돌아가요. 게임은 마우스·방향키·Ctrl·Shift·Esc 만 써요 (글자 키는 안 써요).
 
 게임은 실제 창을 건드리지 않아요. 부서진 모습은 클릭이 통과하는 그림 위에만 그려지고, 게임이 끝나면 사라져요.
 

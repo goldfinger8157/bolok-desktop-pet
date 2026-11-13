@@ -32,11 +32,11 @@ static class Program
                 Cards = new[] { new CardRecord("penguin", day, Path.Combine(mem, "c1.png")), new CardRecord("hamster", day, Path.Combine(mem, "c2.png")) },
                 VisitCounts = new Dictionary<string, int> { ["hamster"] = 5, ["penguin"] = 2 },
             };
-            var status = new PetStatus("hamster", "child", 200, 72, 88, 18, false, "sleepy", 1, 2, 5, 2080, .06, "adult", new[]
-            {
-                new GameStat("달리기", "Lv.3 · 최고 1,240점", true), new GameStat("벽돌깨기", "최고 86조각", true),
-                new GameStat("포트리스", "아직 못 이겼어요", false), new GameStat("총쏘기", "최고 15번 맞혔어요", true),
-            });
+            // 게임 기록은 게임 모듈이 낸다: 보기용 기록을 옛 저장 칸으로 만들어 넘긴다 (한 게임은 한 것, 나머지는 안 한 것으로 보인다)
+            var games = GameModes.Create(new SceneHost());
+            var played = GameModes.WithLegacy(new SaveData { RunBest = 1240, RunLevel = 3, BreakBest = 86, GameBest = 15 });
+            foreach (var game in games) game.LoadState(played.GetValueOrDefault(game.Id));
+            var status = new PetStatus("hamster", "child", 200, 72, 88, 18, false, "sleepy", 1, 2, 5, 2080, .06, "adult", games.SelectMany(game => game.Stats()).ToList());
             using var f = new Settings(false, false, () => sp, () => status, book) { StartPosition = FormStartPosition.Manual, Location = new Point(-30000, -30000) };
             f.Show();
             Application.DoEvents();

@@ -43,7 +43,6 @@ t('gun.normal', 'Cannon', '일반대포')
 t('note.run_level', 'Lv.{0}  Goal {1}', 'Lv.{0}  목표 {1}')
 t('note.run_jump', 'Ctrl: Jump', 'Ctrl: 점프')
 t('note.run_duck', 'Shift: Duck', 'Shift: 앉기')
-t('note.run_quit', 'Hold Ctrl+Shift: Quit', 'Ctrl+Shift 꾹: 종료')
 t('note.break_mouse', 'Mouse: Tray', '마우스: 쟁반')
 t('note.break_click', 'Click: Throw', '클릭: 던지기')
 t('note.esc', 'Esc: Quit', 'Esc: 끝')
@@ -213,7 +212,6 @@ t('mem.album', 'Growth album', '성장 앨범')
 t('mem.album_none', 'A photo is taken every time your pet grows', '자랄 때마다 사진이 찍혀요')
 t('mem.cards', 'Postcards', '엽서')
 t('mem.cards_none', 'Friends who visited sometimes send one the next day', '놀러 왔던 친구가 다음 날 가끔 보내요')
-t('bk.hearts', 'Friendship', '우정')
 
 def main():
     path = pathlib.Path(__file__).resolve().parent.parent / 'assets/lang.json'

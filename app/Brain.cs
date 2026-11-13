@@ -305,7 +305,7 @@ public sealed class Brain
         next = Now + 1.5;
     }
 
-    // hard: 속도와 상관없이 세게 던진 것처럼 (내려앉으면 어지러워한다). ICBM 폭발에 날아갈 때
+    // hard: 속도와 상관없이 세게 던진 것처럼 (내려앉으면 어지러워한다). 게임의 폭발에 날아갈 때
     public void Throw(double fx, double fy, bool hard = false)
     {
         if (hard) dizzyNext = true;

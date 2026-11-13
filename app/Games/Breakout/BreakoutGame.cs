@@ -52,7 +52,7 @@ sealed class BreakoutGame : IGameMode
         ses.Layer?.HidePointer(); // 쟁반이 커서를 따라다닌다: 커서는 숨긴다 (끝 화면에서 다시 보인다)
         ses.Guide("note.break_mouse", "note.break_click", "note.esc");
         nextProbe = 0;
-        Dbg.Log("break-start", ("field", pick.Field.ToString()), ("boards", string.Join(" ", bo.Boards.Select(r => $"{r.X},{r.Y},{r.Width}x{r.Height}"))), ("tiles", bo.Tiles.Count));
+        Dbg.Log("mode-start", ("id", Id), ("field", pick.Field.ToString()), ("boards", string.Join(" ", bo.Boards.Select(r => $"{r.X},{r.Y},{r.Width}x{r.Height}"))), ("tiles", bo.Tiles.Count));
     }
 
     // 판을 편다 (화면 없는 검사·장면도 같이 쓴다): 볼록이는 모니터 맨 아래 가운데에서 쟁반을 든다

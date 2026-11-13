@@ -9,7 +9,7 @@ public sealed class Hud : Form
     readonly SolidBrush ink = new(Color.FromArgb(38, 48, 30));
     string shown = "";
 
-    public Func<string> RunLine = () => "";
+    public Func<string> GameLine = () => "";   // 게임 모듈이 덧붙이는 글 (IGameMode.HudLine)
 
     // 어른이 될 쪽 비율 (아기·어린이 때만): 통56 애30 장14 심0
     string Growth()
@@ -67,7 +67,7 @@ public sealed class Hud : Form
             $"포만 {Hearts(p.Full)}",
             $"기분 {Hearts(p.Mood)}",
             $"기운 {Hearts(p.Energy)}",
-            $"볼 속 {Math.Max(p.Bites, b.Holes.Count)}입  밥 {p.Food}/{b.K.FoodMax}  {Growth()}  {RunLine()}",
+            $"볼 속 {Math.Max(p.Bites, b.Holes.Count)}입  밥 {p.Food}/{b.K.FoodMax}  {Growth()}  {GameLine()}",
             debugLine?.Invoke() ?? "",
         };
     }

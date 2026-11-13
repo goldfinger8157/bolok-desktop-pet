@@ -6,7 +6,7 @@ using Microsoft.Win32;
 
 namespace Bolok;
 
-public sealed record RunRecord(DateTime At, int Level, int Score, int Seeds);
+public sealed record RunRecord(DateTime At, int Level, int Score, int Seeds); // 옛 저장 칸(RunScores)의 한 줄
 
 public sealed class SaveData
 {
@@ -14,7 +14,7 @@ public sealed class SaveData
     public double X { get; set; }
     public double Y { get; set; }
     public List<int[]> Holes { get; set; } = new();
-    public int GameBest { get; set; }
+    public int GameBest { get; set; }                 // 옛 저장 칸: 게임이 모듈이 되기 전 기록 (GameBest·Run…·BreakBest·WormsWins). 읽기만 하고, GameModes.WithLegacy 가 GameData 로 바꿔 넘긴다
     public bool GameSound { get; set; }
     public bool AutoUpdate { get; set; }
     public string Species { get; set; } = Sprites.DefaultSpecies;
@@ -124,7 +124,7 @@ public sealed class PetForm : Form, IGameHost
         pad.MouseDown += (_, e) => OnMouseDown(e); // 받침은 볼록이 창과 같은 자리·크기라 좌표가 그대로다
         pad.MouseMove += (_, e) => OnMouseMove(e);
         pad.MouseUp += (_, e) => OnMouseUp(e);
-        hud = new Hud(b, debug ? DebugLine : null) { RunLine = () => string.Join("  ", modes.Select(m => m.HudLine).Where(line => line.Length > 0)) };
+        hud = new Hud(b, debug ? DebugLine : null) { GameLine = () => string.Join("  ", modes.Select(m => m.HudLine).Where(line => line.Length > 0)) };
         hud.SpeciesName = () => b.P.Stage == "egg" ? "" : L.Species(species);
         if (!debug) // 새 버전을 받아 바꿔 두면 메뉴에 알린다. 그냥 둬도 다음에 켤 때 새 버전이다
             Updater.Start(() => autoUpdate, tag => BeginInvoke(() => { updateTag = tag; updateItem.Text = L.T("menu.update", tag); updateItem.Visible = true; settings?.ShowReady(); }));
