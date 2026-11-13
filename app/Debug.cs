@@ -135,7 +135,6 @@ public sealed class DevLink
             case "say": b.Say(3.5, string.Join(' ', a.Skip(1)).Split('|')); break; // 예: say 첫 줄|둘째 줄
             case "nap": if (!b.TryNap()) Dbg.Log("nap-none"); break;
             case "worms": form.WormsCommand(a); break;
-            case "minigun": form.MinigunCommand(a); break;
             case "visit": form.VisitCommand(a); break;
             case "gesture": b.Gesture(a[1]); break; // 마우스 손짓 반응만: gesture stroke|pat|poke
             case "clover": form.CloverCommand(a); break; // clover (지금 돋기) / clover wear / clover drop / clover off

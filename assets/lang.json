@@ -444,16 +444,28 @@
   "ru": "Держать левую: миниган"
  },
  "note.gun_right": {
-  "en": "Right-click: Grenade",
-  "ko": "오른쪽 클릭: 수류탄",
-  "ja": "右クリック: 手榴弾",
-  "zh-Hans": "右键:手榴弹",
-  "zh-Hant": "右鍵:手榴彈",
-  "es": "Clic derecho: Granada",
-  "de": "Rechtsklick: Granate",
-  "fr": "Clic droit : Grenade",
-  "pt": "Clique direito: Granada",
-  "ru": "Правый клик: граната"
+  "en": "Right-click: Missile",
+  "ko": "오른쪽 클릭: 미사일",
+  "ja": "右クリック: ミサイル",
+  "zh-Hans": "右键:导弹",
+  "zh-Hant": "右鍵:飛彈",
+  "es": "Clic derecho: Misil",
+  "de": "Rechtsklick: Rakete",
+  "fr": "Clic droit : Missile",
+  "pt": "Clique direito: Míssil",
+  "ru": "Правый клик: ракета"
+ },
+ "note.gun_shift": {
+  "en": "Shift + Right-click: Grenade",
+  "ko": "Shift+오른쪽 클릭: 수류탄",
+  "ja": "Shift+右クリック: 手榴弾",
+  "zh-Hans": "Shift+右键:手榴弹",
+  "zh-Hant": "Shift+右鍵:手榴彈",
+  "es": "Shift + clic derecho: Granada",
+  "de": "Shift + Rechtsklick: Granate",
+  "fr": "Maj + clic droit : Grenade",
+  "pt": "Shift + clique direito: Granada",
+  "ru": "Shift + правый клик: граната"
  },
  "note.worms_gun": {
   "en": "My cannon: {0} (HP {1})",
