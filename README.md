@@ -2,7 +2,7 @@
 
 ![Bolok](assets/banner.png)
 
-<p align="center"><img src="assets/parade.gif" alt="46 pets you might hatch" width="720"></p>
+<p align="center"><img src="assets/parade.gif" alt="47 pets you might hatch" width="720"></p>
 
 **Bolok (볼록이)** is a tiny hamster that lives on your Windows desktop while you work.
 Feed it, pet it, toss it around — and when you need a break, let it smash your windows with a minigun.
@@ -26,7 +26,7 @@ Get **`Bolok.exe`** from the [latest release](https://github.com/goldfinger8157/
 - **Needs care:** hunger, mood and energy change over the day. Food comes from a basket that refills over time (up to 5). When it isn't full it nibbles holes in your screen now and then, never in the window you are working in; feed it or shake it and it spits them back.
 - **Reacts to you:** click to pet, drag to carry, fling it and it bounces off the screen edges, shake it and it gets dizzy.
 - **Grows up:** egg → baby → child → one of four adult forms (chubby, sweetie, rascal, grumpy), depending on the mix of care it got: feeding, petting, playing and tossing, or rough handling and hunger.
-- **46 kinds of pets:** hamster, cat (plus ragdoll, Scottish fold and exotic shorthair), shiba (plus Jindo, malamute, retriever, Welsh corgi, pug and Pomeranian), fox, moon bear, penguin, owl, squirrel, otter, duck, frog, hedgehog, raccoon, baby dragon, dragon, sheep, deer, goat, beaver, quokka, capybara, koala, panda, red panda, alpaca, pig, octopus — and fantasy friends: slime, ghost, little golem, unicorn, mushroom sprite, little imp, dream spirit, shadow devil, gumiho (nine-tailed fox), little dokkaebi (Korean goblin). You don't pick one — you find out when the egg hatches, and each pet comes in one of three colors (a black cat, a white winter hamster, an arctic fox…). When it's time, **release** your pet to nature (Settings → 도감) and a new mystery egg arrives. The collection book shows who you've met. Once a day, one of the friends you released comes back to visit for about five minutes — they walk around together, and nap side by side if your pet is asleep. They leave a little gift behind, and sometimes send a picture postcard the next day. Now and then a little sprout — or, more rarely, a lucky four-leaf clover — pops up nearby while your pet wanders; it runs over, picks it up and wears it on its head for the rest of the day (if you toss your pet, it falls off and gets picked up again).
+- **47 kinds of pets:** hamster, cat (plus ragdoll, Scottish fold and exotic shorthair), shiba (plus Jindo, malamute, retriever, Welsh corgi, pug and Pomeranian), fox, moon bear, penguin, owl, chick, squirrel, otter, duck, frog, hedgehog, raccoon, baby dragon, dragon, sheep, deer, goat, beaver, quokka, capybara, koala, panda, red panda, alpaca, pig, octopus — and fantasy friends: slime, ghost, little golem, unicorn, mushroom sprite, little imp, dream spirit, shadow devil, gumiho (nine-tailed fox), little dokkaebi (Korean goblin). You don't pick one — you find out when the egg hatches, and each pet comes in one of three colors (a black cat, a white winter hamster, an arctic fox…). When it's time, **release** your pet to nature (Settings → 도감) and a new mystery egg arrives. The collection book shows who you've met. Once a day, one of the friends you released comes back to visit for about five minutes — they walk around together, and nap side by side if your pet is asleep. They leave a little gift behind, and sometimes send a picture postcard the next day. Now and then a little sprout — or, more rarely, a lucky four-leaf clover — pops up nearby while your pet wanders; it runs over, picks it up and wears it on its head for the rest of the day (if you toss your pet, it falls off and gets picked up again).
 - **Memories:** gifts, a growth album (a photo every time your pet grows) and postcards are kept in Settings → Memories. Your pet dreams of its friends while it sleeps, wears a nightcap at night, and greets you in the morning. Visiting friends earn friendship hearts — after five visits they bring their baby along.
 - **Languages:** English, 한국어, 日本語, 简体中文, 繁體中文, Español, Deutsch, Français, Português, Русский (follows Windows, changeable in Settings → General). In-game visuals use pictures, numbers and symbols only.
 - **Seasons and weather:** now and then it finds a sprout, a four-leaf clover or a sunflower and wears it, and in autumn falling leaves (vein leaf, ginkgo, maple, red maple) land on its head. A little snow (Nov–Feb) or rain (Mar–Oct) falls just above it: snow piles on its head until it shakes it off and builds a small snowman, and in the rain it holds a leaf umbrella, gets wet or hides behind a window. Like the pet, it shows over your windows, and if the pet hides behind a window the window covers it too.
@@ -60,7 +60,7 @@ out\Bolok.exe
 ```
 
 - `app/` — the C# WinForms app. Game and pet rules are plain classes checked by `--selfcheck`.
-- `assets/pets/art.json` — every pet as data: colors, body shapes per growth stage, poses, and each pet's features. The app draws all 46 pets from it (`app/PetArt.cs`); `out\Bolok.exe --art-gif assets/parade.gif` remakes the parade above.
+- `assets/pets/art.json` — every pet as data: colors, body shapes per growth stage, poses, and each pet's features. The app draws all 47 pets from it (`app/PetArt.cs`); `out\Bolok.exe --art-gif assets/parade.gif` remakes the parade above.
 - `tools/sprites.py` — generates the shared sprites (eggs, icons, emotes, games, props: `assets/sprites.png`, `assets/sprites.json`) with the Python standard library only.
 - Pushing a tag like `v1.2.3` builds the single-file exe and publishes a release (`.github/workflows/release.yml`).
 
@@ -81,7 +81,7 @@ out\Bolok.exe
 - 윈도우 10/11 64비트에서 돼요.
 - 서명이 없는 exe라 처음 실행할 때 "Windows의 PC 보호" 경고가 떠요. **추가 정보 → 실행**을 누르면 돼요.
 - 키우던 볼록이는 `%APPDATA%\Bolok`에 저장돼요.
-- **캐릭터 그림은 받지 않아요:** 46종 모두 exe 안의 작은 데이터 파일(`assets/pets/art.json`: 색·체형·자세·종마다의 특징)로 그려요. 그래서 처음부터 인터넷 없이 다 나와요. 예전 판이 받아 두던 `%LOCALAPPDATA%\Bolok\pets` 폴더는 이 판에서 지워요.
+- **캐릭터 그림은 받지 않아요:** 47종 모두 exe 안의 작은 데이터 파일(`assets/pets/art.json`: 색·체형·자세·종마다의 특징)로 그려요. 그래서 처음부터 인터넷 없이 다 나와요. 예전 판이 받아 두던 `%LOCALAPPDATA%\Bolok\pets` 폴더는 이 판에서 지워요.
 - **업데이트:** 릴리스 페이지에서 새 `Bolok.exe`를 받아 쓰던 파일에 덮어쓰면 돼요. 자동 업데이트는 **기본으로 꺼져 있어요.** 오른쪽 클릭 → `설정...` → `업데이트` 탭에서 켜면, 하루에 한 번 이 저장소에서 새 `Bolok.exe`를 자동으로 내려받고 다음에 켤 때 새 버전으로 바뀌어요.
 
 ### 하는 일
@@ -90,7 +90,7 @@ out\Bolok.exe
 - **돌봐야 해요:** 배고픔, 기분, 기운이 하루 동안 변해요. 밥은 시간이 지나면 채워지는 바구니(최대 5개)에서 꺼내 줘요. 배가 덜 차면 가끔 화면을 뜯어 먹는데(일하는 창은 안 먹어요), 밥을 주거나 잡아 흔들면 퉤 하고 뱉어요.
 - **반응해요:** 클릭하면 쓰다듬기, 끌면 들기, 던지면 화면 끝에서 튕기고, 흔들면 어지러워해요.
 - **자라요:** 알 → 아기 → 어린이 → 돌봄의 비율(밥·쓰다듬기·놀아주기와 던지기·거칠게 다루기와 배고픔)에 따라 통통이·애교쟁이·장난꾸러기·심술이 중 하나가 돼요.
-- **46종 친구들:** 햄스터, 고양이(렉돌·스코티시폴드·엑조틱숏헤어도), 시바견(진돗개·말라뮤트·리트리버·웰시코기·퍼그·포메라니안도), 여우, 반달가슴곰, 펭귄, 부엉이, 다람쥐, 수달, 오리, 개구리, 고슴도치, 너구리, 아기 용, 드래곤, 양, 사슴, 염소, 비버, 쿼카, 카피바라, 코알라, 판다, 레서판다, 알파카, 돼지, 문어, 그리고 판타지 친구들 슬라임, 유령, 꼬마 골렘, 유니콘, 버섯 요정, 꼬마 악마, 몽마, 까망 악마, 구미호, 꼬마 도깨비. 고를 수는 없고, 알이 깨져야 누가 나올지 알아요. 때가 되면 설정 → 도감에서 **풀어주기**로 자연에 보내 주고, 무엇이 나올지 모르는 새 알을 키워요. 도감에는 만나 본 친구들이 남아요. 하루에 한 번, 자연으로 보낸 친구 하나가 5분쯤 놀러 와요 — 둘이 같이 돌아다니고, 볼록이가 자면 옆에서 같이 자요. 돌아갈 땐 작은 선물을 두고 가고, 다음 날 그림 엽서를 보내기도 해요. 돌아다니다 가끔 근처에 새싹이나(드물게는 행운의 네잎클로버가) 돋으면, 볼록이가 달려가 주워서 그날 하루 머리에 꽂고 다녀요(던지면 떨어뜨렸다가 다시 주워요). 종마다 색도 세 벌이라 같은 종이라도 까만 고양이, 흰 겨울 햄스터, 북극여우처럼 다른 색으로 깨어날 수 있어요.
+- **47종 친구들:** 햄스터, 고양이(렉돌·스코티시폴드·엑조틱숏헤어도), 시바견(진돗개·말라뮤트·리트리버·웰시코기·퍼그·포메라니안도), 여우, 반달가슴곰, 펭귄, 부엉이, 병아리, 다람쥐, 수달, 오리, 개구리, 고슴도치, 너구리, 아기 용, 드래곤, 양, 사슴, 염소, 비버, 쿼카, 카피바라, 코알라, 판다, 레서판다, 알파카, 돼지, 문어, 그리고 판타지 친구들 슬라임, 유령, 꼬마 골렘, 유니콘, 버섯 요정, 꼬마 악마, 몽마, 까망 악마, 구미호, 꼬마 도깨비. 고를 수는 없고, 알이 깨져야 누가 나올지 알아요. 때가 되면 설정 → 도감에서 **풀어주기**로 자연에 보내 주고, 무엇이 나올지 모르는 새 알을 키워요. 도감에는 만나 본 친구들이 남아요. 하루에 한 번, 자연으로 보낸 친구 하나가 5분쯤 놀러 와요 — 둘이 같이 돌아다니고, 볼록이가 자면 옆에서 같이 자요. 돌아갈 땐 작은 선물을 두고 가고, 다음 날 그림 엽서를 보내기도 해요. 돌아다니다 가끔 근처에 새싹이나(드물게는 행운의 네잎클로버가) 돋으면, 볼록이가 달려가 주워서 그날 하루 머리에 꽂고 다녀요(던지면 떨어뜨렸다가 다시 주워요). 종마다 색도 세 벌이라 같은 종이라도 까만 고양이, 흰 겨울 햄스터, 북극여우처럼 다른 색으로 깨어날 수 있어요.
 - **추억:** 선물, 성장 앨범(자랄 때마다 사진), 엽서가 설정 → 추억에 모여요. 잘 때는 친구 꿈을 꾸고, 밤엔 수면 모자를 쓰고, 아침엔 기지개로 반겨요. 놀러 올 때마다 우정 하트가 쌓이고, 다섯 번째부터는 아기를 데리고 와요.
 - **언어:** 영어, 한국어, 일본어, 중국어(간체·번체), 스페인어, 독일어, 프랑스어, 포르투갈어, 러시아어 (윈도우 언어를 따르고, 설정 → 일반에서 바꿀 수 있어요). 게임 화면에는 글자 없이 그림·숫자·기호만 써요.
 - **계절과 날씨:** 가끔 새싹·네잎클로버·해바라기를 주워 머리에 꽂고, 가을엔 낙엽(잎맥 잎·은행잎·단풍잎·빨간 단풍잎)이 머리에 내려앉아요. 볼록이 머리 위로만 눈(11~2월)이나 비(3~10월)가 조금 내려요. 눈이 머리에 쌓이면 흔들어 털고 곁에 작은 눈사람을 만들고, 비가 오면 나뭇잎 우산을 쓰거나 그냥 맞거나 창 뒤로 피해요. 볼록이와 같은 층이라 창 위로도 보이고, 볼록이가 창 뒤에 숨으면 그 창에 같이 가려요.
@@ -123,6 +123,6 @@ out\Bolok.exe --selfcheck
 out\Bolok.exe
 ```
 
-캐릭터 46종은 그림 파일 없이 `assets/pets/art.json`(색·성장 단계별 체형·자세·종마다의 특징) 데이터로 앱이 그려요(`app/PetArt.cs`). 위의 행진 그림은 `out\Bolok.exe --art-gif assets/parade.gif` 로 다시 만들어요. 알·아이콘·게임 같은 공통 그림은 `tools/sprites.py` 가 만들어요.
+캐릭터 47종은 그림 파일 없이 `assets/pets/art.json`(색·성장 단계별 체형·자세·종마다의 특징) 데이터로 앱이 그려요(`app/PetArt.cs`). 위의 행진 그림은 `out\Bolok.exe --art-gif assets/parade.gif` 로 다시 만들어요. 알·아이콘·게임 같은 공통 그림은 `tools/sprites.py` 가 만들어요.
 
 `v1.2.3` 같은 태그를 올리면 깃허브 액션이 exe 한 파일을 만들어 릴리스에 올려요.

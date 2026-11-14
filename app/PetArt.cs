@@ -896,6 +896,16 @@ public sealed class PetArt
                         g.Ell(fx + .5, ey + .7, gap + 4 * sk, 2.8 * sk, Rgb(70, 70, 78), true);
                         g.Ell(fx + .5, ey - 3.2 * sk, gap + 2 * sk, 1.1, cream, true);
                         break;
+                    case "chevrons": // 부엉이: 배에 작은 V 깃 무늬 셋 (YELL 2026-11-14 시안)
+                        {
+                            uint v = Mix(c["cream"], c["shade"], .7);
+                            foreach (var (dx, dy) in new[] { (-2.8, .64), (2.8, .64), (0.0, .88) })
+                            {
+                                int x = R(fx + .5 + dx * sk), y = R(cy + ry * dy);
+                                g.Pix(v, (x - 1, y - 1), (x, y), (x + 1, y - 1));
+                            }
+                        }
+                        break;
                     case "plates": // 아기 용: 배 비늘
                         for (int i = 0; i < 3; i++)
                         {

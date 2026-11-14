@@ -81,7 +81,7 @@ for sp, en, ko in [
     ('ragdoll', 'Ragdoll', '렉돌'), ('scottishfold', 'Scottish Fold', '스코티시폴드'), ('exotic', 'Exotic Shorthair', '엑조틱숏헤어'),
     ('shiba', 'Shiba', '시바견'), ('jindo', 'Jindo', '진돗개'), ('malamute', 'Malamute', '말라뮤트'), ('retriever', 'Retriever', '리트리버'),
     ('corgi', 'Welsh corgi', '웰시코기'), ('pug', 'Pug', '퍼그'), ('pomeranian', 'Pomeranian', '포메라니안'), ('fox', 'Fox', '여우'),
-    ('moonbear', 'Moon bear', '반달가슴곰'), ('penguin', 'Penguin', '펭귄'), ('owl', 'Owl', '부엉이'), ('squirrel', 'Squirrel', '다람쥐'),
+    ('moonbear', 'Moon bear', '반달가슴곰'), ('penguin', 'Penguin', '펭귄'), ('owl', 'Owl', '부엉이'), ('chick', 'Chick', '병아리'), ('squirrel', 'Squirrel', '다람쥐'),
     ('otter', 'Otter', '수달'), ('duck', 'Duck', '오리'), ('frog', 'Frog', '개구리'), ('hedgehog', 'Hedgehog', '고슴도치'),
     ('raccoon', 'Raccoon dog', '너구리'), ('dragon', 'Baby dragon', '아기 용'), ('drake', 'Dragon', '드래곤'), ('sheep', 'Sheep', '양'), ('deer', 'Deer', '사슴'),
     ('goat', 'Goat', '염소'), ('beaver', 'Beaver', '비버'), ('quokka', 'Quokka', '쿼카'), ('capybara', 'Capybara', '카피바라'),

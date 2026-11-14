@@ -935,6 +935,18 @@
   "pt": "Coruja",
   "ru": "Сова"
  },
+ "sp.chick": {
+  "en": "Chick",
+  "ko": "병아리",
+  "ja": "ひよこ",
+  "zh-Hans": "小鸡",
+  "zh-Hant": "小雞",
+  "es": "Pollito",
+  "de": "Küken",
+  "fr": "Poussin",
+  "pt": "Pintinho",
+  "ru": "Цыплёнок"
+ },
  "sp.squirrel": {
   "en": "Squirrel",
   "ko": "다람쥐",
