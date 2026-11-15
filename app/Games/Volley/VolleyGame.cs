@@ -625,13 +625,13 @@ sealed partial class VolleyGame : IGameMode
         ballBmp?.Dispose();
         ballK = k;
 
-        int r = 4 * k;
+        int r = VolleySim.BallCells * k;
         int d = (r + 1) * 2;
         ballBmp = new Bitmap(d, d, PixelFormat.Format32bppPArgb);
 
         int cx = r + 1;
         int cy = r + 1;
-        double scaleRatio = k / 3.0;
+        double scaleRatio = k / 3.0 * VolleySim.BallCells / 4.0; // 줄 굵기도 공 크기에 맞춰
 
         for (int y = 0; y < d; y++)
         {

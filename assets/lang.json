@@ -239,18 +239,6 @@
   "pt": "Fortress",
   "ru": "Fortress"
  },
- "menu.sandcastle": {
-  "en": "Sandcastle",
-  "ko": "모래성",
-  "ja": "砂の城",
-  "zh-Hans": "沙堡",
-  "zh-Hant": "沙堡",
-  "es": "Castillo de arena",
-  "de": "Sandburg",
-  "fr": "Château de sable",
-  "pt": "Castelo de areia",
-  "ru": "Песочный замок"
- },
  "menu.volley": {
   "en": "Volleyball",
   "ko": "배구",
@@ -1968,42 +1956,6 @@
   "ru": "Побед: {0}"
  },
  "game.fortress_none": {
-  "en": "No wins yet",
-  "ko": "아직 못 이겼어요",
-  "ja": "まだ勝ってないよ",
-  "zh-Hans": "还没赢过",
-  "zh-Hant": "還沒贏過",
-  "es": "Sin victorias aún",
-  "de": "Noch keine Siege",
-  "fr": "Pas encore de victoire",
-  "pt": "Sem vitórias ainda",
-  "ru": "Побед пока нет"
- },
- "game.sandcastle": {
-  "en": "Sandcastle",
-  "ko": "모래성",
-  "ja": "砂の城",
-  "zh-Hans": "沙堡",
-  "zh-Hant": "沙堡",
-  "es": "Castillo de arena",
-  "de": "Sandburg",
-  "fr": "Château de sable",
-  "pt": "Castelo de areia",
-  "ru": "Песочный замок"
- },
- "game.sandcastle_val": {
-  "en": "{0} wins",
-  "ko": "{0}번 이겼어요",
-  "ja": "{0}勝",
-  "zh-Hans": "赢了 {0} 次",
-  "zh-Hant": "贏了 {0} 次",
-  "es": "{0} victorias",
-  "de": "{0} Siege",
-  "fr": "{0} victoires",
-  "pt": "{0} vitórias",
-  "ru": "Побед: {0}"
- },
- "game.sandcastle_none": {
   "en": "No wins yet",
   "ko": "아직 못 이겼어요",
   "ja": "まだ勝ってないよ",

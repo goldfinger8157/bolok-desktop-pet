@@ -37,7 +37,8 @@ sealed class VolleySim
     public double Gravity => 850 * ScaleRatio;
 
     // 공 크기 및 물리 상수
-    public int BallR => 4 * K;
+    public const int BallCells = 8; // 공 반지름 (칸). YELL 2026-11-16: 공을 두 배쯤 (4 → 8)
+    public int BallR => BallCells * K;
     public double BallGravity => 680 * ScaleRatio;
     public double HitSpeed => 380 * ScaleRatio;
     public double SpikeSpeed => 640 * ScaleRatio;
