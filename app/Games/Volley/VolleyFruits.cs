@@ -108,5 +108,38 @@ static class VolleyFruits
             }),
     };
 
+    // 날아가는 새 (오른쪽을 보는 옆모습, 12×9 칸, 날갯짓 두 장). 파랑 몸·흰 배·노랑 부리, 외곽선은 펫과 같은 진한 갈색
+    public static readonly Dictionary<char, string> BirdPal = new()
+    {
+        ['o'] = "#5C3A28", ['b'] = "#79B4EC", ['d'] = "#4E86C6", ['w'] = "#FBF6EA", ['y'] = "#F6A93A", ['k'] = "#2A2230", ['p'] = "#F6A6B2",
+    };
+    public static readonly string[][] Bird =
+    {
+        new[] // 날개 위로
+        {
+            "...oo.......",
+            "..oddo......",
+            "..oddo.ooo..",
+            "...oddobbbo.",
+            ".ooobbbbbkbo",
+            "obbbbbbbpbyy",
+            ".owwwwwbbbo.",
+            "..owwwwwoo..",
+            "...ooooo....",
+        },
+        new[] // 날개 아래로
+        {
+            "............",
+            "........ooo.",
+            "....oooobbbo",
+            ".ooobbbbbkbo",
+            "obbbbbbbpbyy",
+            ".odddddbbbo.",
+            "..oddddwwo..",
+            "...oddwoo...",
+            "....ooo.....",
+        },
+    };
+
     public const string Keys = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"; // 색 번호 글자 (첫 글자 = 색 0)
 }

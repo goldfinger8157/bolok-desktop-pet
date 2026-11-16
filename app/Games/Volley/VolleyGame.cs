@@ -22,6 +22,7 @@ sealed partial class VolleyGame : IGameMode
     // 이전 프레임 위치 추적 (Dirty 사각형)
     Rectangle lastCourtRect;
     Rectangle lastBallRect;
+    Rectangle lastBirdRect;
     Rectangle lastPlayerMarkRect;
     Rectangle lastRivalMarkRect;
     Rectangle lastPipsRect;
@@ -78,6 +79,9 @@ sealed partial class VolleyGame : IGameMode
     internal const int GrassCells = 5; // 바닥 잔디 띠 두께 (칸, 바닥선 아래로)
 
     // 그림이 닿는 자리: 바탕화면 판은 테두리·잔디 띠까지 (칠할 자리에 넣어야 남거나 안 그려지지 않는다)
+    // 점수판 자리: 네트 아래 바닥 (YELL 2026-11-16: 「점수판은 바닥에, 네트 아래」)
+    static int PipsY(VolleySim w) => w.FloorY - 6 * w.K;
+
     internal static Rectangle PaintCourt(VolleySim w) =>
         w.IsDesktop ? Rectangle.FromLTRB(w.Court.Left - 3, w.Court.Top - 3, w.Court.Right + 3, w.Court.Bottom + GrassCells * w.K + 3) : w.Court;
 
@@ -127,7 +131,7 @@ sealed partial class VolleyGame : IGameMode
             }
         }
 
-        var vSim = new VolleySim(court, isDesktop, b.Scale, new Random()) { Ball = VolleySim.PickBall(Random.Shared) }; // 과일 공 (가끔 배구공)
+        var vSim = new VolleySim(court, isDesktop, b.Scale, new Random()) { Ball = VolleySim.PickBall(Random.Shared), Birds = true }; // 과일 공 (가끔 배구공), 가끔 새
         InitRival(vSim.Rnd);
         Open(vSim, Session.Open(host, field, () => Stop(true)));
         b.StartPuppet();
@@ -171,6 +175,11 @@ sealed partial class VolleyGame : IGameMode
                     if (arg is VolleySim.Actor.Player) b.Emote("bang", 1.0);
                     else rivalBangUntil = w.Clock + 1.0;
                     Dbg.Log("volley-fumble", ("who", arg?.ToString() ?? ""), ("ball", w.Ball.ToString()));
+                }
+                else if (ev == "bird") // 공이 새에 맞음
+                {
+                    Snd.Play(Sound.Tap);
+                    Dbg.Log("volley-bird", ("x", (int)w.BirdX), ("y", (int)w.BirdY));
                 }
                 else if (ev == "spike")
                 {
@@ -344,6 +353,15 @@ sealed partial class VolleyGame : IGameMode
             lastBallRect = ballRect;
         }
 
+        // 새 영역 (날갯짓·빙글 — 매 프레임)
+        var birdRect = w.BirdOn ? new Rectangle((int)w.BirdX - 12 * k, (int)w.BirdY - 12 * k, 24 * k, 24 * k) : Rectangle.Empty;
+        if (birdRect != lastBirdRect)
+        {
+            if (!lastBirdRect.IsEmpty) dirty.Add(lastBirdRect);
+            if (!birdRect.IsEmpty) dirty.Add(birdRect);
+            lastBirdRect = birdRect;
+        }
+
         // 라이벌 펫 영역
         var rivalRect = new Rectangle((int)w.RivalX - 24 * k, (int)w.RivalY - 44 * k, 48 * k, 48 * k);
         if (rivalRect != lastRivalMarkRect)
@@ -366,7 +384,7 @@ sealed partial class VolleyGame : IGameMode
         }
 
         // 점수 핍 영역
-        int pipsY = w.IsDesktop ? w.Court.Top - 12 * k : w.Court.Top + w.TitleH / 2;
+        int pipsY = PipsY(w);
         var pipsRect = new Rectangle(w.NetX - 35 * k, pipsY - 10 * k, 70 * k, 20 * k);
         if (pipsRect != lastPipsRect || w.SparkleTimer > 0)
         {
@@ -486,6 +504,7 @@ sealed partial class VolleyGame : IGameMode
         }
 
         // 7. 배구공
+        if (w.BirdOn) DrawBird(o, g, w);
         DrawBall(o, g, w);
 
         // 8. 라이벌 펫
@@ -512,14 +531,13 @@ sealed partial class VolleyGame : IGameMode
     void DrawScorePips(Overlay o, Graphics g, VolleySim w)
     {
         int k = w.K;
-        int pipsY = w.IsDesktop ? w.Court.Top - 12 * k : w.Court.Top + w.TitleH / 2;
+        int pipsY = PipsY(w);
         var centerPt = o.ToClient(w.NetX, pipsY);
 
         int pipSize = Math.Max(3, 3 * k / 2);
         int gap = pipSize + Math.Max(2, 2 * k / 2);
 
-        // 바탕화면 판이면 점수 점 배경 캡슐
-        if (w.IsDesktop)
+        // 점수 점 배경 캡슐 (창 내용 위에서도 읽히게 늘)
         {
             int totalW = gap * (VolleySim.TargetScore * 2 + 1);
             g.FillRectangle(pipBackingBrush, centerPt.X - totalW / 2 - 2 * k, centerPt.Y - pipSize / 2 - 2 * k, totalW + 4 * k, pipSize + 4 * k);
@@ -615,6 +633,37 @@ sealed partial class VolleyGame : IGameMode
             int y1 = (int)(sp.Y + (starR + 7 * k) * Math.Sin(rad));
             g.DrawLine(starRayPen, x0, y0, x1, y1);
         }
+    }
+
+    // 새: 날갯짓 두 장 (0.14초마다), 왼쪽으로 날면 뒤집고, 맞으면 빙글
+    void DrawBird(Overlay o, Graphics g, VolleySim w)
+    {
+        var cp = o.ToClient(w.BirdX, w.BirdY);
+        int frame = (int)(w.Clock / .14) % 2;
+        var bmp = BirdBitmap(frame, w.BirdVx < 0, w.K);
+        var st = g.Save();
+        g.TranslateTransform(cp.X, cp.Y);
+        if (w.BirdHit) g.RotateTransform((float)(w.BirdTurn * 180 / Math.PI));
+        g.DrawImageUnscaled(bmp, -bmp.Width / 2, -bmp.Height / 2);
+        g.Restore(st);
+    }
+
+    readonly Dictionary<(int, bool, int), Bitmap> birdBmps = new();
+    Bitmap BirdBitmap(int frame, bool flip, int k)
+    {
+        if (birdBmps.TryGetValue((frame, flip, k), out var bmp)) return bmp;
+        var rows = VolleyFruits.Bird[frame];
+        bmp = new Bitmap(rows[0].Length * k, rows.Length * k, PixelFormat.Format32bppPArgb);
+        using var g = Graphics.FromImage(bmp);
+        for (int y = 0; y < rows.Length; y++)
+            for (int x = 0; x < rows[y].Length; x++)
+            {
+                char ch = rows[y][flip ? rows[y].Length - 1 - x : x];
+                if (!VolleyFruits.BirdPal.TryGetValue(ch, out var col)) continue;
+                using var br = new SolidBrush(ColorTranslator.FromHtml(col));
+                g.FillRectangle(br, x * k, y * k, k, k);
+            }
+        return birdBmps[(frame, flip, k)] = bmp;
     }
 
     static void DrawDesktopCourt(Overlay o, Graphics g, VolleySim w)
@@ -835,6 +884,12 @@ sealed partial class VolleyGame : IGameMode
         {
             if (a[2] == "win") wEnd.ForceEnd(true);
             else if (a[2] == "lose") wEnd.ForceEnd(false);
+            return true;
+        }
+
+        if (a.Length > 1 && a[1] == "bird" && sim is { } wBird) // 디버그: 새 한 마리 바로
+        {
+            wBird.SpawnBird();
             return true;
         }
 

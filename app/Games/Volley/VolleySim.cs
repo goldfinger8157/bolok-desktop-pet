@@ -15,6 +15,72 @@ sealed class VolleySim
     public static bool HasStem(BallKind k) => k is BallKind.Gyul or BallKind.Orange or BallKind.Apple or BallKind.Melon; // 꼭지·잎이 위에 달린 것
     public static BallKind PickBall(Random rng) => rng.NextDouble() < .2 ? BallKind.Volleyball : (BallKind)(1 + rng.Next(5));
 
+    // 스파이크 너그러움 (YELL 2026-11-16: 「스파이크가 생각보다 어렵다」): 닿기 직전 이만큼 안에 누른 Ctrl 도 친다
+    public const double SpikeGraceSec = .18;
+    double spikePressedAt = -9;
+    bool spikeWas;
+
+    // 날아가는 새 (YELL 2026-11-16): 경기 중 가끔 시합장을 가로지른다. 공이 맞으면 공은 튕겨 나가고 새는 휘청 날아간다
+    public bool Birds { get; set; }                 // 실제 경기만 켠다 (검사는 따로 켠다)
+    public Random BirdRng { get; set; } = new();
+    public const double BirdEverySec = 14;          // 경기 중 평균 이만큼에 한 마리
+    public int BirdR => 6 * K;
+    public bool BirdOn { get; private set; }
+    public bool BirdHit { get; private set; }       // 공에 맞아 휘청 날아가는 중
+    public double BirdX { get; set; }
+    public double BirdY { get; set; }
+    public double BirdVx { get; set; }
+    public double BirdVy { get; set; }
+    public double BirdTurn { get; private set; }    // 맞으면 빙글 (라디안)
+    double birdBaseY, birdAge;
+
+    public void SpawnBird()
+    {
+        bool fromLeft = BirdRng.NextDouble() < .5;
+        double lo = CeilingY + BirdR + 8 * K, hi = Math.Max(lo + 1, NetTopY - BirdR - 14 * K);
+        (BirdOn, BirdHit, BirdTurn, birdAge) = (true, false, 0, 0);
+        BirdX = fromLeft ? WallLeft - BirdR : WallRight + BirdR;
+        birdBaseY = BirdY = lo + BirdRng.NextDouble() * (hi - lo);
+        BirdVx = (fromLeft ? 1 : -1) * (85 + BirdRng.NextDouble() * 55) * ScaleRatio;
+        BirdVy = 0;
+        OnEvent?.Invoke("bird-in", fromLeft);
+    }
+
+    void UpdateBird(double dt)
+    {
+        if (!BirdOn)
+        {
+            if (Birds && Stage == Phase.InPlay && BirdRng.NextDouble() < dt / BirdEverySec) SpawnBird();
+            return;
+        }
+        birdAge += dt;
+        if (!BirdHit)
+        {
+            BirdX += BirdVx * dt;
+            BirdY = birdBaseY + Math.Sin(birdAge * 5) * 3 * K; // 날갯짓에 맞춰 살짝 오르내림
+            double dx = BallX - BirdX, dy = BallY - BirdY, d = Math.Sqrt(dx * dx + dy * dy), min = BallR + BirdR;
+            if (d < min)
+            {
+                double nx = d > .001 ? dx / d : 0, ny = d > .001 ? dy / d : -1, dot = BallVx * nx + BallVy * ny;
+                if (dot < 0) { BallVx -= 2 * dot * nx; BallVy -= 2 * dot * ny; } // 새에 맞고 튕긴다
+                BallVx *= .92; BallVy *= .92;
+                BallX = BirdX + nx * min; BallY = BirdY + ny * min;
+                BirdHit = true;
+                BirdVx = -nx * 240 * ScaleRatio + BirdVx * .3; // 맞은 반대쪽으로 휘청
+                BirdVy = -Math.Abs(ny) * 120 * ScaleRatio - 160 * ScaleRatio;
+                OnEvent?.Invoke("bird", null);
+            }
+        }
+        else
+        {
+            BirdVy += Gravity * .35 * dt;
+            BirdX += BirdVx * dt;
+            BirdY += BirdVy * dt;
+            BirdTurn += 9 * dt * Math.Sign(BirdVx == 0 ? 1 : BirdVx);
+        }
+        if (BirdX < WallLeft - 3 * BirdR || BirdX > WallRight + 3 * BirdR || BirdY > FloorY + 4 * BirdR || BirdY < Court.Top - 30 * K) BirdOn = false;
+    }
+
     // 꼭지 헤딩 실수 (YELL 2026-11-16): 머리에 닿는 순간 꼭지가 머리 쪽 ±StemFumbleDeg 안을 향하면 공이 힘없이 툭 떨어지고 펫은 움찔
     public const double StemFumbleDeg = 25;
     public const double FumbleSec = .6;
@@ -46,7 +112,7 @@ sealed class VolleySim
     // 선수 크기 및 물리 상수
     public int PetR => 14 * K;
     public double WalkSpeed => 240 * ScaleRatio;
-    public double JumpVy => -390 * ScaleRatio;
+    public double JumpVy => -400 * ScaleRatio; // YELL 2026-11-16: 5% 더 높이 (높이는 속도의 제곱 → -390 × √1.05)
     public double Gravity => 850 * ScaleRatio;
 
     // 공 크기 및 물리 상수
@@ -255,8 +321,13 @@ sealed class VolleySim
         // 2. 라이벌 AI & 물리
         UpdateRival(dt);
 
-        // 3. 공 물리 및 충돌
-        UpdateBall(dt, inputSpike);
+        // 3. 공 물리 및 충돌 (Ctrl 은 누른 순간부터 SpikeGraceSec 동안 유효)
+        if (inputSpike && !spikeWas) spikePressedAt = Clock;
+        spikeWas = inputSpike;
+        UpdateBall(dt, inputSpike || Clock - spikePressedAt <= SpikeGraceSec);
+
+        // 3-1. 날아가는 새
+        UpdateBird(dt);
 
         // 4. 상태 및 포즈 동기화
         SyncPoses();

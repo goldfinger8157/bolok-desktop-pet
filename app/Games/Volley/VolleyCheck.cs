@@ -303,6 +303,43 @@ static class VolleyCheck
             Expect(sp.Has("emo/bang") && PetArt.Embedded.Poses.Contains("shock"), "느낌표 그림·움찔 자세가 있다");
         }
 
+        // 점프·스파이크 너그러움·새·점수판 (YELL 2026-11-16)
+        {
+            var j = new VolleySim(court, false, 3, new Random(4));
+            Expect(Math.Abs(j.JumpVy - (-400 * j.ScaleRatio)) < 1e-9, "점프는 전보다 5% 높이");
+
+            // Ctrl 을 닿기 0.1초 전에 눌렀다 떼도 스파이크
+            var g1 = new VolleySim(court, false, 3, new Random(6));
+            var evs = new List<string>(); g1.OnEvent = (e, _) => evs.Add(e);
+            g1.Stage = VolleySim.Phase.InPlay; g1.PlayerOnGround = false; g1.PlayerY = g1.FloorY - 40 * g1.K; g1.PlayerVy = 0;
+            g1.BallX = g1.PlayerX + 4; g1.BallY = g1.PlayerY - g1.PetR - g1.PetR - g1.BallR - 6; g1.BallVx = 0; g1.BallVy = 0; g1.BallSpin = 0;
+            g1.Update(1 / 60.0, 0, false, true);   // 누름
+            for (int i = 0; i < 5 && !evs.Contains("spike") && !evs.Contains("hit"); i++) { g1.BallVy = 600; g1.Update(1 / 60.0, 0, false, false); } // 뗀 채로 닿음
+            Expect(evs.Contains("spike"), $"닿기 직전 누른 Ctrl 도 스파이크 ({string.Join(",", evs)})");
+
+            // 새: 꺼 두면 안 나오고, 켜면 가끔 나온다
+            var off = new VolleySim(court, false, 3, new Random(7)) { BirdRng = new Random(1) };
+            off.Stage = VolleySim.Phase.InPlay;
+            bool any = false; for (int i = 0; i < 60 * 120; i++) { off.Stage = VolleySim.Phase.InPlay; off.BallY = off.CeilingY + 200; off.BallVy = 0; off.Update(1 / 60.0); any |= off.BirdOn; }
+            Expect(!any, "새를 꺼 두면 안 나온다");
+            var on = new VolleySim(court, false, 3, new Random(7)) { Birds = true, BirdRng = new Random(2) };
+            int spawns = 0; bool was = false;
+            for (int i = 0; i < 60 * 600; i++) { on.Stage = VolleySim.Phase.InPlay; on.BallX = on.NetX - 100; on.BallY = on.CeilingY + 60; on.BallVx = 0; on.BallVy = 0; on.Update(1 / 60.0); if (on.BirdOn && !was) spawns++; was = on.BirdOn; }
+            Expect(spawns is >= 20 and <= 70, $"새는 경기 중 가끔 (10분에 {spawns}마리)");
+
+            // 공이 새에 맞으면 공은 튕기고 새는 휘청 날아가 사라진다
+            var hit = new VolleySim(court, false, 3, new Random(8)) { BirdRng = new Random(3) };
+            var hev = new List<string>(); hit.OnEvent = (e, _) => hev.Add(e);
+            hit.Stage = VolleySim.Phase.InPlay;
+            hit.SpawnBird(); hit.BirdX = hit.NetX + 60 * hit.K; hit.BirdVx = 0;
+            hit.BallX = hit.BirdX - hit.BallR - hit.BirdR - 4; hit.BallY = hit.BirdY; hit.BallVx = 300; hit.BallVy = 0;
+            for (int i = 0; i < 10 && !hev.Contains("bird"); i++) { hit.BallVy = 0; hit.Update(1 / 60.0); }
+            Expect(hev.Contains("bird") && hit.BallVx < 0 && hit.BirdHit, $"새에 맞으면 공은 튕기고 새는 휘청 ({hit.BallVx:F0})");
+            for (int i = 0; i < 60 * 6 && hit.BirdOn; i++) { hit.Stage = VolleySim.Phase.InPlay; hit.Update(1 / 60.0); }
+            Expect(!hit.BirdOn, "휘청 날아간 새는 시합장 밖으로 사라진다");
+            Expect(VolleyFruits.Bird.All(f => f.Length == 9 && f.All(r => r.Length == 12 && r.All(c => c == '.' || VolleyFruits.BirdPal.ContainsKey(c)))), "새 그림 12×9, 색이 팔레트 안");
+        }
+
         return "배구: 과일 공(무작위·가끔 배구공)·꼭지 헤딩 실수·공 튕김(벽·천장·그물 기둥·캡)·바닥 득점(랠리)·서브권 교대·5점 승리·공중 강스파이크·땅 Ctrl 무효·보스 키 즉시 종료·기록 저장/불러오기·창 추적 및 바탕화면 판·AI 타구·결정론·표정 자세 유효성 모두 통과";
     }
 
@@ -356,6 +393,7 @@ static class VolleyCheck
                     play.PlayerPose = "idle";
                     play.RivalX = (play.NetX + play.WallRight) / 2.0;
                     play.RivalPose = "walk";
+                    play.SpawnBird(); play.BirdX = play.NetX + 50 * k; // 날아가는 새
 
                     game.Open(play, Session.Fake(field), events: false);
                 }
