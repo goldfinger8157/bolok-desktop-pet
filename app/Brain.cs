@@ -124,6 +124,7 @@ public sealed class Brain
     public string SpriteName()
     {
         if (P.Stage == "egg") return P.AgeMin >= K.EggMin * .6 ? "egg/hatch" : "egg/idle";
+        if (Growing && GrowT < GrowOldTo && GrowFrom != "") return $"{GrowFrom}/{P.Cheek(K)}/{Pose}"; // 자라는 중: 1초까지는 옛 모습
         return $"{P.Stage}/{P.Cheek(K)}/{Pose}";
     }
 
@@ -543,6 +544,26 @@ public sealed class Brain
     public Region? PuppetClip;        // 본체에서 안 그릴 자리 (화면 좌표: 창 뒤에 숨은 몸처럼)
     public double FlashUntil;         // 이때까지 본체가 하얗게 번쩍인다 (맞았을 때)
 
+    // 자라는 순간 연출 (2초): 0~1초 옛 모습(반짝이가 모인다), 0.5~1.3초 하얗게 빛남, 1.3초 새 모습 + 별, 1.9초 하트
+    public const double GrowSec = 2, GrowOldTo = 1, GrowWhiteFrom = .5, GrowWhiteTo = 1.3;
+    public double GrowAt = -9;
+    public string GrowFrom = "";
+    int growCheer;
+    public double GrowT => Now - GrowAt;
+    public bool Growing => GrowT is >= 0 and < GrowSec;
+    public bool GrowWhite => GrowT >= GrowWhiteFrom && GrowT < GrowWhiteTo;
+    public void PlayGrow(string from) // 디버그 growfx 로도 (단계는 안 바꾸고 연출만)
+    {
+        (GrowAt, GrowFrom, growCheer) = (Now, from, 0);
+        Play("idle", GrowWhiteTo);
+    }
+    void GrowTick()
+    {
+        if (!Growing) return;
+        if (growCheer == 0 && GrowT >= GrowWhiteTo) { growCheer = 1; Emote("star", 1.2); Play("happy", 1.2); }
+        if (growCheer == 1 && GrowT >= 1.9) { growCheer = 2; Emote("heart", 1.2); }
+    }
+
     public void StartPuppet()
     {
         (PuppetMs, PuppetBlink, PuppetClip) = (0, null, null);
@@ -666,7 +687,7 @@ public sealed class Brain
             switch (e)
             {
                 case "hatch": Emote("star"); Play("happy", 1.6); break;
-                case "grow": Emote("star"); Play("happy", 1.6); break;
+                case "grow": PlayGrow(P.Stage == "child" ? "baby" : "child"); break; // 자라는 순간 (YELL 2026-11-16 시안): 반짝이가 모이고 → 하얗게 빛나며 → 새 모습 + 별·하트
                 case "miss": Emote("tear"); break;
                 case "sleep": Emote("zzz"); break;
                 case "wake": Emote("spark"); break;
@@ -831,6 +852,7 @@ public sealed class Brain
     {
         Now += dt;
         Advance(dt * Speed / 60, afk);
+        GrowTick();
         TrackArea();
         WatchActive();
         if (Behind && Mode is not (Mode.SlipIn or Mode.Hiding or Mode.Emerge)) Behind = false;

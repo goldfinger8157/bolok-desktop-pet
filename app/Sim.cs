@@ -685,6 +685,19 @@ static class Sim
         o.WriteLine(Row("방치", none));
 
         Expect(good.P.Miss == 0 && good.P.BitesTotal == 0 && good.P.Stage == "adult_chubby", "하루 3번이면 무탈");
+        // 자라는 순간 (YELL 2026-11-16): 1초까지 옛 모습 → 0.5~1.3초 하얗게 → 새 모습 + 별, 2초에 끝
+        {
+            var area0 = new Rectangle(0, 0, 1920, 1040);
+            var gb = new Brain(new Pet { Stage = "baby", AgeMin = k.BabyMin - .01, Full = 90, Mood = 90, Energy = 90 }, k, area0) { X = 900, Y = 800 };
+            for (int i = 0; i < 600 && gb.P.Stage == "baby"; i++) gb.Update(1 / 30.0, false);
+            Expect(gb.P.Stage == "child" && gb.Growing && gb.SpriteName().StartsWith("baby/"), $"자라는 순간 처음엔 옛 모습 ({gb.SpriteName()})");
+            for (int i = 0; i < 21; i++) gb.Update(1 / 30.0, false); // 0.7초
+            Expect(gb.GrowWhite && gb.SpriteName().StartsWith("baby/"), "0.5초 뒤 하얗게 빛난다");
+            for (int i = 0; i < 21; i++) gb.Update(1 / 30.0, false); // 1.4초
+            Expect(!gb.GrowWhite && gb.SpriteName().StartsWith("child/") && gb.Emoting && gb.EmoteName == "star", $"1.3초 뒤 새 모습 + 별 ({gb.SpriteName()}, {gb.EmoteName})");
+            for (int i = 0; i < 24; i++) gb.Update(1 / 30.0, false); // 2.2초
+            Expect(!gb.Growing, "2초면 끝");
+        }
         Expect(sweet.P.Stage == "adult_sweet", "쓰다듬기를 듬뿍 하면 애교쟁이");
         Expect(once.P.BitesTotal > 0, "하루 1번이면 화면을 먹는다");
         Expect(once.P.Stage == "adult_grumpy", "하루 1번이면 배고픈 시간이 길어 심술이");

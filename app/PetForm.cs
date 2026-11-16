@@ -447,7 +447,7 @@ public sealed class PetForm : Form, IGameHost
         int frame = (int)(sec * 1000 / ms);
         int shake = b.Now < b.ShakeUntil ? (int)(Math.Sin(b.Now * 40) * 5) : 0;
         var now = (name, frame, b.Dir < 0, shake);
-        bool flash = b.Now < b.FlashUntil || b.Blink;
+        bool flash = b.Now < b.FlashUntil || b.Blink || b.GrowWhite;
         if (now != drawn || b.PuppetClip != clipShown || flash != flashShown) { drawn = now; clipShown = b.PuppetClip; flashShown = flash; Invalidate(); }
         WeatherLayout();
 
@@ -520,7 +520,7 @@ public sealed class PetForm : Form, IGameHost
         }
         var bmp = sprites.Get(name, frame, b.Scale, flip);
         if (b.Blink) return; // 다친 뒤 깜빡
-        if (b.Now < b.FlashUntil) // 맞으면 하얗게 번쩍
+        if (b.Now < b.FlashUntil || b.GrowWhite) // 맞으면 하얗게 번쩍 (자라는 순간에도 하얗게 빛난다)
         {
             using var white = new System.Drawing.Imaging.ImageAttributes();
             white.SetColorMatrix(new System.Drawing.Imaging.ColorMatrix(new[]

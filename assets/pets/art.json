@@ -28,8 +28,8 @@
     "adult_playful": ["#FFD27A", 0.1]
   },
   "forms": {
-    "baby": {"rx": 7.2, "ry": 6.8, "ear": 1.9, "eye": 2.6, "eyegap": 4, "feature": 0.5, "paw_k": 0.7, "tuft": true},
-    "child": {"rx": 10.5, "ry": 10, "ear": 3, "eye": 2.6, "eyegap": 6, "feature": 0.8},
+    "baby": {"rx": 8.6, "ry": 8.3, "body_k": 0.58, "head_h": 0.74, "body_h": 0.42, "eye_y": -0.02, "ear": 1.4, "round_ear": true, "eye": 2.95, "eyegap": 4.4, "feature": 0.35, "paw_k": 0.45},
+    "child": {"rx": 9.8, "ry": 10.6, "ear": 2.7, "eye": 2.25, "eyegap": 5.2, "feature": 0.75, "paw_k": 0.85},
     "adult_chubby": {"rx": 14, "ry": 12.5, "ear": 3.4, "eye": 2.6, "eyegap": 7, "feature": 1, "pear": true},
     "adult_sweet": {"rx": 12.5, "ry": 12, "ear": 3.6, "eye": 3, "eyegap": 7, "flower": true, "blush": 2, "feature": 1, "lash": true},
     "adult_grumpy": {"rx": 12.5, "ry": 11.5, "ear": 3.2, "eye": 2.6, "eyegap": 6, "brow": true, "feature": 1, "lid": true},

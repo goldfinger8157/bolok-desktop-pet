@@ -59,6 +59,22 @@ public sealed class Overlay : Form
     public Point ToClient(double x, double y) => new((int)x - Left, (int)y - Top);
 
     // 머리 위 말풍선 자리. 꼬리 끝(칸의 20, 27)이 머리를 가리키고, 처음 0.15초 동안 톡 튀어 오른다
+    // 자라는 순간: 반짝이 여덟이 몸 둘레에서 가운데로 모였다가(0~1.3초) 새 모습이 나오면 밖으로 퍼진다(1.3~2초)
+    Rectangle GrowRect() => Around(b.X, b.Y - b.CellPx * .45, b.CellPx * 1.4, b.CellPx * 1.4);
+    void DrawGrow(Graphics g, Sprites sp)
+    {
+        if (!b.Growing || !sp.Has("game/spark")) return;
+        double t = b.GrowT, cx = b.X, cy = b.Y - b.CellPx * .45, far = b.CellPx * .95, near = b.CellPx * .22;
+        double r = t < Brain.GrowWhiteTo ? far + (near - far) * Math.Min(1, t / Brain.GrowWhiteTo) : near + (far * 1.1 - near) * Math.Min(1, (t - Brain.GrowWhiteTo) / .7);
+        var spark = sp.Get("game/spark", 0, Math.Max(1, b.Scale - 1));
+        for (int i = 0; i < 8; i++)
+        {
+            if (t > Brain.GrowWhiteTo && (int)(t * 10 + i) % 3 == 0) continue; // 퍼질 땐 반짝반짝 깜빡
+            double a = i * Math.PI / 4 + t * 1.6;
+            Put(g, spark, (int)(cx + Math.Cos(a) * r), (int)(cy + Math.Sin(a) * r * .8));
+        }
+    }
+
     Rectangle EmoteRect()
     {
         int size = sprites().Cell * b.Scale, half = 7 * b.Scale;
@@ -91,6 +107,7 @@ public sealed class Overlay : Form
         foreach (var h in b.Hearts) { var p = ToClient(h.X, h.Y); r.Add(new Rectangle(p.X - s, p.Y - s * 2, s * 2, s * 2)); }
         foreach (var seed in b.Foods) { var p = ToClient(seed.X, seed.Y); r.Add(new Rectangle(p.X - s, p.Y - s, s * 2, s * 2)); }
         if (b.Emoting) r.Add(EmoteRect());
+        if (b.Growing || b.GrowT is >= 2 and < 2.2) r.Add(Client(GrowRect())); // 자라는 순간 반짝이 (끝난 뒤 한 번 더 지운다)
         if (b.Saying) r.Add(Client(NoteRect(b.X, b.Y, b.Area, b.SayLines!)));
         for (var (ms, i) = (Modes(), 0); i < ms.Count; i++) if (ms[i].Running) ms[i].Dirty(this, r); // 번호로 돈다: 목록 약속(IReadOnlyList)을 foreach 로 돌면 프레임마다 메모리를 잡는다
         if (Guest() is { } gv) r.Add(Client(GuestRect(gv)));
@@ -187,6 +204,7 @@ public sealed class Overlay : Form
             var p = ToClient(h.X, h.Y);
             g.DrawImageUnscaled(sp.Get("icon/heart", 0, 1), p.X - sp.Cell / 2, p.Y - sp.Cell);
         }
+        DrawGrow(g, sp);
         if (b.Emoting && sp.Has("emo/" + b.EmoteName)) // 없는 표정 이름이면 건너뛴다 — 예외가 나면 그 뒤(게임 그림까지) 한 프레임도 안 그려진다 (2026-11-13 모래성 「x」)
         {
             var r = EmoteRect();
