@@ -199,15 +199,15 @@ t('up.check_desc', "Only checks the repository for a new version. Doesn't downlo
 t('up.restart', 'Restart', '다시 시작')
 t('up.ready', 'New version downloaded', '새 버전을 받아 뒀어요')
 t('up.ready_tag', '{0} is downloaded', '새 버전 {0} 을 받아 뒀어요')
-t('up.ready_desc', 'Restart to switch to the new version', '다시 시작하면 새 버전으로 바뀌어요')
+t('up.ready_desc', 'Restart to switch to the new version, or it restarts by itself while you are away', '다시 시작하면 새 버전으로 바뀌어요. 자리를 비우면 알아서 다시 시작해요')
 t('up.manual', 'Download manually', '직접 받기')
 t('up.releases', 'Releases page', '릴리스 페이지')
 t('up.open', 'Open', '열기')
 t('up.releases_desc', 'Download Bolok.exe from the repository and replace the old file', '저장소에서 Bolok.exe 를 내려받아 쓰던 파일에 덮어쓰면 설치돼요')
 t('up.auto', 'Auto-update', '자동 업데이트')
 t('up.auto_desc', 'Checks for a new version once a day and downloads it. Off by default', '켜면 하루에 한 번 새 버전을 확인해서 받아 둬요. 기본은 꺼져 있어요')
-t('up.auto_foot', 'Downloads only from github.com/{0}. The file size and fingerprint (sha256) are checked, and the new version takes over the next time Bolok starts.',
-  'github.com/{0} 에서만 받아요. 받은 파일의 크기와 지문(sha256)을 확인한 뒤, 다음에 볼록이를 켤 때 새 버전으로 바뀌어요.')
+t('up.auto_foot', 'Downloads only from github.com/{0}. The file size and fingerprint (sha256) are checked, and the new version takes over by itself while you are away (no game, no input for a few minutes or the screen locked).',
+  'github.com/{0} 에서만 받아요. 받은 파일의 크기와 지문(sha256)을 확인한 뒤, 자리를 비웠을 때(게임 중이 아니고 몇 분 동안 입력이 없거나 화면이 잠겼을 때) 알아서 새 버전으로 다시 시작해요.')
 t('up.checking', 'Checking…', '확인하는 중…')
 t('up.latest', "You're up to date", '지금이 최신 버전이에요')
 t('up.new', '{0} is available. Get it from the releases page, or turn on auto-update', '새 버전 {0} 이 있어요. 릴리스 페이지에서 받거나 자동 업데이트를 켜 주세요')

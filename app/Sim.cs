@@ -322,6 +322,11 @@ static class Sim
         var r = Updater.Newer(Json("v1.10.0"), now);
         Expect(r is { Tag: "v1.10.0", Size: 48000000, Sha256: "ABCDEF" } && r.Version == new Version(1, 10, 0) && r.Url.EndsWith("/v1.10.0/Bolok.exe"), "새 버전이면 exe 주소·크기·해시를 찾는다 (1.10 > 1.9)");
         Expect(Updater.Newer(Json("v1.9.3"), now) == null && Updater.Newer(Json("v1.2.0"), now) == null, "같거나 낮은 버전은 안 받는다");
+        // 한가할 때 자동 재시작 (YELL 2026-11-16)
+        Expect(!Updater.QuietRestart(false, false, false, 1, 10, 5), "일하는 중(입력 1분 전)엔 재시작 안 함");
+        Expect(Updater.QuietRestart(false, false, false, 6, 10, 5), "입력 없이 5분 넘으면 재시작");
+        Expect(Updater.QuietRestart(false, false, true, 0, 10, 5), "화면 잠금이면 재시작");
+        Expect(!Updater.QuietRestart(true, false, true, 30, 10, 5) && !Updater.QuietRestart(false, true, true, 30, 10, 5), "게임 중·메뉴 열림이면 재시작 안 함");
         Expect(Updater.Newer(Json("v2.0.0", extra: ",\"prerelease\":true").Replace("\"prerelease\":false,", ""), now) == null, "시험판은 안 받는다");
         Expect(Updater.Newer(Json("v2.0.0", name: "Other.exe"), now) == null, "Bolok.exe 가 없는 릴리스는 넘긴다");
         Expect(Updater.Newer(Json("v2.0.0", owner: "someone/else"), now) == null, "다른 저장소 주소는 안 받는다");

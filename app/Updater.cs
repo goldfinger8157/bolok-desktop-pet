@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace Bolok;
 
-// 자동 업데이트: 깃허브 릴리스의 최신 버전이 지금보다 높으면 Bolok.exe 를 받아 바꿔치기한다. 다음에 켤 때 새 버전으로 뜬다.
+// 자동 업데이트: 깃허브 릴리스의 최신 버전이 지금보다 높으면 Bolok.exe 를 받아 바꿔치기한다. 한가할 때(QuietRestart) 저절로 다시 시작하거나, 메뉴로 바로, 아니면 다음에 켤 때 새 버전으로 뜬다.
 // 실행 중인 exe 는 덮어쓸 수 없지만 이름은 바꿀 수 있어서: 지금 것 → Bolok.exe.old, 받은 것 → Bolok.exe. .old 는 다음 시작 때 지운다.
 // 사용자가 설정에서 켰을 때만 돈다 (기본 꺼짐). 일반 실행(배포용 한 파일 exe)에서만, 디버그 모드와 개발 빌드(버전 0.0.0)는 건드리지 않는다
 public static class Updater
@@ -125,6 +125,10 @@ public static class Updater
             }
         });
     }
+
+    // 받아 둔 새 버전으로 조용히 다시 시작해도 되나 (YELL 2026-11-16: 한가할 때 자동 재시작): 게임·메뉴·설정 창이 없고, 화면 잠금이거나 입력이 오래 없을 때
+    public static bool QuietRestart(bool inGame, bool menuOpen, bool locked, double idleMin, double afkMin, double restartMin) =>
+        !inGame && !menuOpen && (locked || idleMin >= Math.Min(afkMin, restartMin));
 
     // 새 exe 로 다시 시작: 새 프로세스는 이 프로세스가 끝나길 기다렸다가 뜬다 (한 번에 하나만 뜨게 막아 둔 것 때문)
     public static void Restart()

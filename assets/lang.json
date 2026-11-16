@@ -2508,16 +2508,16 @@
   "ru": "{0} загружена"
  },
  "up.ready_desc": {
-  "en": "Restart to switch to the new version",
-  "ko": "다시 시작하면 새 버전으로 바뀌어요",
-  "ja": "再起動すると新しいバージョンに切り替わるよ",
-  "zh-Hans": "重新启动后就会切换到新版本",
-  "zh-Hant": "重新啟動後就會切換到新版本",
-  "es": "Reinicia para cambiar a la nueva versión",
-  "de": "Starte neu, um zur neuen Version zu wechseln",
-  "fr": "Redémarre pour passer à la nouvelle version",
-  "pt": "Reinicie para mudar para a nova versão",
-  "ru": "Перезапустите, чтобы перейти на новую версию"
+  "en": "Restart to switch to the new version, or it restarts by itself while you are away",
+  "ko": "다시 시작하면 새 버전으로 바뀌어요. 자리를 비우면 알아서 다시 시작해요",
+  "ja": "再起動すると新しいバージョンに切り替わるよ。席を外しているあいだに自動で再起動もするよ",
+  "zh-Hans": "重新启动后就会切换到新版本。你离开时也会自动重新启动",
+  "zh-Hant": "重新啟動後就會切換到新版本。你離開時也會自動重新啟動",
+  "es": "Reinicia para cambiar a la nueva versión, o se reiniciará solo cuando no estés",
+  "de": "Starte neu, um zur neuen Version zu wechseln – oder es startet von selbst neu, wenn du weg bist",
+  "fr": "Redémarre pour passer à la nouvelle version, ou il redémarrera tout seul quand tu seras absent",
+  "pt": "Reinicie para mudar para a nova versão, ou ele reinicia sozinho quando você estiver ausente",
+  "ru": "Перезапустите, чтобы перейти на новую версию, или он перезапустится сам, пока вас нет"
  },
  "up.manual": {
   "en": "Download manually",
@@ -2592,16 +2592,16 @@
   "ru": "Если включить, раз в день проверяет новую версию и скачивает её. По умолчанию выключено"
  },
  "up.auto_foot": {
-  "en": "Downloads only from github.com/{0}. The file size and fingerprint (sha256) are checked, and the new version takes over the next time Bolok starts.",
-  "ko": "github.com/{0} 에서만 받아요. 받은 파일의 크기와 지문(sha256)을 확인한 뒤, 다음에 볼록이를 켤 때 새 버전으로 바뀌어요.",
-  "ja": "github.com/{0} からのみダウンロードするよ。ファイルサイズとフィンガープリント(sha256)を確認し、次にBolokを起動するときに新しいバージョンに切り替わるよ。",
-  "zh-Hans": "仅从 github.com/{0} 下载。会校验文件大小和指纹(sha256),下次启动 Bolok 时切换到新版本。",
-  "zh-Hant": "僅從 github.com/{0} 下載。會驗證檔案大小和指紋(sha256),下次啟動 Bolok 時切換到新版本。",
-  "es": "Solo descarga de github.com/{0}. Se comprueban el tamaño del archivo y su huella (sha256), y la nueva versión se aplica la próxima vez que inicies Bolok.",
-  "de": "Lädt nur von github.com/{0} herunter. Dateigröße und Fingerabdruck (sha256) werden geprüft, und die neue Version wird beim nächsten Start von Bolok übernommen.",
-  "fr": "Téléchargement uniquement depuis github.com/{0}. La taille du fichier et son empreinte (sha256) sont vérifiées, et la nouvelle version prend le relais au prochain démarrage de Bolok.",
-  "pt": "Baixa apenas de github.com/{0}. O tamanho do arquivo e a impressão digital (sha256) são verificados, e a nova versão assume na próxima vez que o Bolok iniciar.",
-  "ru": "Скачивает только с github.com/{0}. Проверяются размер файла и отпечаток (sha256), а новая версия вступит в силу при следующем запуске Bolok."
+  "en": "Downloads only from github.com/{0}. The file size and fingerprint (sha256) are checked, and the new version takes over by itself while you are away (no game, no input for a few minutes or the screen locked).",
+  "ko": "github.com/{0} 에서만 받아요. 받은 파일의 크기와 지문(sha256)을 확인한 뒤, 자리를 비웠을 때(게임 중이 아니고 몇 분 동안 입력이 없거나 화면이 잠겼을 때) 알아서 새 버전으로 다시 시작해요.",
+  "ja": "github.com/{0} からのみダウンロードするよ。ファイルサイズとフィンガープリント(sha256)を確認し、席を外しているとき(ゲーム中でなく、数分入力がないか画面がロックされたとき)に自動で新しいバージョンに再起動するよ。",
+  "zh-Hans": "仅从 github.com/{0} 下载。会校验文件大小和指纹(sha256),在你离开时(没有在玩游戏,且几分钟没有输入或屏幕已锁定)自动以新版本重新启动。",
+  "zh-Hant": "僅從 github.com/{0} 下載。會驗證檔案大小和指紋(sha256),在你離開時(沒有在玩遊戲,且幾分鐘沒有輸入或螢幕已鎖定)自動以新版本重新啟動。",
+  "es": "Solo descarga de github.com/{0}. Se comprueban el tamaño del archivo y su huella (sha256), y la nueva versión se aplica sola cuando no estás (sin partida, sin actividad durante unos minutos o con la pantalla bloqueada).",
+  "de": "Lädt nur von github.com/{0} herunter. Dateigröße und Fingerabdruck (sha256) werden geprüft, und die neue Version startet von selbst, wenn du weg bist (kein Spiel, einige Minuten keine Eingabe oder Bildschirm gesperrt).",
+  "fr": "Téléchargement uniquement depuis github.com/{0}. La taille du fichier et son empreinte (sha256) sont vérifiées, et la nouvelle version prend le relais toute seule quand tu es absent (pas de partie, aucune saisie pendant quelques minutes ou écran verrouillé).",
+  "pt": "Baixa apenas de github.com/{0}. O tamanho do arquivo e a impressão digital (sha256) são verificados, e a nova versão assume sozinha quando você está ausente (sem jogo, sem uso por alguns minutos ou com a tela bloqueada).",
+  "ru": "Скачивает только с github.com/{0}. Проверяются размер файла и отпечаток (sha256), а новая версия запустится сама, пока вас нет (без игры, несколько минут без ввода или при заблокированном экране)."
  },
  "up.checking": {
   "en": "Checking…",

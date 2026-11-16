@@ -401,6 +401,21 @@ public sealed class PetForm : Form, IGameHost
         if (e.Reason == SessionSwitchReason.SessionUnlock) locked = false;
     }
 
+    // 자동 업데이트를 받아 둔 뒤 한가할 때 저절로 다시 시작 (YELL 2026-11-16: 「한가할 때 자동재시작으로」).
+    // 한가함 = 자리 비움(화면 잠금·입력 없음 AfkMin분) 또는 입력 없이 IdleRestartMin분, 그리고 게임 중이 아니고 메뉴·설정 창이 닫혀 있을 때.
+    // 일하는 중엔 펫이 사라졌다 나타나지 않는다. 메뉴의 「업데이트」·설정 창 재시작은 그대로 바로
+    public const double IdleRestartMin = 5;
+    double nextRestartCheck;
+    void UpdateRestartTick()
+    {
+        if (updateTag == null || !autoUpdate || b.Now < nextRestartCheck) return;
+        nextRestartCheck = b.Now + 30;
+        if (!Updater.QuietRestart(InGame, menu.Visible || settings is { Visible: true }, locked, Native.IdleMinutes(), b.K.AfkMin, IdleRestartMin)) return;
+        Dbg.Log("update-restart", ("tag", updateTag), ("idle", Math.Round(Native.IdleMinutes(), 1)), ("locked", locked));
+        Save();
+        Updater.Restart();
+    }
+
     bool Afk() => dev?.ForceAfk ?? (locked || Native.IdleMinutes() >= b.K.AfkMin);
 
     void Frame()
@@ -421,6 +436,7 @@ public sealed class PetForm : Form, IGameHost
         VisitTick();
         PresentTick();
         WeatherTick();
+        UpdateRestartTick();
         if (visitor != null) visitor.Update(dt, b.X, b.Y, b.Mode is Mode.Wander or Mode.Anim || b.P.Asleep, b.P.Asleep, b.Area);
         SyncScale();
         var at = new Point((int)b.X - Width / 2, (int)b.Y - Height);

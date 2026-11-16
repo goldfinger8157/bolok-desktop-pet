@@ -18,7 +18,7 @@ Get **`Bolok.exe`** from the [latest release](https://github.com/goldfinger8157/
 - The exe is not code-signed, so the first run shows a SmartScreen warning: click **More info → Run anyway**.
 - Your pet is saved in `%APPDATA%\Bolok`.
 - **No downloads for pets:** every pet is drawn from a small data file built into the exe (`assets/pets/art.json` — colors, body shapes, poses and each pet's features), so all 46 are available offline from the start. Older versions kept downloaded pictures in `%LOCALAPPDATA%\Bolok\pets`; this version deletes that folder.
-- **Updating:** download the new `Bolok.exe` from the releases page and replace the old file. Auto-update is **off by default**; if you turn it on (right-click → 설정... → 업데이트), Bolok checks this repository once a day, downloads a newer `Bolok.exe`, and switches to it the next time it starts.
+- **Updating:** download the new `Bolok.exe` from the releases page and replace the old file. Auto-update is **off by default**; if you turn it on (right-click → 설정... → 업데이트), Bolok checks this repository once a day, downloads a newer `Bolok.exe`, and restarts into it by itself while you are away (no game running, no input for a few minutes, or the screen locked).
 
 ## What it does
 
@@ -82,7 +82,7 @@ out\Bolok.exe
 - 서명이 없는 exe라 처음 실행할 때 "Windows의 PC 보호" 경고가 떠요. **추가 정보 → 실행**을 누르면 돼요.
 - 키우던 볼록이는 `%APPDATA%\Bolok`에 저장돼요.
 - **캐릭터 그림은 받지 않아요:** 47종 모두 exe 안의 작은 데이터 파일(`assets/pets/art.json`: 색·체형·자세·종마다의 특징)로 그려요. 그래서 처음부터 인터넷 없이 다 나와요. 예전 판이 받아 두던 `%LOCALAPPDATA%\Bolok\pets` 폴더는 이 판에서 지워요.
-- **업데이트:** 릴리스 페이지에서 새 `Bolok.exe`를 받아 쓰던 파일에 덮어쓰면 돼요. 자동 업데이트는 **기본으로 꺼져 있어요.** 오른쪽 클릭 → `설정...` → `업데이트` 탭에서 켜면, 하루에 한 번 이 저장소에서 새 `Bolok.exe`를 자동으로 내려받고 다음에 켤 때 새 버전으로 바뀌어요.
+- **업데이트:** 릴리스 페이지에서 새 `Bolok.exe`를 받아 쓰던 파일에 덮어쓰면 돼요. 자동 업데이트는 **기본으로 꺼져 있어요.** 오른쪽 클릭 → `설정...` → `업데이트` 탭에서 켜면, 하루에 한 번 이 저장소에서 새 `Bolok.exe`를 자동으로 내려받고, 자리를 비웠을 때(게임 중이 아니고 몇 분 동안 입력이 없거나 화면이 잠겼을 때) 알아서 새 버전으로 다시 시작해요.
 
 ### 하는 일
 
