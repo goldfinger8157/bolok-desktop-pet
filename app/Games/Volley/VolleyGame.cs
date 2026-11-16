@@ -75,8 +75,9 @@ sealed partial class VolleyGame : IGameMode
 
     // 바탕화면 판 (쓸 창이 없을 때): 얇은 테두리 상자(양쪽 벽·천장) + 잔디 띠 바닥 (YELL 2026-11-16: 「얇은 테두리 상자에 바닥은 나 안으로」)
     static readonly Pen boxPen = new(Color.FromArgb(96, 104, 118), 2);
-    static readonly SolidBrush grassTop = new(Color.FromArgb(150, 210, 96)), grassMid = new(Color.FromArgb(108, 178, 74)), grassDeep = new(Color.FromArgb(76, 138, 56));
-    internal const int GrassCells = 5; // 바닥 잔디 띠 두께 (칸, 바닥선 아래로)
+    // 잔디는 회색이 섞인 차분한 세이지 초록·얇게 (YELL 2026-11-16: 일할 때 하는 게임이라 눈에 덜 띄게 — 시안 3번)
+    static readonly SolidBrush grassTop = new(Color.FromArgb(146, 162, 136)), grassMid = new(Color.FromArgb(122, 140, 112)), grassDeep = new(Color.FromArgb(104, 120, 96));
+    internal const int GrassCells = 2; // 바닥 잔디 띠 두께 (칸, 바닥선 아래로)
 
     // 그림이 닿는 자리: 바탕화면 판은 테두리·잔디 띠까지 (칠할 자리에 넣어야 남거나 안 그려지지 않는다)
     // 점수판 자리: 경기장 바닥 아래, 네트 밑 (YELL 2026-11-16: 「점수판을 경기장 바닥 아래로」).
@@ -682,13 +683,8 @@ sealed partial class VolleyGame : IGameMode
         g.DrawLine(boxPen, br.X, tl.Y, br.X, br.Y);   // 오른쪽 벽
         int x0 = tl.X - 1, w0 = br.X - tl.X + 2, y = br.Y + 1;
         g.FillRectangle(grassTop, x0, y, w0, k);
-        g.FillRectangle(grassMid, x0, y + k, w0, (GrassCells - 2) * k);
-        g.FillRectangle(grassDeep, x0, y + (GrassCells - 1) * k, w0, k);
-        for (int x = x0 + 2 * k, i = 0; x < x0 + w0 - k; x += 5 * k, i++) // 풀 끝 몇 가닥 (바닥선 위로 한 칸)
-        {
-            g.FillRectangle(grassMid, x, y - k, k, k);
-            if (i % 2 == 0) g.FillRectangle(grassTop, x + k, y - 2 * k, k, k);
-        }
+        g.FillRectangle(grassDeep, x0, y + k, w0, (GrassCells - 1) * k);
+        for (int x = x0 + 2 * k; x < x0 + w0 - k; x += 5 * k) g.FillRectangle(grassMid, x, y - k, k, k); // 작은 풀 끝 (바닥선 위로 한 칸)
     }
 
     void DrawBall(Overlay o, Graphics g, VolleySim w)

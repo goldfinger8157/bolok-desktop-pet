@@ -106,7 +106,7 @@ sealed class VolleySim
     public int NetX => (WallLeft + WallRight) / 2;
     public int NetH { get; private set; }
     public int NetTopY => FloorY - NetH;
-    public int NetW => Math.Max(2, 2 * K / 3);
+    public int NetW => Math.Max(3, K + 1); // 그물 기둥 굵기 (YELL 2026-11-16: 조금 더 두껍게 — 배율 3에서 2 → 4px)
     public int CapR => Math.Max(3, 3 * K / 2);
 
     // 선수 크기 및 물리 상수
