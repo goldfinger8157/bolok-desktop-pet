@@ -1,10 +1,12 @@
 using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
 
 namespace Bolok;
 
 // 버그 떼 모듈 그림: 무기 일곱 자루(손에 든 그림·머리 위 그림)와 레벨 업 갈래 그림 셋. 글자 한 칸 = 색 하나 (. 은 투명).
 // 모두 오른쪽을 보는 그림이고 왼쪽은 뒤집어 쓴다 (돌리지 않는다: 작은 도트가 뭉개진다). 테두리는 펫과 같은 진한 갈색.
-// 배율마다 한 번만 만들어 둔다
+// 배율마다 한 번만 만들어 둔다.
+// 단계 표시(깃발·위 화살표)와 왕관 색 바꿈·엘리트 테두리도 여기서 만든다 (docs/swarm-levels.md 3·5장)
 static class SwarmArt
 {
     public static readonly Dictionary<char, Color> Colors = new()
@@ -154,7 +156,7 @@ static class SwarmArt
         return pair;
     }
 
-    static Stamp Make(string[] rows, int scale)
+    static Stamp Make(string[] rows, int scale, Func<char, Color>? tint = null)
     {
         int w = rows[0].Length, h = rows.Length;
         using var bmp = new Bitmap(w * scale, h * scale, PixelFormat.Format32bppArgb);
@@ -163,27 +165,123 @@ static class SwarmArt
                 for (int x = 0; x < w; x++)
                 {
                     if (rows[y][x] == '.') continue;
-                    using var b = new SolidBrush(Colors[rows[y][x]]);
+                    using var b = new SolidBrush(tint?.Invoke(rows[y][x]) ?? Colors[rows[y][x]]);
                     g.FillRectangle(b, x * scale, y * scale, scale, scale);
                 }
         return new Stamp(bmp);
     }
 
-    static readonly Dictionary<(int Kind, int Scale), Stamp> made = new();   // Kind: 0~6 손(오른쪽) · 10~16 손(왼쪽) · 20~26 머리 위 · 30~32 갈래
-    static Stamp Cached(int kind, int scale, Func<string[]> rows)
+    static readonly Dictionary<(int Kind, int Scale), Stamp> made = new();   // Kind: 0~6 손(오른쪽) · 10~16 손(왼쪽) · 20~26 머리 위 · 30~32 갈래 · 40 위 화살표 · 50~59 깃발 · 60~69 왕관 · 80~ 엘리트
+    // 이미 만든 그림은 바로 (프레임마다 부르는 곳에서 람다·새 객체를 안 만든다: 만드는 쪽은 따로 둔 메서드)
+    static Stamp? Peek(int kind, int scale) { lock (made) return made.TryGetValue((kind, scale), out var hit) ? hit : null; }
+    static Stamp Store(int kind, int scale, Stamp stamp) { lock (made) return made.TryGetValue((kind, scale), out var hit) ? hit : made[(kind, scale)] = stamp; }
+    static Stamp Cached(int kind, int scale, string[] rows) => Peek(kind, scale) ?? Store(kind, scale, Make(rows, scale));
+
+    // ── 단계 깃발·위 화살표 (깃발 색 = 등급. a 본색·h 밝은 쪽·k 어두운 쪽) ──
+    static readonly string[] FlagRows =
     {
-        lock (made) return made.TryGetValue((kind, scale), out var hit) ? hit : made[(kind, scale)] = Make(rows(), scale);
+        "oo........",
+        "oboooooo..",
+        "obhhhhhho.",
+        "obhaaaaaao",
+        "obaaaaaao.",
+        "obkkkkkko.",
+        "oboooooo..",
+        "ob........",
+        "ob........",
+        "oo........",
+    };
+    static readonly string[] ArrowRows =
+    {
+        "...o...",
+        "..oyo..",
+        ".oyyyo.",
+        "oyyyyyo",
+        "ooyyyoo",
+        "..oyo..",
+        "..oyo..",
+        "..ooo..",
+    };
+
+    // 등급: 1~2단계 동 · 3~4 은 · 5~6 금 · 7~9 보라 · 10 이상 무지개 (색이 천천히 돈다)
+    static readonly Color[] TierMain = { Color.FromArgb(0xC8, 0x7F, 0x3F), Color.FromArgb(0xC4, 0xCA, 0xD6), Color.FromArgb(0xFA, 0xB9, 0x28), Color.FromArgb(0xA8, 0x5C, 0xE0) };
+    static readonly Color[] Rainbow = { Color.FromArgb(0xE8, 0x48, 0x5C), Color.FromArgb(0xFF, 0xAA, 0x32), Color.FromArgb(0xF8, 0xD8, 0x3C), Color.FromArgb(0x5C, 0xCB, 0x5C), Color.FromArgb(0x50, 0xD6, 0xE2), Color.FromArgb(0xA8, 0x5C, 0xE0) };
+    public const int Tiers = 5, RainbowTier = 4;
+    public static int Tier(int stage) => stage >= 10 ? RainbowTier : stage >= 7 ? 3 : stage >= 5 ? 2 : stage >= 3 ? 1 : 0;
+    // 등급과 무지개 차례(0.5초마다 한 칸)로 고른 색 (0~9: 동·은·금·보라·무지개 여섯)
+    static int ColorKey(int tier, int phase) => tier < RainbowTier ? tier : RainbowTier + Math.Abs(phase) % 6;
+    static Color KeyColor(int key) => key < RainbowTier ? TierMain[key] : Rainbow[key - RainbowTier];
+    static Color Mix(Color a, Color b, double t) => Color.FromArgb((int)(a.R + (b.R - a.R) * t), (int)(a.G + (b.G - a.G) * t), (int)(a.B + (b.B - a.B) * t));
+
+    public static Stamp Flag(int tier, int phase, int scale)
+    {
+        int key = ColorKey(tier, phase);
+        return Peek(50 + key, scale) ?? Store(50 + key, scale, BuildFlag(key, scale));
     }
 
-    public static Stamp Hand(Arm.Id id, int scale, bool left) => Cached((int)id + (left ? 10 : 0), scale, () => left ? Flip(Hands[(int)id]) : Hands[(int)id]);
-    public static Stamp Icon(Arm.Id id, int scale) => Cached(20 + (int)id, scale, () => IconRows(id));
-    public static Stamp UpIcon(Swarm.Up up, int scale) => Cached(30 + (int)up, scale, () => Ups[(int)up]);
+    static Stamp BuildFlag(int key, int scale)
+    {
+        var main = KeyColor(key);
+        return Make(FlagRows, scale, ch => ch switch { 'a' => main, 'h' => Mix(main, Color.White, .45), 'k' => Mix(main, Color.Black, .35), _ => Colors[ch] });
+    }
+
+    public static Stamp Arrow(int scale) => Cached(40, scale, ArrowRows);
+
+    // 왕관 색 바꿈: 왕관 그림(금색 한 가지 + 갈색 선)의 금색을 등급 색으로
+    const uint CrownGold = 0xFFFAB928;
+    public static Stamp Crown(Stamp src, int tier, int phase, int scale)
+    {
+        int key = ColorKey(tier, phase);
+        return Peek(60 + key, scale) ?? Store(60 + key, scale, BuildCrown(src, key));
+    }
+
+    static Stamp BuildCrown(Stamp src, int key)
+    {
+        uint to = (uint)KeyColor(key).ToArgb();
+        return Remake(src, 0, p => p == CrownGold ? to : p, 0);
+    }
+
+    // 엘리트: 벌레 그림 바깥으로 금색 테두리를 pad(px) 두른 그림. key 는 벌레 종류·걸음 (한 배율에 한 번만 만든다)
+    public static Stamp Elite(Stamp src, int key, int pad) => Peek(80 + key, pad) ?? Store(80 + key, pad, Remake(src, pad, null, (uint)Color.FromArgb(0xFA, 0xB9, 0x28).ToArgb()));
+
+    // 그림 한 장을 가운데 맞춰 다시 만든다: map 이 색을 바꾸고, edge 가 0 이 아니면 그림 둘레 pad px 에 그 색 테두리를 두른다 (그림이 있는 자리는 그대로)
+    static Stamp Remake(Stamp src, int pad, Func<uint, uint>? map, uint edge)
+    {
+        var b = src.Bmp;
+        int w = b.Width, h = b.Height, half = Math.Max(Math.Max(-src.Dx, src.Dx + w), Math.Max(-src.Dy, src.Dy + h)) + pad, size = 2 * half, ox = half + src.Dx, oy = half + src.Dy;
+        var from = new int[w * h];
+        var data = b.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+        try { for (int y = 0; y < h; y++) Marshal.Copy(data.Scan0 + y * data.Stride, from, y * w, w); }
+        finally { b.UnlockBits(data); }
+        var to = new int[size * size];
+        if (edge != 0 && pad > 0)
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                    if ((uint)from[y * w + x] >> 24 != 0)
+                        for (int dy = -pad; dy <= pad; dy++)
+                            for (int dx = -pad; dx <= pad; dx++) to[(oy + y + dy) * size + ox + x + dx] = (int)edge;
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                uint p = (uint)from[y * w + x];
+                if (p >> 24 != 0) to[(oy + y) * size + ox + x] = (int)(map?.Invoke(p) ?? p);
+            }
+        using var cell = new Bitmap(size, size, PixelFormat.Format32bppArgb);
+        var cd = cell.LockBits(new Rectangle(0, 0, size, size), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+        try { for (int y = 0; y < size; y++) Marshal.Copy(to, y * size, cd.Scan0 + y * cd.Stride, size); }
+        finally { cell.UnlockBits(cd); }
+        return new Stamp(cell);
+    }
+
+    public static Stamp Hand(Arm.Id id, int scale, bool left) => Peek((int)id + (left ? 10 : 0), scale) ?? Store((int)id + (left ? 10 : 0), scale, Make(left ? Flip(Hands[(int)id]) : Hands[(int)id], scale));
+    public static Stamp Icon(Arm.Id id, int scale) => Peek(20 + (int)id, scale) ?? Store(20 + (int)id, scale, Make(IconRows(id), scale));
+    public static Stamp UpIcon(Swarm.Up up, int scale) => Cached(30 + (int)up, scale, Ups[(int)up]);
 
     // 자가 검사: 줄 길이가 같고 색 글자가 팔레트 안인지
     public static string? Broken()
     {
-        foreach (var (rows, i) in Hands.Concat(Ups).Select((r, i) => (r, i)))
-            if (rows.Any(r => r.Length != rows[0].Length || r.Any(ch => ch != '.' && !Colors.ContainsKey(ch)))) return $"그림 {i}";
+        foreach (var (rows, i) in Hands.Concat(Ups).Concat(new[] { FlagRows, ArrowRows }).Select((r, i) => (r, i)))
+            if (rows.Any(r => r.Length != rows[0].Length || r.Any(ch => ch != '.' && !Colors.ContainsKey(ch) && !(rows == FlagRows && ch is 'a' or 'h' or 'k')))) return $"그림 {i}";
         return Hands.Length == Arm.Kinds && Ups.Length == 3 ? null : "그림 수";
     }
 

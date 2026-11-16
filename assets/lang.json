@@ -1931,17 +1931,17 @@
   "pt": "Enxame de bichos",
   "ru": "Рой жуков"
  },
- "game.swarm_val": {
-  "en": "Best {0} · {1} bugs",
-  "ko": "최고 {0} · {1}마리",
-  "ja": "ベスト {0} · {1}匹",
-  "zh-Hans": "最高 {0} · {1} 只",
-  "zh-Hant": "最高 {0} · {1} 隻",
-  "es": "Récord {0} · {1} bichos",
-  "de": "Bestzeit {0} · {1} Käfer",
-  "fr": "Record {0} · {1} bestioles",
-  "pt": "Recorde {0} · {1} bichos",
-  "ru": "Рекорд {0} · жуков: {1}"
+ "game.swarm_val2": {
+  "en": "Stage {2} · Best {0} · {1} bugs",
+  "ko": "{2}단계 · 최고 {0} · {1}마리",
+  "ja": "ステージ{2} · ベスト {0} · {1}匹",
+  "zh-Hans": "第 {2} 关 · 最高 {0} · {1} 只",
+  "zh-Hant": "第 {2} 關 · 最高 {0} · {1} 隻",
+  "es": "Nivel {2} · Récord {0} · {1} bichos",
+  "de": "Stufe {2} · Bestzeit {0} · {1} Käfer",
+  "fr": "Niveau {2} · Record {0} · {1} bestioles",
+  "pt": "Fase {2} · Recorde {0} · {1} bichos",
+  "ru": "Этап {2} · Рекорд {0} · жуков: {1}"
  },
  "game.run": {
   "en": "Running",
