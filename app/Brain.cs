@@ -701,7 +701,7 @@ public sealed class Brain
         {
             double m = Math.Min(minutes, .5);
             minutes -= m;
-            OnEvents(P.Tick(K, m, afk));
+            OnEvents(P.Tick(K, m, afk, awake: Mode == Mode.Puppet));   // 게임 중에는 잠들지 않는다 (YELL 2026-11-17: 게임 중엔 깬 얼굴)
         }
     }
 

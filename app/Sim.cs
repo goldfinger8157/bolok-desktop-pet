@@ -390,6 +390,17 @@ static class Sim
         Expect(HideSpots.FindPerch(new[] { new Win(c, area, false), new Win(a, mid, false) }, areas, cell, rng).Count == 0, "덮인 창에는 안 올라간다");
         Expect(HideSpots.FindPerch(new[] { new Win(a, new Rectangle(0, 0, 900, 500), false) }, areas, cell, rng).Count == 0, "화면 맨 위 창에는 못 올라간다");
 
+        // 게임 중(Puppet)에는 기운이 0 이어도·자리 비움이어도 잠들지 않는다 (깬 얼굴, zzz 없음). 게임이 끝나면 잠든다 (YELL 2026-11-17)
+        {
+            var g = new Brain(new Pet { Stage = "child", Full = 90, Mood = 90, Energy = 0 }, k, area) { X = 600, Y = 900 };
+            g.StartPuppet();
+            for (int i = 0; i < 600; i++) g.Update(1 / 60.0, i > 300);
+            Expect(!g.P.Asleep && g.Mode == Mode.Puppet && g.EmoteName != "zzz", "게임 중에는 기운이 0 이어도 잠들지 않는다");
+            g.EndPuppet(true, "test");
+            for (int i = 0; i < 60; i++) g.Update(1 / 60.0, false);
+            Expect(g.P.Asleep, "게임이 끝나면 기운 0 이라 잠든다");
+        }
+
         Brain Sleeper(Func<Rectangle> rect, Func<bool>? alive = null)
         {
             var b = new Brain(new Pet { Stage = "child", Full = 90, Mood = 90, Energy = 60 }, k, area)

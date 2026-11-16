@@ -147,9 +147,10 @@ public sealed class Pet
         return Adults[best];
     }
 
-    // m 활동 분이 지났다. afk 면 자리 비움. 일어난 일을 돌려준다
-    public List<string> Tick(Tuning k, double m, bool afk = false)
+    // m 활동 분이 지났다. afk 면 자리 비움. awake(게임 중)면 기운이 0 이어도·자리 비움이어도 잠들지 않는다 (게임이 끝나면 다음 틱에 잠든다). 일어난 일을 돌려준다
+    public List<string> Tick(Tuning k, double m, bool afk = false, bool awake = false)
     {
+        if (awake) afk = false;
         var ev = new List<string>();
         // 먹이 바구니: 일정 시간마다 하나씩 찬다 (알·잠·자리 비움에도 시간은 간다)
         if (Food >= k.FoodMax) FoodIn = 0;
@@ -174,7 +175,7 @@ public sealed class Pet
         Full = Clamp(Full - k.FullPerH * m / 60);
         Mood = Clamp(Mood - k.MoodPerH * m / 60);
         Energy = Clamp(Energy - k.EnergyPerH * m / 60);
-        if (Energy <= 0) { Asleep = true; ev.Add("sleep"); }
+        if (Energy <= 0 && !awake) { Asleep = true; ev.Add("sleep"); }
 
         ZeroFull = Full > 0 ? 0 : ZeroFull + m;
         if (ZeroFull >= k.GraceMin) { Miss++; ZeroFull -= k.MissEveryMin; ev.Add("miss"); }
