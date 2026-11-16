@@ -142,6 +142,7 @@ sealed class MinigunGame : IGameMode
     readonly Rectangle[] muzzleBox = new Rectangle[2];
     int rocketReach;
     Pen? tracer;
+    static int TracerW(int k) => Math.Max(3, (int)Math.Round(k * 1.5)); // 예광탄 굵기 (YELL 2026-11-16: 조금 더 두껍게 — 전엔 배율만큼, 배율 3에서 3px → 5px)
     static readonly SolidBrush Brass = new(Color.FromArgb(214, 170, 60));
     static readonly SolidBrush ChipLight = new(Color.FromArgb(238, 240, 246)), ChipDark = new(Color.FromArgb(150, 154, 166));
     static readonly SolidBrush Glass = new(Color.FromArgb(232, 236, 242)), GlassBar = new(Color.FromArgb(96, 124, 168)); // 장면 그림용 가짜 창
@@ -164,7 +165,7 @@ sealed class MinigunGame : IGameMode
         }
         rocketReach = (int)Math.Ceiling(Math.Sqrt(rocket.Bmp.Width * rocket.Bmp.Width + rocket.Bmp.Height * rocket.Bmp.Height) / 2) + 6 * gk;
         tracer?.Dispose();
-        tracer = new Pen(Pal.Shot.Color, Math.Max(2, k));
+        tracer = new Pen(Pal.Shot.Color, TracerW(k));
     }
 
     // 총 그림에서 가장 오른쪽 열이 총구 끝 (칸 안 자리)
@@ -252,7 +253,7 @@ sealed class MinigunGame : IGameMode
         frame.Clear();
         tracked = true;
         foreach (var r in mg.Carved) frame.Add(Rectangle.Inflate(r, 1, 1));
-        int t = Math.Max(2, k) + 1;
+        int t = TracerW(k) + 1;
         for (int i = 0; i < mg.Bullets.Count; i++)
         {
             ref var b = ref mg.Bullets[i];
