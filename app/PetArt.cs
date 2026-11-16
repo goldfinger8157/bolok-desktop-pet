@@ -401,8 +401,8 @@ public sealed class PetArt
         }
         else if (ears == "side")
             foreach (int s in Sides) g.Ell(cx + s * (b.Hrx + .6), b.Hy - b.Hry * .4, ear * 1.1, ear * .55, c["fur"]);
-        else if (ears == "long") // 알파카: 길쭉하게 선 귀
-            foreach (int s in Sides) g.Ell(cx + s * b.Hrx * .48, b.Hy - b.Hry - 1.5, 1.7, ear * 1.3, c["fur"]);
+        else if (ears == "long") // 알파카: 길쭉하게 선 귀 (정수리 털뭉치 바깥으로)
+            foreach (int s in Sides) g.Ell(cx + s * b.Hrx * .6, b.Hy - b.Hry - 1.5, 2.0, ear * 1.3, c["fur"]);
         else if (ears == "fold") // 스코티시폴드: 앞으로 접혀 머리에 납작하게 붙은 작은 귀
             foreach (var x in earX) g.Ell(x, b.Hy - b.Hry * .9, ear * 1.05, ear * .62, S.Has("ear_fill") ? Col(S, "ear_fill") : c["fur"]); // 퍼그는 까만 귀
         if (S.Has("ear_out") && roundEars) // 판다: 귀 바깥이 까맣다
@@ -474,7 +474,7 @@ public sealed class PetArt
         if (roundEars)
             foreach (var x in earX) { double r = ear * RoundK(true); g.Ell(x, b.Hy - b.Hry * (ears == "big" ? .7 : .86), r, r, c["ear"]); }
         else if (ears == "long")
-            foreach (int s in Sides) g.Ell(cx + s * b.Hrx * .48, b.Hy - b.Hry - 1.5, .8, ear * .9, c["ear"], true);
+            foreach (int s in Sides) g.Ell(cx + s * b.Hrx * .6, b.Hy - b.Hry - 1.5, .95, ear * .9, c["ear"], true);
         else if (ears is "pointy" or "fox")
             foreach (int s in Sides)
             {
@@ -514,8 +514,14 @@ public sealed class PetArt
             g.Ell(fx + .5, my - .4, mw, mh, c["cream"], true);
             foreach (int s in Sides) g.Ell(fx + .5 + s * mw * .5, my + mh * .55, mw * .55, mh * .6, c["cream"], true);
         }
-        if (face == "pale") g.Ell(fx + .5, b.Hy - b.Hry * .08, b.Hrx * .72, b.Hry * .56, c["cream"], true); // 수달: 얼굴이 밝다
-        else if (face is not ("bigbelly" or "wool" or "frog" or "plain")) g.Ell(fx + .5, my, b.Hrx * .36, b.Hry * .26, c["cream"], true); // plain: 주둥이 없이 (까망 악마)
+        if (face == "pale") // 수달: 코 양옆 흰 볼수염 둘레와 크림 주둥이
+        {
+            uint pad = Mix(c["cream"], c["white"], .5);
+            g.Ell(fx + .5, my + .5, b.Hrx * .46, b.Hry * .28, c["cream"], true);
+            foreach (int s in Sides) g.Ell(fx + .5 + s * b.Hrx * .28, my - .2, b.Hrx * .32, b.Hry * .24, pad, true);
+        }
+        else if (face is not ("bigbelly" or "wool" or "frog" or "plain") && !(face == "snout" && (S.S("nose", "") == "nostrils" || S.T("teeth"))))
+            g.Ell(fx + .5, my, b.Hrx * .36, b.Hry * .26, c["cream"], true); // plain·드래곤·비버는 주둥이 위에 크림 덧칠 안 함 (카피바라는 그대로, YELL 2026-11-16)
         double sk = Math.Min(1, F.N("rx") / 10.5); // 아기는 얼굴이 작아서 무늬도 작게
         Marks(g, S, c, b, F.N("eye") * S.N("eye_k", 1), fx, ey, my, gap, true, sk);
         foreach (int s in Sides)
@@ -607,17 +613,28 @@ public sealed class PetArt
                 g.Pix(c["white"], (fx + 1, my + 3));
                 g.Pix(c["line"], (fx + 1, my + 4), (fx, my + 3), (fx + 2, my + 3));
             }
-            else Mouth(g, mk, fx, my, S.Has("mouth_in") ? new Dictionary<string, uint>(c) { ["red"] = Col(S, "mouth_in") } : c, b.HeadHeavy);
+            else Mouth(g, mk, fx, nose == "snoot" && mk == "smile" ? my + 1 : my, S.Has("mouth_in") ? new Dictionary<string, uint>(c) { ["red"] = Col(S, "mouth_in") } : c, b.HeadHeavy);
             if (nose == "snoot") Nose(g, nose, fx, my, c, b.HeadHeavy); // 돼지 코는 입보다 앞에 (입을 벌려도 코가 보이게)
             if (S.T("tongue") && mk == "w") // 시바: 살짝 내민 분홍 혀
             {
                 g.Pix(Rgb(236, 112, 128), (fx, my + 1), (fx + 1, my + 1), (fx, my + 2), (fx + 1, my + 2));
                 g.Pix(c["line"], (fx - 1, my + 2), (fx + 2, my + 2), (fx, my + 3), (fx + 1, my + 3), (fx + 2, my + 1));
             }
-            if (S.T("teeth") && mk is "w" or "chew" or "flat") // 비버 앞니
+            if (S.T("teeth") && mk is "w" or "chew" or "flat") // 비버 앞니 (넓적한 두 개)
             {
-                g.Pix(c["line"], (fx - 1, my + 1), (fx + 2, my + 1), (fx - 1, my + 2), (fx + 2, my + 2), (fx, my + 3), (fx + 1, my + 3));
-                g.Pix(S.S("teeth", "").StartsWith('#') ? Col(S, "teeth") : c["white"], (fx, my + 1), (fx + 1, my + 1), (fx, my + 2), (fx + 1, my + 2)); // 비버 앞니는 주황
+                uint tc = S.S("teeth", "").StartsWith('#') ? Col(S, "teeth") : c["white"];
+                if (sk >= .85)
+                {
+                    uint hi = Mix(tc, c["white"], .45);
+                    g.Pix(c["line"], (fx - 2, my + 1), (fx + 3, my + 1), (fx - 2, my + 2), (fx + 3, my + 2), (fx - 1, my + 3), (fx, my + 3), (fx + 1, my + 3), (fx + 2, my + 3));
+                    g.Pix(tc, (fx - 1, my + 1), (fx, my + 1), (fx + 1, my + 1), (fx + 2, my + 1), (fx - 1, my + 2), (fx, my + 2), (fx + 1, my + 2), (fx + 2, my + 2));
+                    g.Pix(hi, (fx - 1, my + 1), (fx + 1, my + 1));
+                }
+                else
+                {
+                    g.Pix(c["line"], (fx - 1, my + 1), (fx + 2, my + 1), (fx - 1, my + 2), (fx + 2, my + 2), (fx, my + 3), (fx + 1, my + 3));
+                    g.Pix(tc, (fx, my + 1), (fx + 1, my + 1), (fx, my + 2), (fx + 1, my + 2));
+                }
             }
         }
 
@@ -806,8 +823,9 @@ public sealed class PetArt
             }
             case "flat": // 비버: 옆으로 비죽 나온 넓적한 꼬리, 비늘 무늬
             {
-                uint paddle = Rgb(110, 80, 60), scale = Rgb(84, 60, 44);
-                double tx = cx + brx * .95 + 1.5 * fk, ty = by + bry * .5, w = 3.6 * soft, h = Math.Max(2.2, bry * .55);
+                uint paddle = Rgb(106, 74, 52), scale = Rgb(76, 50, 34);
+                double w = 4.5 * soft, h = Math.Max(2.2, bry * .48);
+                double tx = Math.Min(cx + brx * .92 + 2.2 * fk, 38.5 - w), ty = by + bry * .52;
                 g.Ell(tx, ty, w, h, paddle);
                 for (int y = R(ty - h) + 1; y < R(ty + h); y += 2)
                     for (int x = R(tx - w) + 1 + (y / 2 % 2); x < R(tx + w); x += 2) g.Put(x, y, scale, true);
@@ -837,9 +855,9 @@ public sealed class PetArt
                     g.Ell(x, y, r, r, shade);
                 }
                 break;
-            case "taper": // 수달: 굵게 시작해서 가늘어지는 꼬리
-                for (int i = 0; i < 6; i++)
-                    g.Ell(cx + brx * .8 + i * 1.3 * fk, by + bry * .62 - i * .45 * fk, (2.7 - i * .32) * soft, (2.3 - i * .28) * soft, shade);
+            case "taper": // 수달: 굵게 시작해서 가늘어지는 긴 꼬리
+                for (int i = 0; i < 8; i++)
+                    g.Ell(Math.Min(cx + brx * .75 + i * 1.15 * fk, 37.5), by + bry * .66 - i * .48 * fk, (2.8 - i * .26) * soft, (2.4 - i * .22) * soft, shade);
                 break;
             case "dragon":
                 g.Poly(new[] { (cx + brx * .5, by + bry * .3), (cx + brx * .6, by + bry * .95), (cx + brx + 6 * fk, by + bry * .1) }, shade);
@@ -916,7 +934,7 @@ public sealed class PetArt
                 }
             }
         if (horns == "unicorn") g.Poly(new[] { (cx - 1.6, hy - hry * .82), (cx + 2.6, hy - hry * .82), (cx + 1, hy - hry - 5 * fk) }, Rgb(240, 206, 110));
-        else if (horns == "one") g.Poly(new[] { (cx - 1.4, hy - hry * .84), (cx + 2.4, hy - hry * .84), (cx + .5, hy - hry - 4 * fk) }, Rgb(246, 236, 210)); // 도깨비: 가운데 뿔 하나
+        else if (horns == "one") g.Poly(new[] { (cx - 1.7, hy - hry * .84), (cx + 2.7, hy - hry * .84), (cx + .5, hy - hry - 6.2 * fk) }, Rgb(246, 236, 210)); // 도깨비: 가운데 뿔 하나 (머리털 위로 드러나게)
         string wings = S.S("wings", "");
         foreach (int s in Sides)
             switch (wings)
@@ -1047,8 +1065,8 @@ public sealed class PetArt
                             }
                         break;
                     case "points": // 렉돌: 눈 둘레가 짙은 포인트, 코에서 이마까지는 흰 역V (바이컬러)
-                        g.Ell(fx + .5, ey + .3, gap + 2.6 * sk, 3.6 * sk, Mix(Col(S, "point"), c["fur"], .3), true);
-                        g.Poly(new[] { (fx + .5 - 3 * sk, my + 1.0), (fx + .5 + 3 * sk, my + 1.0), (fx + .5, ey - 1.5 * sk) }, cream, true);
+                        g.Ell(fx + .5, ey + .3, gap + 2.6 * sk, 3.2 * sk, Mix(Col(S, "point"), c["fur"], .3), true);
+                        g.Poly(new[] { (fx + .5 - 3 * sk, my + 1.0), (fx + .5 + 3 * sk, my + 1.0), (fx + .5, ey - 2.8 * sk) }, cream, true);
                         break;
                     case "pugmask": // 퍼그: 주둥이와 눈 둘레가 까만 가면
                     {
@@ -1112,10 +1130,10 @@ public sealed class PetArt
             case "nostrils": g.Pix(c["line"], (fx - 1, my - 2), (fx + 2, my - 2), (fx - 1, my - 1), (fx + 2, my - 1)); break; // 카피바라
             case "snoot": // 돼지: 얼굴 가운데 크게 튀어나온 동그란 코 (테두리·밝은 코판·콧구멍 둘)
             {
-                double sw = compact ? 3.1 : 3.9, sh = compact ? 2.2 : 2.7;
-                g.Ell(fx + .5, my - 1.1, sw, sh, c["line"]);
-                g.Ell(fx + .5, my - 1.1, sw - .9, sh - .8, c.TryGetValue("snout", out var disc) ? disc : c["ear"]);
-                g.Pix(Mix(c["line"], c["ear"], .25), (fx - 1, my - 2), (fx - 1, my - 1), (fx + 2, my - 2), (fx + 2, my - 1));
+                double sw = compact ? 3.1 : 3.9, sh = compact ? 2.0 : 2.5, sy = my - 1.7;
+                g.Ell(fx + .5, sy, sw, sh, c["line"]);
+                g.Ell(fx + .5, sy, sw - .9, sh - .8, c.TryGetValue("snout", out var disc) ? disc : c["ear"]);
+                g.Pix(Mix(c["line"], c["ear"], .25), (fx - 1, sy - 1), (fx - 1, sy), (fx + 2, sy - 1), (fx + 2, sy));
                 break;
             }
             case "dog": // 강아지: 크고 까만 코에 반짝임
