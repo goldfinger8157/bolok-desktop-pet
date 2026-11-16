@@ -603,6 +603,7 @@ public sealed class PetForm : Form, IGameHost
             "egg" => (k.EggMin - p.AgeMin, p.AgeMin / k.EggMin, "hatch"),
             "baby" => (k.BabyMin - p.AgeMin, (p.AgeMin - k.EggMin) / (k.BabyMin - k.EggMin), "child"),
             "child" => (k.ChildMin - p.AgeMin, (p.AgeMin - k.BabyMin) / (k.ChildMin - k.BabyMin), "adult"),
+            _ when p.Stage.StartsWith("adult_", StringComparison.Ordinal) => (k.FinalMin - p.AdultMin, p.AdultMin / k.FinalMin, "final"), // 반짝 최종까지 (기분이 좋아야)
             _ => ((double?)null, 1.0, (string?)null),
         };
         return new PetStatus(species, p.Stage, p.AgeMin, p.Full, p.Mood, p.Energy, p.Asleep, p.Need(k), p.Miss, Math.Max(p.Bites, b.Holes.Count),
@@ -1075,7 +1076,7 @@ public sealed class PetForm : Form, IGameHost
             BookChanged();
             Save();
         }
-        else if (lastStage is "baby" or "child" && b.P.Stage != lastStage) TakePhoto(b.P.Stage); // 어린이가 되거나 어른이 됐다
+        else if ((lastStage is "baby" or "child" || lastStage.StartsWith("adult_", StringComparison.Ordinal)) && b.P.Stage != lastStage) TakePhoto(b.P.Stage); // 어린이·어른·반짝 최종이 됐다
         lastStage = b.P.Stage;
     }
 

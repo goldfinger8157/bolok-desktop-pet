@@ -21,6 +21,7 @@ public static class Clicks
 
     public static string Pick(string zone, int combo, string stage, double mood, string? last, Random rng)
     {
+        stage = Pet.Base(stage); // 최종 모습도 같은 어른 성격
         bool grumpy = stage == "adult_grumpy";
         var w = new Dictionary<string, double>();
         if (combo >= (grumpy ? 5 : 9))

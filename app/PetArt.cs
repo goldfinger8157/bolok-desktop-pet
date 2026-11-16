@@ -535,6 +535,7 @@ public sealed class PetArt
         }
 
         // 3) 윤곽선 → 얼굴
+        if (F.T("tone")) FinalFurTone(g, b, body, pear, fx, c);
         g.Outline(c["line"]);
         if (S.S("tail", "") == "wrap") // 몽마 꼬리: 테두리 없는 가는 한 칸 선 (몸에서 나와 고리 한 번 → 끝 세모까지)
         {
@@ -573,7 +574,8 @@ public sealed class PetArt
         var eyeArt = S.Has("eye_art") && sk >= .85 ? S.List("eye_art").ToList() : null; // 손그림 눈 (아기는 동그란 기본 눈)
         double eyeBase = F.N("eye"), eyeK = S.N("eye_k", 1);
         double eyeR = eyeBase >= 2.9 && eyeK > 1 ? Math.Min(3.15, eyeBase * (1 + (eyeK - 1) * .35)) : eyeBase * eyeK;
-        Eyes(g, eyeKind, fx, ey, gap, eyeR, c, F.T("lash"), F.T("lid") || S.T("sleepy"), eyeArt, eyeArt != null ? StampPalette(S, c) : null); // 카피바라는 늘 느긋하게 반쯤 감은 눈
+        uint? irisCol = S.Has("iris") ? Col(S, "iris") : null;
+        Eyes(g, eyeKind, fx, ey, gap, eyeR, c, F.T("lash"), F.T("lid") || S.T("sleepy"), eyeArt, eyeArt != null ? StampPalette(S, c) : null, F.T("eye_spark"), irisCol); // 카피바라는 늘 느긋하게 반쯤 감은 눈
         if (F.T("brow")) // 심술이: 늘 찌푸린 눈썹 (몸 밖으로는 안 나가게: 개구리처럼 눈이 머리 위에 있으면 더듬이처럼 보인다)
             foreach (int s in Sides)
             {
@@ -707,6 +709,7 @@ public sealed class PetArt
             foreach (var (dx, dy) in new[] { (-1, 0), (1, 0), (0, -1), (0, 1) }) g.Put(x + dx, y + dy, Rgb(255, 120, 170));
             g.Put(x, y, Rgb(255, 236, 110));
         }
+        if (F.Has("mark_final")) FinalMark(g, S, F.S("mark_final", ""), c, b, fx, ey, gap, lying, sqk, f.T("hold"), f.T("belly"));
         for (int i = 0; i < (int)f.N("rot"); i++) g.Rotate(); // 90도씩 돌리기
         return g;
     }
@@ -1146,8 +1149,14 @@ public sealed class PetArt
     }
 
     static void Eyes(Canvas g, string kind, int fx, int ey, int gap, double r, Dictionary<string, uint> c, bool lash = false, bool lid = false,
-        IReadOnlyList<string>? art = null, Dictionary<char, uint>? pal = null)
+        IReadOnlyList<string>? art = null, Dictionary<char, uint>? pal = null, bool eyeSpark = false, uint? iris = null)
     {
+        bool IsEye(int px, int py)
+        {
+            if (px < 0 || px >= Cell || py < 0 || py >= Cell) return false;
+            uint p = g.P[py * Cell + px];
+            return p == c["eye"] || (iris.HasValue && p == iris.Value) || (pal != null && (p == pal['e'] || p == pal['i']));
+        }
         foreach (var (x, s) in new[] { (fx - gap, -1), (fx + gap, 1) }) // s: 얼굴 바깥쪽 방향
         {
             switch (kind)
@@ -1180,6 +1189,24 @@ public sealed class PetArt
                         }
                         for (int i = -1; i <= 2; i++) g.Put(x + i, ey - 1, c["line"], true);
                         g.Put(x, ey, c["white"]);
+                    }
+                    if (eyeSpark && kind == "open") // 최종: 눈에 반짝이 한 칸 더
+                    {
+                        int whites = 0;
+                        for (int dy = -2; dy <= 2; dy++)
+                            for (int dx = -2; dx <= 3; dx++)
+                                if (0 <= x + dx && x + dx < Cell && 0 <= ey + dy && ey + dy < Cell && g.P[(ey + dy) * Cell + x + dx] == c["white"]) whites++;
+                        var candidates = lid
+                            ? new[] { (x + 1, ey + 1), (x + 1, ey), (x - 1, ey) }
+                            : new[] { (x + 1, ey + 1), (x - 1, ey), (x, ey + 1), (x + 1, ey) };
+                        foreach (var (sx, sy) in candidates)
+                        {
+                            if (!IsEye(sx, sy)) continue;
+                            // 이미 반짝임이 2칸 이상 있으면(햄스터·큰 원형 눈) 흰빛이 번지지 않게 부드러운 반사광으로
+                            uint glint = whites >= 2 && !lid ? Mix(c["white"], iris ?? c["blue"], .4) : c["white"];
+                            g.Put(sx, sy, glint);
+                            break;
+                        }
                     }
                     if (kind == "angry") // 안쪽이 내려간 눈꺼풀로 흘겨본다
                         foreach (var (i, j) in new[] { (-2, -1), (-1, -2), (0, -2), (1, -3), (2, -3) })
@@ -1278,6 +1305,62 @@ public sealed class PetArt
             for (int i = -2; i < 8; i++) foreach (int dy in new[] { 0, 1 }) g.Put(hx + i, hy + 1 + FloorDiv(i, 2) + dy, wood);
             Head(hx + 7, hy + 1, 5, 8);
             g.Pix(Rgb(250, 185, 40), (hx + 13, hy + 10), (hx + 14, hy + 7), (hx + 10, hy + 11), (hx + 15, hy + 11));
+        }
+    }
+
+    static void FinalFurTone(Canvas g, BodyBox b, string body, bool pear, int fx, Dictionary<string, uint> c)
+    {
+        uint fur = c["fur"], mid = Mix(fur, c["shade"], .45), hi = Mix(fur, c["white"], .24);
+        bool Inside(double x, double y, double cx, double cy, double irx, double iry)
+        {
+            if (irx <= 0 || iry <= 0) return false;
+            double a = (x + .5 - cx) / irx, bb = (y + .5 - cy) / iry;
+            return body == "box" ? Math.Pow(Math.Abs(a), 3) + Math.Pow(Math.Abs(bb), 3) < 1 : a * a + bb * bb < 1;
+        }
+        double cutY = b.Cy - b.Ry * .08, irx = b.Hrx - 1.7, iry = b.Hry - 1.2;
+        for (int y = 0; y < Cell; y++)
+            for (int x = 0; x < Cell; x++)
+            {
+                if (g.P[y * Cell + x] != fur || y < cutY) continue;
+                bool inMain = Inside(x, y, b.Cx, b.Hy - 1.5, irx, iry);
+                bool inPear = pear && Inside(x, y, b.Cx, b.Cy + b.Ry * .3 - 1.5, b.Rx * 1.08 - 1.9, b.Ry * .72 - 1.4);
+                if (!inMain && !inPear) g.P[y * Cell + x] = mid;
+            }
+        double hcx = fx - b.Hrx * .22, hcy = b.Hy - b.Hry * .66, hrx = b.Hrx * .28, hry = b.Hry * .12;
+        for (int y = Math.Max(0, (int)(hcy - hry) - 1); y < Math.Min(Cell, (int)(hcy + hry) + 2); y++)
+            for (int x = Math.Max(0, (int)(hcx - hrx) - 1); x < Math.Min(Cell, (int)(hcx + hrx) + 2); x++)
+            {
+                if (g.P[y * Cell + x] != fur) continue;
+                double a = (x + .5 - hcx) / hrx, bb = (y + .5 - hcy) / hry;
+                if (a * a + bb * bb < 1) g.P[y * Cell + x] = hi;
+            }
+    }
+
+    static void FinalMark(Canvas g, Bag S, string kind, Dictionary<string, uint> c, BodyBox b, int fx, int ey, int gap, bool lying, double sqk, bool hasHold, bool hasBelly)
+    {
+        if (lying || sqk != 0) return;
+        switch (kind)
+        {
+            case "heart_cheek":
+            {
+                int x0 = fx + gap + 1, y0 = R(b.Hy + b.Hry * .12) - 1;
+                uint col = Rgb(244, 96, 146);
+                string[] rows = { "#.#", "###", ".#." };
+                for (int r = 0; r < rows.Length; r++)
+                    for (int k = 0; k < rows[r].Length; k++)
+                        if (rows[r][k] == '#') g.Put(x0 + k, y0 + r, col, true);
+                break;
+            }
+            case "star_brow":
+            {
+                int sx = fx, sy = S.S("face", "") == "frog" ? ey : Math.Max(R(b.Hy - b.Hry + 2.5), ey - 7);
+                uint under = g.P[Math.Clamp(sy, 0, Cell - 1) * Cell + Math.Clamp(sx, 0, Cell - 1)];
+                int luma = (int)((under >> 16 & 255) + (under >> 8 & 255) + (under & 255));
+                uint tip = luma > 450 ? Rgb(208, 126, 26) : Rgb(234, 174, 54), mid = Rgb(255, 244, 168);
+                foreach (var (dx, dy) in new[] { (-1, 0), (1, 0), (0, -1), (0, 1) }) g.Put(sx + dx, sy + dy, tip, true);
+                g.Put(sx, sy, mid, true);
+                break;
+            }
         }
     }
 

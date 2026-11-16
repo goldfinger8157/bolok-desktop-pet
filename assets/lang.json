@@ -731,6 +731,54 @@
   "pt": "Travesso",
   "ru": "Озорник"
  },
+ "stage.final_chubby": {
+  "en": "Shiny Chubby",
+  "ko": "반짝 통통이",
+  "ja": "キラキラぽっちゃり",
+  "zh-Hans": "闪亮胖嘟嘟",
+  "zh-Hant": "閃亮胖嘟嘟",
+  "es": "Regordete brillante",
+  "de": "Glitzer-Pummelchen",
+  "fr": "Joufflu brillant",
+  "pt": "Fofinho brilhante",
+  "ru": "Сияющий Пухляш"
+ },
+ "stage.final_sweet": {
+  "en": "Shiny Sweetie",
+  "ko": "반짝 애교쟁이",
+  "ja": "キラキラあまえんぼ",
+  "zh-Hans": "闪亮小甜心",
+  "zh-Hant": "閃亮小甜心",
+  "es": "Cariñoso brillante",
+  "de": "Glitzer-Schmusekatze",
+  "fr": "Câlin brillant",
+  "pt": "Dengoso brilhante",
+  "ru": "Сияющий Ласкунчик"
+ },
+ "stage.final_grumpy": {
+  "en": "Shiny Grumpy",
+  "ko": "반짝 심술이",
+  "ja": "キラキラぷんぷん",
+  "zh-Hans": "闪亮小脾气",
+  "zh-Hant": "閃亮小脾氣",
+  "es": "Gruñón brillante",
+  "de": "Glitzer-Brummbär",
+  "fr": "Grognon brillant",
+  "pt": "Rabugento brilhante",
+  "ru": "Сияющий Ворчун"
+ },
+ "stage.final_playful": {
+  "en": "Shiny Rascal",
+  "ko": "반짝 장난꾸러기",
+  "ja": "キラキラいたずらっ子",
+  "zh-Hans": "闪亮调皮鬼",
+  "zh-Hant": "閃亮調皮鬼",
+  "es": "Travieso brillante",
+  "de": "Glitzer-Racker",
+  "fr": "Petit coquin brillant",
+  "pt": "Travesso brilhante",
+  "ru": "Сияющий Озорник"
+ },
  "sp.hamster": {
   "en": "Hamster",
   "ko": "햄스터",
@@ -1810,6 +1858,18 @@
   "fr": "Adulte dans {0}",
   "pt": "Adulto em {0}",
   "ru": "Взрослым через {0}"
+ },
+ "grow.final": {
+  "en": "Shines in {0} if kept happy",
+  "ko": "기분 좋게 지내면 반짝이까지 {0}",
+  "ja": "ごきげんに過ごせば、キラキラまで {0}",
+  "zh-Hans": "开开心心的话，{0} 后闪亮",
+  "zh-Hant": "開開心心的話，{0} 後閃亮",
+  "es": "Brillará en {0} si está contento",
+  "de": "Glitzert in {0}, wenn es glücklich bleibt",
+  "fr": "Brillera dans {0} s'il reste heureux",
+  "pt": "Vai brilhar em {0} se ficar feliz",
+  "ru": "Засияет через {0}, если будет доволен"
  },
  "grow.waiting": {
   "en": "Getting the new friend's picture…",

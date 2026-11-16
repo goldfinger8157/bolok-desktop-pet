@@ -120,6 +120,7 @@ public static class HideSpots
             "activated" => new Dictionary<string, double> { ["shock"] = 60, ["shy"] = 20, ["angry"] = 10, ["freeze"] = 10 },
             _ => new Dictionary<string, double> { ["shock"] = 30, ["shy"] = 25, ["angry"] = 15, ["freeze"] = 15, ["chase"] = 15 },
         };
+        stage = Pet.Base(stage); // 최종 모습도 같은 어른 성격
         if (stage == "adult_sweet" && w.ContainsKey("shy")) w["shy"] += 60;
         if (stage == "adult_grumpy") { w.Remove("shy"); w["angry"] = w.GetValueOrDefault("angry") + 60; }
         if (stage == "adult_playful") { w.Remove("freeze"); w["chase"] = w.GetValueOrDefault("chase") + 60; } // 장난꾸러기: 들키면 오히려 쫓아온다

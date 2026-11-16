@@ -685,6 +685,14 @@ static class Sim
         o.WriteLine(Row("방치", none));
 
         Expect(good.P.Miss == 0 && good.P.BitesTotal == 0 && good.P.Stage == "adult_chubby", "하루 3번이면 무탈");
+        // 반짝 최종 모습 (YELL 2026-11-16): 어른으로 깨어 있던 FinalMin 동안 기분 평균이 FinalMood 넘으면, 아니면 어른 그대로
+        {
+            Pet Adult(double mood) => new() { Stage = "adult_sweet", AgeMin = k.ChildMin + 1, Full = 100, Mood = mood, Energy = 100 };
+            var happy = Adult(95); var sad = Adult(20); List<string> evs = new();
+            for (double t = 0; t < k.FinalMin + 30; t += 5) { happy.Mood = 95; happy.Energy = 100; happy.Full = 100; evs.AddRange(happy.Tick(k, 5)); sad.Mood = 20; sad.Energy = 100; sad.Full = 100; sad.Tick(k, 5); }
+            Expect(happy.Stage == "final_sweet" && evs.Contains("grow") && sad.Stage == "adult_sweet", $"잘 돌본 어른은 반짝 최종, 아니면 그대로 ({happy.Stage}, {sad.Stage})");
+            Expect(Pet.Base("final_grumpy") == "adult_grumpy" && Pet.GrewFrom("final_grumpy") == "adult_grumpy" && Pet.Grown("final_sweet") && !Pet.Grown("child"), "최종 모습은 같은 어른 성격");
+        }
         // 자라는 순간 (YELL 2026-11-16): 1초까지 옛 모습 → 0.5~1.3초 하얗게 → 새 모습 + 별, 2초에 끝
         {
             var area0 = new Rectangle(0, 0, 1920, 1040);

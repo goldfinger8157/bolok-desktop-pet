@@ -30,6 +30,8 @@ public sealed class Tuning
     public double EggMin { get; set; } = 5;
     public double BabyMin { get; set; } = 65;
     public double ChildMin { get; set; } = 38 * 60; // 월요일에 부화해서 금요일 오후에 어른 (하루 8시간)
+    public double FinalMin { get; set; } = 7 * 8 * 60; // 어른으로 깨어 있던 7일(하루 8시간) 뒤 「반짝」 최종 모습 (YELL 2026-11-16)
+    public double FinalMood { get; set; } = 60;        // 그동안 기분 평균이 이만큼은 돼야 (잘 돌봤을 때만)
     // 어른 모습은 아기·어린이 때 받은 돌봄의 비율로 정한다 (YELL 2026-11-13: "12번 넘으면 심술이" 같은 횟수 기준이 아니라
     // 밥·쓰다듬기·던지기·놀아주기를 모두 놓고 비율로). 돌봄마다 점수를 매겨 가장 큰 쪽으로 자란다 (Growth):
     //   통통이 ← 밥 1번 1점
@@ -116,6 +118,14 @@ public sealed class Pet
     public int Tosses { get; set; }         // 살살 던지기 (즐거워한다)
     public int Rough { get; set; }          // 세게 던지기·흔들기
     public int Annoys { get; set; }         // 귀찮게 찌르기 (연타로 삐치게 하기·찌르기 손짓)
+    public double AdultMin { get; set; }    // 어른으로 깨어 있던 분 (최종 모습까지)
+    public double AdultMoodSum { get; set; } // 그동안 기분 × 분 (평균을 내려고)
+    public double AdultMood => AdultMin > 0 ? AdultMoodSum / AdultMin : 0;
+
+    // 최종 모습 final_* 는 어른 모습 adult_* 의 「반짝」 판 — 성격(누르면 반응·숨기·놀이)은 같은 어른으로 친다
+    public static string Base(string stage) => stage.StartsWith("final_", StringComparison.Ordinal) ? "adult_" + stage[6..] : stage;
+    public static bool Grown(string stage) => stage.StartsWith("adult_", StringComparison.Ordinal) || stage.StartsWith("final_", StringComparison.Ordinal);
+    public static string GrewFrom(string stage) => stage == "child" ? "baby" : stage.StartsWith("final_", StringComparison.Ordinal) ? Base(stage) : "child";
 
     // 어른이 될 쪽 점수 (위 「어른 모습」 참고). 넷을 더한 것 중 비율이 가장 큰 쪽으로 자란다. 비기면 앞쪽 (통통이 → 애교쟁이 → 장난꾸러기 → 심술이)
     public static readonly string[] Adults = { "adult_chubby", "adult_sweet", "adult_playful", "adult_grumpy" };
@@ -184,6 +194,12 @@ public sealed class Pet
 
         if (Stage == "baby" && AgeMin >= k.BabyMin) { Stage = "child"; ev.Add("grow"); }
         if (Stage == "child" && AgeMin >= k.ChildMin) { Stage = AdultForm(k); ev.Add("grow"); }
+        else if (Stage.StartsWith("adult_", StringComparison.Ordinal)) // 어른으로 오래 잘 돌보면 반짝 최종 모습 (떠나기는 그대로 수동)
+        {
+            AdultMin += m;
+            AdultMoodSum += Mood * m;
+            if (AdultMin >= k.FinalMin && AdultMood >= k.FinalMood) { Stage = "final_" + Stage[6..]; ev.Add("grow"); }
+        }
         return ev;
     }
 

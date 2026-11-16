@@ -110,6 +110,59 @@ static class Program
             return 0;
         }
 
+        if (args.Length >= 2 && args[0] == "--final-look") // 최종 시안 보기: --final-look 그림.png [종 ... | --all] (글자 없이 어른 | 최종 나란히, 또는 전종 × 최종 넷)
+        {
+            ApplicationConfiguration.Initialize();
+            var art = Directory.Exists("assets") ? PetArt.FromDir("assets") : PetArt.Embedded;
+            string[] finals = { "final_chubby", "final_sweet", "final_playful", "final_grumpy" };
+            string[] adults = { "adult_chubby", "adult_sweet", "adult_playful", "adult_grumpy" };
+            const int k = 3, cell = PetArt.Cell * k;
+            bool all = args.Length >= 3 && args[2] == "--all";
+            if (all)
+            {
+                int cols = 3, blockW = finals.Length * cell, gapX = 18, pad = 10, rows = (art.Species.Count + cols - 1) / cols;
+                using var bmp = new Bitmap(cols * blockW + (cols - 1) * gapX + pad * 2, rows * (cell + 10) + pad);
+                using var g = Graphics.FromImage(bmp);
+                using var sep = new Pen(Color.FromArgb(206, 212, 222), 2);
+                g.Clear(Color.FromArgb(236, 239, 244));
+                for (int idx = 0; idx < art.Species.Count; idx++)
+                {
+                    var sp = Sprites.Drawn(art, art.Species[idx], null);
+                    int col = idx % cols, row = idx / cols;
+                    int x0 = pad + col * (blockW + gapX), y0 = pad + row * (cell + 10);
+                    for (int fi = 0; fi < finals.Length; fi++)
+                        g.DrawImage(sp.Get($"{finals[fi]}/0/idle", 0, k), x0 + fi * cell, y0);
+                    if (col > 0) g.DrawLine(sep, x0 - gapX / 2, y0 + 6, x0 - gapX / 2, y0 + cell - 6);
+                }
+                bmp.Save(args[1]);
+                return 0;
+            }
+            string[] list = args.Length >= 3 ? args[2..] : new[] { "hamster", "chick", "owl", "cat", "shiba", "fox", "panda", "frog" };
+            const int pairGap = 14, pad8 = 10;
+            using (var bmp = new Bitmap(finals.Length * (cell * 2 + pairGap) - pairGap + pad8 * 2, list.Length * (cell + 10) + pad8))
+            {
+                using var g = Graphics.FromImage(bmp);
+                using var pairSep = new Pen(Color.FromArgb(200, 206, 218), 2);
+                using var midSep = new Pen(Color.FromArgb(220, 224, 232), 1);
+                g.Clear(Color.FromArgb(236, 239, 244));
+                for (int r = 0; r < list.Length; r++)
+                {
+                    var sp = Sprites.Drawn(art, list[r], null);
+                    int y0 = pad8 + r * (cell + 10);
+                    for (int p = 0; p < finals.Length; p++)
+                    {
+                        int x0 = pad8 + p * (cell * 2 + pairGap);
+                        g.DrawImage(sp.Get($"{adults[p]}/0/idle", 0, k), x0, y0);
+                        g.DrawLine(midSep, x0 + cell, y0 + 16, x0 + cell, y0 + cell - 16);
+                        g.DrawImage(sp.Get($"{finals[p]}/0/idle", 0, k), x0 + cell, y0);
+                        if (p > 0) g.DrawLine(pairSep, x0 - pairGap / 2, y0 + 8, x0 - pairGap / 2, y0 + cell - 8);
+                    }
+                }
+                bmp.Save(args[1]);
+            }
+            return 0;
+        }
+
         if (args.Length >= 3 && args[0] == "--peek-look") // 창 위 빼꼼 높이 보기: --peek-look 그림.png hamster cat ... (모습마다 「나옴 | 들어감」, 아래 회색이 창)
         {
             ApplicationConfiguration.Initialize();

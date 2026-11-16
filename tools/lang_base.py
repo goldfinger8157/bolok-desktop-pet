@@ -74,6 +74,10 @@ t('stage.adult_chubby', 'Chubby', '통통이')
 t('stage.adult_sweet', 'Sweetie', '애교쟁이')
 t('stage.adult_grumpy', 'Grumpy', '심술이')
 t('stage.adult_playful', 'Rascal', '장난꾸러기')
+t('stage.final_chubby', 'Shiny Chubby', '반짝 통통이')
+t('stage.final_sweet', 'Shiny Sweetie', '반짝 애교쟁이')
+t('stage.final_grumpy', 'Shiny Grumpy', '반짝 심술이')
+t('stage.final_playful', 'Shiny Rascal', '반짝 장난꾸러기')
 # 종
 for sp, en, ko in [
     ('hamster', 'Hamster', '햄스터'), ('cat', 'Cat', '고양이'),
@@ -136,6 +140,7 @@ t('grow.done', 'All grown up', '다 자랐어요')
 t('grow.hatch', 'Hatches in {0}', '깨어나기까지 {0}')
 t('grow.child', 'Kid in {0}', '어린이까지 {0}')
 t('grow.adult', 'Grown up in {0}', '어른까지 {0}')
+t('grow.final', 'Shines in {0} if kept happy', '기분 좋게 지내면 반짝이까지 {0}')
 t('grow.waiting', "Getting the new friend's picture…", '깨어날 친구 그림을 받는 중이에요')
 t('game.never', 'Not played yet', '아직 안 했어요')
 t('game.raid', 'Bug Raid', '버그 습격')

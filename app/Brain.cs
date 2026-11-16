@@ -687,7 +687,7 @@ public sealed class Brain
             switch (e)
             {
                 case "hatch": Emote("star"); Play("happy", 1.6); break;
-                case "grow": PlayGrow(P.Stage == "child" ? "baby" : "child"); break; // 자라는 순간 (YELL 2026-11-16 시안): 반짝이가 모이고 → 하얗게 빛나며 → 새 모습 + 별·하트
+                case "grow": PlayGrow(Pet.GrewFrom(P.Stage)); break; // 자라는 순간 (YELL 2026-11-16 시안): 반짝이가 모이고 → 하얗게 빛나며 → 새 모습 + 별·하트
                 case "miss": Emote("tear"); break;
                 case "sleep": Emote("zzz"); break;
                 case "wake": Emote("spark"); break;

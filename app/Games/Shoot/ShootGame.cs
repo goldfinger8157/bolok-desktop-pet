@@ -35,7 +35,7 @@ sealed class ShootGame : IGameMode
     static readonly string[] GuideKeys = { "note.shoot_aim", "note.shoot_fire", "note.shoot_reload", "note.esc" };
 
     // 봐주는 둘레 (그림 칸 수, YELL 2026-11-13): 몸이 작을수록 넉넉하게. 아기 6, 어린이 4, 어른 3 (어른 모습은 이름으로 세지 않는다: adult 로 시작하면 어른)
-    public static int Forgive(string stage) => stage == "baby" ? 6 : stage.StartsWith("adult", StringComparison.Ordinal) ? 3 : 4;
+    public static int Forgive(string stage) => stage == "baby" ? 6 : Pet.Grown(stage) ? 3 : 4;
 
     // 그 자리가 볼록이 몸에 맞는가: 본체 창에 그려진 그림 픽셀 + 봐주는 둘레. 창 뒤로 숨은 몸은 안 맞는다
     bool HitsPet(int x, int y) => prey is { } p && !p.Shielded(x, y) && host.HitPet(x, y, forgive);

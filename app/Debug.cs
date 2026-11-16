@@ -128,7 +128,7 @@ public sealed class DevLink
             case "speed": b.Speed = double.Parse(a[1]); break;
             case "skip": b.Advance(double.Parse(a[1]), false); break;
             case "act": b.Care(a[1]); break;
-            case "growfx": b.PlayGrow(a.Length > 1 ? a[1] : b.P.Stage == "child" ? "baby" : "child"); break; // 자라는 순간 연출만 (단계는 그대로)
+            case "growfx": b.PlayGrow(a.Length > 1 ? a[1] : Pet.GrewFrom(b.P.Stage)); break; // 자라는 순간 연출만 (단계는 그대로)
             case "afk": ForceAfk = a[1] switch { "on" => true, "off" => false, _ => null }; break;
             case "hole": b.P.Bites++; break;
             case "reset": b.Reset(); break;
