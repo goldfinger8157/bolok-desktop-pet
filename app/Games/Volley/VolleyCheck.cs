@@ -198,6 +198,11 @@ static class VolleyCheck
             var simDesktop = new VolleySim(desktopCourt, true, 3, new Random(7));
             Expect(simDesktop.IsDesktop, "바탕화면 판 모드로 초기화되어야 함");
             Expect(simDesktop.TitleH == 0, "바탕화면 판은 제목줄 높이가 0이어야 함");
+            // 바탕화면 판 경기장 (YELL 2026-11-16): 테두리 상자·잔디 띠까지 칠할 자리에 들고, 화면 맨 아래에 붙어도 잔디가 화면 안
+            var paint = VolleyGame.PaintCourt(simDesktop);
+            Expect(paint.Contains(desktopCourt) && paint.Bottom >= desktopCourt.Bottom + VolleyGame.GrassCells * 3, "바탕화면 판: 테두리·잔디 띠가 칠할 자리 안");
+            var lowCourt = VolleyGame.MakeDesktopCourt(field, 500, field.Bottom, 3);
+            Expect(VolleyGame.PaintCourt(new VolleySim(lowCourt, true, 3, new Random(8))).Bottom <= field.Bottom, $"바탕화면 판: 화면 맨 아래에서도 잔디 띠가 화면 안 ({lowCourt.Bottom})");
         }
 
         // 8. AI 는 쉬운 공을 넘긴다 / 같은 씨앗이면 같은 결과

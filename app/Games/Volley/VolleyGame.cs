@@ -72,10 +72,14 @@ sealed partial class VolleyGame : IGameMode
     static readonly SolidBrush mockBtnClose = new(Color.FromArgb(240, 90, 80));
     static readonly SolidBrush mockIcon = new(Color.FromArgb(250, 214, 90));
 
-    static readonly Pen dottedFloorPen = new(Color.FromArgb(40, 40, 50), 2)
-    {
-        DashPattern = new float[] { 3, 2 }
-    };
+    // 바탕화면 판 (쓸 창이 없을 때): 얇은 테두리 상자(양쪽 벽·천장) + 잔디 띠 바닥 (YELL 2026-11-16: 「얇은 테두리 상자에 바닥은 나 안으로」)
+    static readonly Pen boxPen = new(Color.FromArgb(96, 104, 118), 2);
+    static readonly SolidBrush grassTop = new(Color.FromArgb(150, 210, 96)), grassMid = new(Color.FromArgb(108, 178, 74)), grassDeep = new(Color.FromArgb(76, 138, 56));
+    internal const int GrassCells = 5; // 바닥 잔디 띠 두께 (칸, 바닥선 아래로)
+
+    // 그림이 닿는 자리: 바탕화면 판은 테두리·잔디 띠까지 (칠할 자리에 넣어야 남거나 안 그려지지 않는다)
+    internal static Rectangle PaintCourt(VolleySim w) =>
+        w.IsDesktop ? Rectangle.FromLTRB(w.Court.Left - 3, w.Court.Top - 3, w.Court.Right + 3, w.Court.Bottom + GrassCells * w.K + 3) : w.Court;
 
     public VolleyGame(IGameHost host) => this.host = host;
 
@@ -137,7 +141,7 @@ sealed partial class VolleyGame : IGameMode
         int courtW = Math.Clamp(cell * 5, 420, 680);
         int courtH = Math.Clamp((int)(cell * 2.8), 240, 360);
 
-        int floorY = Math.Clamp((int)petY, field.Top + courtH + 20, field.Bottom - 10);
+        int floorY = Math.Clamp((int)petY, field.Top + courtH + 20, field.Bottom - 10 - GrassCells * scale); // 아래 잔디 띠 자리
         int centerX = Math.Clamp((int)petX + courtW / 4, field.Left + courtW / 2 + 10, field.Right - courtW / 2 - 10);
 
         return new Rectangle(centerX - courtW / 2, floorY - courtH, courtW, courtH);
@@ -319,15 +323,15 @@ sealed partial class VolleyGame : IGameMode
         if (freshFrames < 2)
         {
             freshFrames++;
-            dirty.Add(w.Court);
-            lastCourtRect = w.Court;
+            dirty.Add(PaintCourt(w));
+            lastCourtRect = PaintCourt(w);
         }
 
-        if (w.Court != lastCourtRect)
+        if (PaintCourt(w) != lastCourtRect)
         {
             dirty.Add(lastCourtRect);
-            dirty.Add(w.Court);
-            lastCourtRect = w.Court;
+            dirty.Add(PaintCourt(w));
+            lastCourtRect = PaintCourt(w);
         }
 
         // 공 영역
@@ -445,13 +449,8 @@ sealed partial class VolleyGame : IGameMode
             g.FillRectangle(mockBtnClose, bx + (btnSize + 2 * k) * 2, by, btnSize, btnSize);
         }
 
-        // 1. 바탕화면 판이면 점선 바닥 선 그리기
-        if (w.IsDesktop)
-        {
-            var p0 = o.ToClient(w.WallLeft, w.FloorY);
-            var p1 = o.ToClient(w.WallRight, w.FloorY);
-            g.DrawLine(dottedFloorPen, p0.X, p0.Y, p1.X, p1.Y);
-        }
+        // 1. 바탕화면 판이면 경기장: 얇은 테두리 상자(양쪽 벽·천장, 공이 튕기는 자리 그대로) + 바닥 잔디 띠
+        if (w.IsDesktop) DrawDesktopCourt(o, g, w);
 
         // 2. 강스파이크 흔들림: 어긋난 고스트 테두리 (va5 참조)
         if (w.ShakeActive)
@@ -615,6 +614,25 @@ sealed partial class VolleyGame : IGameMode
             int x1 = (int)(sp.X + (starR + 7 * k) * Math.Cos(rad));
             int y1 = (int)(sp.Y + (starR + 7 * k) * Math.Sin(rad));
             g.DrawLine(starRayPen, x0, y0, x1, y1);
+        }
+    }
+
+    static void DrawDesktopCourt(Overlay o, Graphics g, VolleySim w)
+    {
+        int k = w.K;
+        var tl = o.ToClient(w.WallLeft, w.CeilingY);
+        var br = o.ToClient(w.WallRight, w.FloorY);
+        g.DrawLine(boxPen, tl.X, br.Y, tl.X, tl.Y);   // 왼쪽 벽
+        g.DrawLine(boxPen, tl.X, tl.Y, br.X, tl.Y);   // 천장
+        g.DrawLine(boxPen, br.X, tl.Y, br.X, br.Y);   // 오른쪽 벽
+        int x0 = tl.X - 1, w0 = br.X - tl.X + 2, y = br.Y + 1;
+        g.FillRectangle(grassTop, x0, y, w0, k);
+        g.FillRectangle(grassMid, x0, y + k, w0, (GrassCells - 2) * k);
+        g.FillRectangle(grassDeep, x0, y + (GrassCells - 1) * k, w0, k);
+        for (int x = x0 + 2 * k, i = 0; x < x0 + w0 - k; x += 5 * k, i++) // 풀 끝 몇 가닥 (바닥선 위로 한 칸)
+        {
+            g.FillRectangle(grassMid, x, y - k, k, k);
+            if (i % 2 == 0) g.FillRectangle(grassTop, x + k, y - 2 * k, k, k);
         }
     }
 
@@ -817,6 +835,12 @@ sealed partial class VolleyGame : IGameMode
         {
             if (a[2] == "win") wEnd.ForceEnd(true);
             else if (a[2] == "lose") wEnd.ForceEnd(false);
+            return true;
+        }
+
+        if (a.Length > 1 && a[1] == "desktop" && !Running && !host.Busy) // 디버그: 창이 있어도 바탕화면 판으로
+        {
+            Begin(null, forceDesktop: true);
             return true;
         }
 
