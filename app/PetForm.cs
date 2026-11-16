@@ -133,7 +133,7 @@ public sealed class PetForm : Form, IGameHost
         if (runDir != null) dev = new DevLink(runDir, assetsDir!, b, this);
 
         BuildMenu();
-        tray.Icon = Icon.FromHandle(this.sprites.Get("child/0/idle", 0, 1).GetHicon());
+        TrayIcon();
         tray.Text = L.Name;
         tray.ContextMenuStrip = menu;
         tray.Visible = true;
@@ -223,7 +223,28 @@ public sealed class PetForm : Form, IGameHost
         Dbg.Log("screens-changed", ("screens", DescribeScreens()));
     }
 
-    public void SwapSprites(Sprites s) { sprites = s; drawn = default; heads.Clear(); Invalidate(); foreach (var o in overlays) o.Invalidate(); } // 머리 자리는 그림마다 다시 잰다
+    public void SwapSprites(Sprites s) { sprites = s; drawn = default; heads.Clear(); TrayIcon(); Invalidate(); foreach (var o in overlays) o.Invalidate(); } // 머리 자리는 그림마다 다시 잰다
+
+    // 트레이 아이콘: 칸(40×40)의 투명 여백을 잘라 펫만 아이콘 칸을 꽉 채운다 (YELL 2026-11-16: 다른 아이콘보다 너무 작다 — 전엔 여백째 줄여 펫이 반만 했다)
+    void TrayIcon()
+    {
+        var one = sprites.Get("child/0/idle", 0, 1);
+        var r = Ui.Opaque(one, 0);
+        int side = Math.Max(r.Width, r.Height), size = Math.Max(16, SystemInformation.SmallIconSize.Width * DeviceDpi / 96);
+        using var bmp = new Bitmap(size, size, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        using (var g = Graphics.FromImage(bmp))
+        {
+            int k = size / side; // 정수 배로 들어가면 도트 그대로, 아니면 부드럽게 줄인다
+            g.InterpolationMode = k >= 1 ? System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor : System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
+            double z = k >= 1 ? k : (double)size / side;
+            int w = (int)Math.Round(r.Width * z), h = (int)Math.Round(r.Height * z);
+            g.DrawImage(one, new Rectangle((size - w) / 2, size - h, w, h), r, GraphicsUnit.Pixel); // 발이 아이콘 바닥에
+        }
+        var old = tray.Icon;
+        tray.Icon = Icon.FromHandle(bmp.GetHicon());
+        old?.Dispose();
+    }
 
     // 키우는 종. 그림(sprites)은 아직 못 받았으면 다른 종일 수 있다 — 알일 때는 공통 그림만 쓰니 티가 안 난다
     string species;
