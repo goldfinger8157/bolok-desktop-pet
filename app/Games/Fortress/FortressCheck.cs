@@ -1036,7 +1036,8 @@ sealed partial class FortressGame
             if (mainRun) holes = game.tiles.Count(t => t != null);
         }
         Expect(ghosts > 60 && tips > 60, $"그 판에 지난 발 표시(흐린 조준경·힘 세모)도 나왔다: {ghosts}·{tips}프레임");
-        Expect(bounces >= 2 && splits >= 2 && digs >= 4, $"그 판들에 새 대포의 튕김·갈라짐·굴도 나왔다: {bounces}·{splits}·{digs}");
+        Expect(bounces >= 1 && splits >= 2 && digs >= 4, // 맞는 자리가 몸 가운데까지 넓어진 뒤(2026-11-16) 판이 일찍 끝나 튕김은 1번도 된다
+            $"그 판들에 새 대포의 튕김·갈라짐·굴도 나왔다: {bounces}·{splits}·{digs}");
         Expect(stormy > 300 && powers >= 3 && glowing > 60, $"그 판들에 파워업 폭풍과 세진 포탄도 나왔다: 폭풍 {stormy}프레임, 세진 발 {powers}, 세진 포탄 {glowing}프레임");
 
         var end = new Fortress(small, new[] { new Rectangle(60, 300, 340, 240), new Rectangle(560, 270, 340, 270) }, 3, new Random(6), "normal", "normal");

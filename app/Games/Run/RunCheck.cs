@@ -19,9 +19,9 @@ sealed partial class RunGame
         using var s = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("pets/art.json")!;
         using var doc = JsonDocument.Parse(s);
         var root = doc.RootElement;
-        bool drop = root.GetProperty("poses").TryGetProperty("land", out var land) && land.GetArrayLength() > 0
-            && land[0].TryGetProperty("sq", out var sq) && sq.GetDouble() == RunBody.DuckDrop;
-        Expect(drop, $"엎드린 자세(land)는 몸이 {RunBody.DuckDrop}칸px 낮다 — art.json 의 sq 를 바꾸면 RunBody.DuckDrop 도 같이");
+        bool drop = root.GetProperty("poses").TryGetProperty("slide", out var slide) && slide.GetArrayLength() > 0
+            && slide.EnumerateArray().All(f => f.TryGetProperty("sqk", out var k) && k.GetDouble() == RunBody.DuckK);
+        Expect(drop, $"엎드려 미끄러지기(slide)는 키를 {RunBody.DuckK:P0} 낮춘다 — art.json 의 sqk 를 바꾸면 RunBody.DuckK 도 같이");
         return root.GetProperty("forms").EnumerateObject().Select(p => p.Name).ToList();
     }
 
@@ -206,7 +206,7 @@ sealed partial class RunGame
                         ThingKind.Block => t.Y == r.Ground && t.H <= r.TallMax && (r.TallBlocks.Contains(t.Art) || r.NormalBlocks.Contains(t.Art)),
                         ThingKind.Heart => t.Y == r.Ground - 2 * r.StandPx || r.Floors.Any(f => t.Y == r.Ground - r.TopOf(f) - 2 * r.StandPx && t.X >= f.X && t.X < f.X + f.W)
                             || t.Bunch > 0 && t.Y < r.Ground - r.JumpUp,    // 버섯으로 튄 꼭대기: 그냥 뛰어서는 안 닿는다
-                        ThingKind.Pad => t.Y == r.Ground && t.Scale == r.Px(3) && t.H < r.DuckPx,
+                        ThingKind.Pad => t.Y == r.Ground && t.Scale == r.Px(3) && t.H < r.StandPx * .75, // 버섯은 선 키의 3/4 보다 낮다 (엎드린 키가 40% 낮아진 뒤로는 선 키 기준, 2026-11-16)
                         ThingKind.Wasp => t.Scale == r.Px(2) && t.Fast > 1 && t.Bunch > 0 && r.Ground - t.Y >= Runner.WaspLow * scale - .01 && r.Ground - t.Y <= r.CloudUp + .01,
                         ThingKind.Rock => t.Scale == r.Px(3) && t.Fast > 1 && t.Bunch > 0 && r.Ground - t.Y >= -.01 && r.Ground - t.Y <= r.CloudUp + .01,
                         _ => t.Scale == r.Px(1) && t.Y <= r.Ground,
@@ -293,10 +293,11 @@ sealed partial class RunGame
             var body = BodyOf(form);
             // 그림과 맞는지: 서 있는 그림(귀 포함)은 선 키보다 낮지 않고, 엎드린 그림은 그만큼 낮다
             int Top(string pose) => sp.Cell - Ui.Opaque(sp.Get($"{form}/0/{pose}", 0, 1), 0).Top;
-            int idleTop = Top("idle"), landTop = Top("land");
+            int idleTop = Top("idle"), landTop = Top("slide");
             int walkTop = Enumerable.Range(0, sp.Frames($"{form}/0/walk")).Max(i => sp.Cell - Ui.Opaque(sp.Get($"{form}/0/walk", i, 1), 0).Top); // 달리는 그림의 귀 끝
             Expect(idleTop >= body.Stand - 1 && idleTop <= body.Stand + 9, $"{form}: 선 키 {body.Stand} 가 그림(귀까지 {idleTop})과 맞는다");
-            Expect(idleTop - landTop is >= 4 and <= 6, $"{form}: 엎드리면 그림이 5칸px 낮아진다 ({idleTop} → {landTop})");
+            double duckDrop = body.Stand - body.Duck;
+            Expect(Math.Abs(idleTop - landTop - duckDrop) <= 2, $"{form}: 엎드리면 그림이 판정만큼 ({duckDrop:F1}칸px) 낮아진다 ({idleTop} → {landTop})");
             foreach (int scale in Scales)
             {
                 combos++;
@@ -1017,7 +1018,7 @@ sealed partial class RunGame
         Frames(120);
         down.Add(Keys.ShiftKey);
         Frames(5);
-        Expect(play.Lift == 0 && play.Sliding && pet.Pose == "land", "Shift 를 누르는 동안 앉는다");
+        Expect(play.Lift == 0 && play.Sliding && pet.Pose == "slide", "Shift 를 누르는 동안 앉는다");
         down.Remove(Keys.ShiftKey);
         Frames(2);
         Expect(!play.Sliding && pet.Pose == "walk", "Shift 를 떼면 일어난다");
@@ -1183,7 +1184,7 @@ sealed partial class RunGame
         for (int i = 0; i < 2; i++) upper.Frame(1 / 60.0);
         Expect(floor.Under == null && !floor.Landed && pet.Pose == "happy", "발판 위에서 Shift 를 누르면 뚫고 내려간다");
         for (int i = 0; i < 40; i++) upper.Frame(1 / 60.0);
-        Expect(floor.Lift == 0 && floor.Sliding && pet.Pose == "land" && pet.Y == floor.Ground, "내려와서도 누르고 있으면 엎드린다");
+        Expect(floor.Lift == 0 && floor.Sliding && pet.Pose == "slide" && pet.Y == floor.Ground, "내려와서도 누르고 있으면 엎드린다");
         down.Clear();
         upper.Command(new[] { "run", "stop" });
         pet.Hush();
@@ -1228,7 +1229,7 @@ sealed partial class RunGame
             trick.Frame(1 / 60.0);
             pet.EmoteUntil = 0;
             (peak, petPeak) = (Math.Max(peak, gim.Lift), Math.Max(petPeak, gim.Ground - pet.Y));
-            crawled |= gim.Sliding && pet.Pose == "land" && den.X < gim.PetX && den.X + den.W > gim.PetX;
+            crawled |= gim.Sliding && pet.Pose == "slide" && den.X < gim.PetX && den.X + den.W > gim.PetX;
             squashed |= gim.Things.Any(t => t.Kind == ThingKind.Pad && Cel(gim, t) == 1);
             return trick.run != null && (gim.Caves.Count > 0 || gim.Clock < 3);
         }, 60 * 30, every: 2);
@@ -1366,7 +1367,7 @@ sealed partial class RunGame
             double X(double at) => at * u;
             void PetAt(double x, bool down, int lift = 0)
             {
-                g.DrawImageUnscaled(sp.Get($"{form}/0/{(down ? "land" : "walk")}", 0, scale), (int)(x - cell / 2.0), ground - lift - cell);
+                g.DrawImageUnscaled(sp.Get($"{form}/0/{(down ? "slide" : "walk")}", 0, scale), (int)(x - cell / 2.0), ground - lift - cell);
                 int h = down ? run.DuckPx : run.StandPx;
                 g.DrawRectangle(red, (int)(x - run.BoxW / 2.0), ground - lift - h, run.BoxW - 1, h - 1);
             }
@@ -1470,7 +1471,7 @@ sealed partial class RunGame
                 void PetAt(Runner r, double x, string pose, double lift = 0)
                 {
                     g.DrawImageUnscaled(sp.Get($"{form}/0/{pose}", 0, scale), (int)(x - cell / 2.0), (int)(ground - lift) - cell);
-                    int tall = pose == "land" ? r.DuckPx : r.StandPx;
+                    int tall = pose == "slide" ? r.DuckPx : r.StandPx;
                     g.DrawRectangle(red, (int)(x - r.BoxW / 2.0), (int)(ground - lift) - tall, r.BoxW - 1, tall - 1);
                 }
                 void Box(Rectangle b) => g.DrawRectangle(blue, b.X, b.Y, b.Width - 1, b.Height - 1);
@@ -1489,7 +1490,7 @@ sealed partial class RunGame
                     if (way == 0) for (int i = 0; i < 3; i++) r.Add(ThingKind.Seed, "icon/seed", r.Px(1), r.PetX + (i - 1) * 34 * sf - 6 * sf, ground - r.LowTop(r.Things[0]) - (i == 1 ? 70 : 50) * sf);
                     else for (int i = 0; i < 4; i++) r.Add(ThingKind.Seed, "icon/seed", r.Px(1), r.PetX + (i - 1.5) * 34 * sf - 6 * sf, ground - 10 * sf);
                     Show(r);
-                    PetAt(r, r.PetX, way == 0 ? "happy" : "land", way == 0 ? r.LowTop(r.Things[0]) + 14 * u : 0);
+                    PetAt(r, r.PetX, way == 0 ? "happy" : "slide", way == 0 ? r.LowTop(r.Things[0]) + 14 * u : 0);
                     Box(Runner.Hard(r.Things[0]));
                 }
 
@@ -1530,7 +1531,7 @@ sealed partial class RunGame
                     for (int i = 0; i < 4; i++) cave.Add(ThingKind.Seed, "icon/seed", cave.Px(1), cave.PetX + (70 + i * 34) * u, ground - 10 * u);
                     Dash(cave, cave.JumpUp);
                     Show(cave);
-                    PetAt(cave, cave.PetX, "land");
+                    PetAt(cave, cave.PetX, "slide");
                     PetAt(cave, cave.PetX + 270 * u, "walk", cave.TopOf(c));
                     Box(new Rectangle((int)c.X + cave.CaveEdge, c.Box.Y, c.W - 2 * cave.CaveEdge, c.H));
                 }

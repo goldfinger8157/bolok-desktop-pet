@@ -152,7 +152,10 @@ public sealed class Fortress
     }
 
     bool Standing(Hog h) => Solid(h.X, h.Y + 1) || Solid(h.X - 4 * sf, h.Y + 1) || Solid(h.X + 4 * sf, h.Y + 1);
-    public double CenterY(Hog h) => h.Y - BodyR;
+    // 맞는 원의 중심: 몸 가운데 (YELL 2026-11-16 「추천대로」 — 전엔 발에서 BodyR 위라 어른 몸의 아래 절반만 덮어 머리에 맞아도 빗나갔다).
+    // 어른 몸 키는 27~29칸px 라 가운데는 발에서 약 13.6칸px. 반지름(BodyR)은 그대로라 맞히기 어려움은 비슷하다
+    public double BodyMid => 40 * K * .34;
+    public double CenterY(Hog h) => h.Y - BodyMid;
 
     // 들쭉날쭉하게 깎는다: 반지름이 방향마다 0.65~1.35배 (터진 자리가 같으면 늘 같은 모양). 그림(구멍·불덩이)도 같은 모양을 쓴다
     void Carve(double x, double y, double r)
@@ -314,8 +317,9 @@ public sealed class Fortress
         if (s.Split > 0 && s.Vy >= 0 && s.Age >= SplitAge) return 3; // 꼭대기를 넘었다
         int steps = Math.Max(1, (int)Math.Ceiling(Math.Sqrt(s.Vx * s.Vx + s.Vy * s.Vy) * dt / 3));
         double left = Field.Left - 50, right = Field.Right + 50, bottom = Field.Bottom + 50, dx = s.Vx * dt / steps, dy = s.Vy * dt / steps, r2 = BodyR * BodyR;
-        double meX = Me.X, meY = CenterY(Me), cpuX = Cpu.X, cpuY = CenterY(Cpu), x = s.X, y = s.Y;
+        double meX = Me.X, meLo = Me.Y - BodyR, cpuX = Cpu.X, cpuLo = Cpu.Y - BodyR, mid = BodyMid - BodyR, x = s.X, y = s.Y; // 몸 = 발 위 BodyR 에서 몸 가운데까지 세로 막대 둘레 BodyR
         bool me = !Me.Out, cpu = !Cpu.Out;
+        bool Hits(double hx, double lo) { double cy = Math.Clamp(y, lo - mid, lo); return (x - hx) * (x - hx) + (y - cy) * (y - cy) < r2; }
         int hit = 0;
         for (int i = 0; i < steps; i++)
         {
@@ -323,7 +327,7 @@ public sealed class Fortress
             y += dy;
             if (x < left || x > right || y > bottom) { hit = 2; break; }
             int gx = (int)Math.Floor((x - fx) * (1.0 / Cell)), gy = (int)Math.Floor((y - fy) * (1.0 / Cell));
-            if (me && (x - meX) * (x - meX) + (y - meY) * (y - meY) < r2 || cpu && (x - cpuX) * (x - cpuX) + (y - cpuY) * (y - cpuY) < r2) { hit = 1; break; }
+            if (me && Hits(meX, meLo) || cpu && Hits(cpuX, cpuLo)) { hit = 1; break; }
             if ((uint)gx >= (uint)Gw || (uint)gy >= (uint)Gh || !solid[gy * Gw + gx]) continue;
             if (s.Bounces > 0) // 튕긴다: 닿기 바로 앞 자리로 물러나 땅 겉면에 되튄다 (이 프레임의 남은 걸음은 버린다)
             {
@@ -386,7 +390,13 @@ public sealed class Fortress
         Carves++;
     }
 
-    bool Near(Hog h, double x, double y) => !h.Out && (x - h.X) * (x - h.X) + (y - CenterY(h)) * (y - CenterY(h)) < BodyR * BodyR;
+    // 직접 맞음: 발 위 BodyR 부터 몸 가운데까지 세로 막대 둘레 BodyR 안 (몸 아래 절반만이 아니라 머리 쪽도)
+    bool Near(Hog h, double x, double y)
+    {
+        if (h.Out) return false;
+        double cy = Math.Clamp(y, h.Y - BodyMid, h.Y - BodyR);
+        return (x - h.X) * (x - h.X) + (y - cy) * (y - cy) < BodyR * BodyR;
+    }
 
     // knock: 밀쳐 내는 세기(배) · crater: 땅이 깎이는 반지름 ÷ 폭발 반지름 (밀치기탄은 크게 밀고 작게 깎는다)
     public void Explode(double x, double y, double r = 0, double damage = 60, double knock = 1, double crater = 1)
@@ -405,7 +415,9 @@ public sealed class Fortress
     void Shake(Hog h, double x, double y, double r, double damage, double knock)
     {
         if (h.Out) return;
-        double dx = h.X - x, dy = CenterY(h) - y, d = Math.Sqrt(dx * dx + dy * dy), reach = r * 1.25;
+        // 몸을 발 위 BodyR 에서 몸 가운데(BodyMid)까지의 세로 막대로 보고 가장 가까운 점까지 잰다: 땅에 터진 것은 전과 같고, 머리 높이에서 터진 것도 맞는다
+        double cy = Math.Clamp(y, h.Y - BodyMid, h.Y - BodyR);
+        double dx = h.X - x, dy = cy - y, d = Math.Sqrt(dx * dx + dy * dy), reach = r * 1.25;
         if (d >= reach) return;
         double near = 1 - d / reach;
         h.Hp = Math.Max(0, h.Hp - (int)Math.Round(damage * near));

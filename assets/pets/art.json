@@ -48,6 +48,7 @@
     "held": [{"eye": "wide", "mouth": "o", "dangle": 1}, {"eye": "wide", "mouth": "o", "dangle": 2}],
     "fly": [{"eye": "wide", "mouth": "o", "dangle": 1, "rot": 0}, {"eye": "wide", "mouth": "o", "dangle": 1, "rot": 1}, {"eye": "wide", "mouth": "o", "dangle": 1, "rot": 2}, {"eye": "wide", "mouth": "o", "dangle": 1, "rot": 3}],
     "land": [{"eye": "shut", "mouth": "frown", "sq": 5}],
+    "slide": [{"eye": "shut", "mouth": "frown", "sqk": 0.4}, {"eye": "shut", "mouth": "frown", "sqk": 0.4, "dy": 0.5}],
     "dizzy": [{"eye": "x", "mouth": "frown", "stars": 0}, {"eye": "x", "mouth": "frown", "stars": 1}, {"eye": "x", "mouth": "frown", "stars": 2}, {"eye": "x", "mouth": "frown", "stars": 3}],
     "peek": [{"turn": 3}, {"turn": 3}, {"turn": 3, "eye": "blink"}, {"turn": 3}],
     "shock": [{"eye": "wide", "mouth": "wide", "dy": -3, "mark": "!"}, {"eye": "wide", "mouth": "wide", "mark": "!"}],

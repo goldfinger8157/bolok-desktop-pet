@@ -25,9 +25,9 @@ public sealed class Thing
 // 볼록이 몸 치수 (칸 px: 그림 한 칸이 40). 귀는 뺀 몸통이다. 붙이는 쪽이 그림 데이터(PetArt.Size)로 계산해 넘긴다
 public readonly record struct RunBody(double W, double Stand, double Duck)
 {
-    public const double DuckDrop = 5;   // 엎드린 자세(land, sq 5)는 몸 꼭대기가 5칸px 낮다
-    // 몸 반지름 rx·ry 에서: 폭 2·rx, 선 키 2·ry + 4 (발이 칸의 37번째 줄, 칸 바닥이 땅)
-    public static RunBody Of(double rx, double ry) => new(2 * rx, 2 * ry + 4, 2 * ry + 4 - DuckDrop);
+    public const double DuckK = .4;     // 엎드려 미끄러지기(slide, sqk 0.4)는 몸 반지름 ry 를 40% 낮춘다 (계획 B안, YELL 2026-11-16 「추천대로」)
+    // 몸 반지름 rx·ry 에서: 폭 2·rx, 선 키 2·ry + 4 (발이 칸의 37번째 줄, 칸 바닥이 땅), 엎드린 키 2·ry·(1−DuckK) + 4 = 1.2·ry + 4
+    public static RunBody Of(double rx, double ry) => new(2 * rx, 2 * ry + 4, 2 * ry * (1 - DuckK) + 4);
 }
 
 // 길 위에 나오는 그림 하나 (이름 + 배율)와 잰 크기

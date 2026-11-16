@@ -25,7 +25,7 @@ public sealed class PetArt
     static readonly string[] ColorKeys = { "fur", "shade", "cream", "ear", "paw", "blush", "eye" }; // eye: 렉돌 파란 눈
     static readonly string[] FrameKeys =
     {
-        "sq", "dy", "lie", "dangle", "turn", "step", "puff", "eye", "mouth", "hold", "belly", "tear", "heart", "z", "blushy", "cover",
+        "sq", "sqk", "dy", "lie", "dangle", "turn", "step", "puff", "eye", "mouth", "hold", "belly", "tear", "heart", "z", "blushy", "cover",
         "sweat", "hands", "up", "hammer", "dirt", "mark", "vein", "stars", "rot",
     };
 
@@ -345,6 +345,8 @@ public sealed class PetArt
         bool lying = lie != 0;
         if (lying) (rx, ry) = (rx + 2, ry - 2.5); // 엎드려 자기: 납작하고 넓게
         (rx, ry) = (rx + sq * .5, ry - sq * .5);
+        double sqk = f.N("sqk"); // 키를 비율로 낮춤 (달리기 엎드려 미끄러지기 slide: 0.4 → 키 40% 낮고 옆으로 퍼짐, 칸을 안 넘게)
+        if (sqk != 0) (rx, ry) = (Math.Min(18.5, rx + ry * sqk * .5), ry * (1 - sqk));
         double cx = 20.5, cy = ground - ry - 1 + f.N("dy");
         if (dangle != 0) { (ry, rx) = (ry + 1, rx - 1); cy = 19; } // 들렸을 때는 몸이 아래로 늘어진다
         string body = S.S("body", "");

@@ -114,7 +114,7 @@ sealed partial class RunGame : IGameMode
     {
         var b = host.Pet;
         (b.X, b.Y, b.Dir) = (r.PetX, r.Ground - r.Lift, 1);
-        b.Pose = r.Clock < r.HurtUntil ? "hurt" : !r.Landed ? (r.Jumps >= 2 ? "roll" : "happy") : r.Sliding ? "land" : "walk"; // 발판 위에서도 달린다
+        b.Pose = r.Clock < r.HurtUntil ? "hurt" : !r.Landed ? (r.Jumps >= 2 ? "roll" : "happy") : r.Sliding ? "slide" : "walk"; // 발판 위에서도 달린다
         b.PuppetMs = b.Pose == "walk" ? 60 : 0; // 달리는 발은 빠르게, 다른 자세는 평소대로
     }
 
