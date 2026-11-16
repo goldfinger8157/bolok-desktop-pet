@@ -9,6 +9,19 @@ sealed class VolleySim
     public enum Phase { Serving, InPlay, PointScored, GameOver }
     public enum Actor { Player, Rival }
 
+    // 공 종류 (YELL 2026-11-16: 과일 공 — 판마다 무작위, 가끔 배구공). 그림은 VolleyFruits
+    public enum BallKind { Volleyball, Gyul, Orange, Apple, Coconut, Melon }
+    public BallKind Ball { get; set; } = BallKind.Volleyball;
+    public static bool HasStem(BallKind k) => k is BallKind.Gyul or BallKind.Orange or BallKind.Apple or BallKind.Melon; // 꼭지·잎이 위에 달린 것
+    public static BallKind PickBall(Random rng) => rng.NextDouble() < .2 ? BallKind.Volleyball : (BallKind)(1 + rng.Next(5));
+
+    // 꼭지 헤딩 실수 (YELL 2026-11-16): 머리에 닿는 순간 꼭지가 머리 쪽 ±StemFumbleDeg 안을 향하면 공이 힘없이 툭 떨어지고 펫은 움찔
+    public const double StemFumbleDeg = 25;
+    public const double FumbleSec = .6;
+    public double PlayerFumbleUntil { get; set; } = -1;
+    public double RivalFumbleUntil { get; set; } = -1;
+    double lastFumbleAt = -9;
+
     public readonly int K;
     public readonly double ScaleRatio;
     public readonly Random Rnd;
@@ -421,7 +434,7 @@ sealed class VolleySim
         BallVy += BallGravity * dt;
         BallX += BallVx * dt;
         BallY += BallVy * dt;
-        BallSpin += BallVx * dt * 0.08;
+        BallSpin += BallVx * dt / BallR; // 굴러가듯 돈다 (라디안, 시계 방향 +). 0 이면 꼭지가 위
 
         // 서브 후 첫 타구면 InPlay 로 전환
         if (Stage == Phase.Serving && LastHitActor != null)
@@ -538,6 +551,8 @@ sealed class VolleySim
             BallX = bodyCx + nx * minDist;
             BallY = bodyCy + ny * minDist;
 
+            if (StemHitsHead(nx, ny)) { Fumble(Actor.Player); return; }
+
             // 공중 강스파이크 판정 (공중에 떠 있고 Ctrl 을 눌렀을 때)
             if (!PlayerOnGround && spikeRequested)
             {
@@ -578,6 +593,8 @@ sealed class VolleySim
             BallX = bodyCx + nx * minDist;
             BallY = bodyCy + ny * minDist;
 
+            if (StemHitsHead(nx, ny)) { Fumble(Actor.Rival); return; }
+
             if (!RivalOnGround && rivalSpikeRequested)
             {
                 ExecuteSpike(Actor.Rival);
@@ -597,6 +614,31 @@ sealed class VolleySim
                 OnEvent?.Invoke("hit", Actor.Rival);
             }
         }
+    }
+
+    // 꼭지 방향: 돌기 전(0)은 위 (0, -1), 시계 방향으로 BallSpin 만큼. (nx, ny) 는 펫 몸 가운데에서 공으로 가는 방향
+    public (double X, double Y) StemDir => (Math.Sin(BallSpin), -Math.Cos(BallSpin));
+    public bool StemHitsHead(double nx, double ny)
+    {
+        if (!HasStem(Ball) || Clock - lastFumbleAt < .35) return false; // 실수 직후 같은 닿음으로 또 실수하지 않게
+        var (sx, sy) = StemDir;
+        return sx * -nx + sy * -ny >= Math.Cos(StemFumbleDeg * Math.PI / 180); // 꼭지가 펫 쪽을 향한다
+    }
+
+    // 실수: 공은 힘없이 위로 살짝 튀며 자기 쪽 뒤나 옆으로 툭, 펫은 FumbleSec 동안 움찔 (자세 shock)
+    void Fumble(Actor actor)
+    {
+        bool isPlayer = actor == Actor.Player;
+        double back = isPlayer ? -1 : 1; // 그물 반대쪽 = 자기 뒤
+        double side = Rnd.NextDouble() < .65 ? back : -back;
+        BallVx = side * (50 + Rnd.NextDouble() * 70) * ScaleRatio;
+        BallVy = -(130 + Rnd.NextDouble() * 60) * ScaleRatio;
+        BallSpin += (Rnd.NextDouble() - .5) * 2; // 툭 맞아 빙글
+        lastFumbleAt = Clock;
+        if (isPlayer) PlayerFumbleUntil = Clock + FumbleSec; else RivalFumbleUntil = Clock + FumbleSec;
+        LastHitActor = actor;
+        RallyHits++;
+        OnEvent?.Invoke("fumble", actor);
     }
 
     public bool TryExecuteSpike(Actor actor)
@@ -725,8 +767,10 @@ sealed class VolleySim
             return;
         }
 
-        // 경기 중 포즈 (공중 점프는 hop, 스파이크 직후는 강하게 내리치는 angry)
-        if (SpikeTimer > 0 && LastHitActor == Actor.Player)
+        // 경기 중 포즈 (꼭지에 맞아 움찔은 shock, 공중 점프는 hop, 스파이크 직후는 강하게 내리치는 angry)
+        if (Clock < PlayerFumbleUntil)
+            PlayerPose = "shock";
+        else if (SpikeTimer > 0 && LastHitActor == Actor.Player)
             PlayerPose = "angry";
         else if (!PlayerOnGround)
             PlayerPose = "hop";
@@ -735,7 +779,9 @@ sealed class VolleySim
         else
             PlayerPose = "idle";
 
-        if (SpikeTimer > 0 && LastHitActor == Actor.Rival)
+        if (Clock < RivalFumbleUntil)
+            RivalPose = "shock";
+        else if (SpikeTimer > 0 && LastHitActor == Actor.Rival)
             RivalPose = "angry";
         else if (!RivalOnGround)
             RivalPose = "hop";

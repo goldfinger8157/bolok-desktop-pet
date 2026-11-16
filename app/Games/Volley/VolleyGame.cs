@@ -30,8 +30,10 @@ sealed partial class VolleyGame : IGameMode
     Rectangle lastGhostRect;
 
     // 공 비트맵 캐시
-    Bitmap? ballBmp;
-    int ballK = -1;
+    Bitmap[]? ballFrames;                 // 돌아가는 공 그림 (BallTurns 장, 0 번 = 꼭지가 위)
+    (VolleySim.BallKind Kind, int K) ballFor = (VolleySim.BallKind.Volleyball, -1);
+    const int BallTurns = 32;
+    double rivalBangUntil = -1;           // 라이벌 머리 위 느낌표 (꼭지 실수)
 
     // 라이벌 및 본체 스탬프 캐시
     Sprites? artOf;
@@ -40,7 +42,7 @@ sealed partial class VolleyGame : IGameMode
     public string RivalSpecies { get; internal set; } = "";
     Sprites? rivalSprites;
 
-    Stamp star = null!, crown = null!;
+    Stamp star = null!, crown = null!, bang = null!;
     Stamp meIdleStamp = null!, meHopStamp = null!, meAngryStamp = null!, meHappyStamp = null!, meSadStamp = null!, meDizzyStamp = null!;
 
     // GDI+ 브러시 및 펜 캐시 (프레임당 메모리 할당 0B)
@@ -121,12 +123,12 @@ sealed partial class VolleyGame : IGameMode
             }
         }
 
-        var vSim = new VolleySim(court, isDesktop, b.Scale, new Random());
+        var vSim = new VolleySim(court, isDesktop, b.Scale, new Random()) { Ball = VolleySim.PickBall(Random.Shared) }; // 과일 공 (가끔 배구공)
         InitRival(vSim.Rnd);
         Open(vSim, Session.Open(host, field, () => Stop(true)));
         b.StartPuppet();
 
-        Dbg.Log("volley-start", ("window", isDesktop ? "desktop" : courtWinH.ToString()), ("court", court.ToString()), ("scale", b.Scale));
+        Dbg.Log("volley-start", ("window", isDesktop ? "desktop" : courtWinH.ToString()), ("court", court.ToString()), ("scale", b.Scale), ("ball", vSim.Ball.ToString()));
     }
 
     internal static Rectangle MakeDesktopCourt(Rectangle field, double petX, double petY, int scale)
@@ -158,6 +160,13 @@ sealed partial class VolleyGame : IGameMode
                 else if (ev == "hit")
                 {
                     Snd.Play(Sound.Tap);
+                }
+                else if (ev == "fumble") // 꼭지에 헤딩: 느낌표 + 움찔 (자세는 규칙이 shock 으로)
+                {
+                    Snd.Play(Sound.Tap);
+                    if (arg is VolleySim.Actor.Player) b.Emote("bang", 1.0);
+                    else rivalBangUntil = w.Clock + 1.0;
+                    Dbg.Log("volley-fumble", ("who", arg?.ToString() ?? ""), ("ball", w.Ball.ToString()));
                 }
                 else if (ev == "spike")
                 {
@@ -286,9 +295,7 @@ sealed partial class VolleyGame : IGameMode
         ses?.Close(b, quit, won, "volley", ("result", won ? "win" : "lost"), ("score", $"{w.ScorePlayer}-{w.ScoreRival}"));
         ses = null;
 
-        ballBmp?.Dispose();
-        ballBmp = null;
-        ballK = -1;
+        DisposeBall();
 
         host.Save();
     }
@@ -324,7 +331,8 @@ sealed partial class VolleyGame : IGameMode
         }
 
         // 공 영역
-        var ballRect = new Rectangle((int)w.BallX - w.BallR - 4, (int)w.BallY - w.BallR - 4, (w.BallR + 4) * 2, (w.BallR + 4) * 2);
+        int br = (int)(w.BallR * 1.45) + 4; // 돌아간 공 그림 (꼭지·잎이 모서리에 있어도)
+        var ballRect = new Rectangle((int)w.BallX - br, (int)w.BallY - br, br * 2, br * 2);
         if (ballRect != lastBallRect)
         {
             dirty.Add(lastBallRect);
@@ -490,6 +498,8 @@ sealed partial class VolleyGame : IGameMode
             DrawMe(o, g, w);
         }
 
+        if (w.Clock < rivalBangUntil) bang.Put(o, g, (int)w.RivalX + 6 * k, (int)w.RivalY - 36 * k); // 라이벌 꼭지 실수
+
         // 10. 경기 종료 시 이긴 쪽 머리 위에 왕관(game/crown)과 별(game/star), 진 쪽은 dizzy (모래성 스타일)
         if (w.Done)
         {
@@ -611,23 +621,65 @@ sealed partial class VolleyGame : IGameMode
     void DrawBall(Overlay o, Graphics g, VolleySim w)
     {
         var cp = o.ToClient(w.BallX, w.BallY);
-        int r = w.BallR;
-        EnsureBallBitmap(w.K);
-        if (ballBmp != null)
-        {
-            g.DrawImageUnscaled(ballBmp, cp.X - r - 1, cp.Y - r - 1);
-        }
+        var frames = BallFrames(w.Ball, w.K);
+        double turn = w.BallSpin / (Math.PI * 2) * BallTurns;
+        var f = frames[(((int)Math.Round(turn)) % BallTurns + BallTurns) % BallTurns];
+        g.DrawImageUnscaled(f, cp.X - f.Width / 2, cp.Y - f.Height / 2);
     }
 
-    void EnsureBallBitmap(int k)
+    // 공 그림을 BallTurns 방향으로 미리 돌려 둔다 (판마다 한 번, 픽셀은 가장 가까운 점으로)
+    Bitmap[] BallFrames(VolleySim.BallKind kind, int k)
     {
-        if (ballBmp != null && ballK == k) return;
-        ballBmp?.Dispose();
-        ballK = k;
+        if (ballFrames != null && ballFor == (kind, k)) return ballFrames;
+        DisposeBall();
+        ballFor = (kind, k);
+        using var basic = kind == VolleySim.BallKind.Volleyball ? Volleyball(k) : Fruit(kind, k);
+        int side = (int)Math.Ceiling(basic.Width * 1.45) | 1;
+        ballFrames = new Bitmap[BallTurns];
+        for (int i = 0; i < BallTurns; i++)
+        {
+            var bmp = new Bitmap(side, side, PixelFormat.Format32bppPArgb);
+            using var g = Graphics.FromImage(bmp);
+            g.InterpolationMode = InterpolationMode.NearestNeighbor;
+            g.PixelOffsetMode = PixelOffsetMode.Half;
+            g.TranslateTransform(side / 2f, side / 2f);
+            g.RotateTransform(i * 360f / BallTurns);
+            g.DrawImage(basic, -basic.Width / 2f, -basic.Height / 2f, basic.Width, basic.Height);
+            ballFrames[i] = bmp;
+        }
+        return ballFrames;
+    }
 
+    void DisposeBall()
+    {
+        if (ballFrames != null) foreach (var f in ballFrames) f.Dispose();
+        ballFrames = null;
+        ballFor = (VolleySim.BallKind.Volleyball, -1);
+    }
+
+    // 과일 공: VolleyFruits 의 17×17 칸을 k 배로
+    static Bitmap Fruit(VolleySim.BallKind kind, int k)
+    {
+        var (pal, rows) = VolleyFruits.Art[kind];
+        var bmp = new Bitmap(rows[0].Length * k, rows.Length * k, PixelFormat.Format32bppPArgb);
+        using var g = Graphics.FromImage(bmp);
+        for (int y = 0; y < rows.Length; y++)
+            for (int x = 0; x < rows[y].Length; x++)
+            {
+                int i = VolleyFruits.Keys.IndexOf(rows[y][x]);
+                if (i < 0) continue;
+                using var br = new SolidBrush(ColorTranslator.FromHtml(pal[i]));
+                g.FillRectangle(br, x * k, y * k, k, k);
+            }
+        return bmp;
+    }
+
+    // 배구공 (처음 그림 그대로)
+    static Bitmap Volleyball(int k)
+    {
         int r = VolleySim.BallCells * k;
         int d = (r + 1) * 2;
-        ballBmp = new Bitmap(d, d, PixelFormat.Format32bppPArgb);
+        var bmp = new Bitmap(d, d, PixelFormat.Format32bppPArgb);
 
         int cx = r + 1;
         int cy = r + 1;
@@ -665,10 +717,11 @@ sealed partial class VolleyGame : IGameMode
                         c = Color.White; // 기본 흰색
                     }
 
-                    ballBmp.SetPixel(x, y, c);
+                    bmp.SetPixel(x, y, c);
                 }
             }
         }
+        return bmp;
     }
 
     void DrawRival(Overlay o, Graphics g, VolleySim w)
@@ -712,6 +765,7 @@ sealed partial class VolleyGame : IGameMode
 
         star = st.Get("game/star", 0, small);
         crown = st.Get("game/crown", 0, small);
+        bang = st.Get("emo/bang", 0, small);
 
         var b = host.Pet;
         meIdleStamp = st.Get($"{b.P.Stage}/1/idle", 0, k, false);

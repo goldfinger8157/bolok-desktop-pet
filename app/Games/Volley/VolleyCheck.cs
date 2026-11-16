@@ -254,7 +254,51 @@ static class VolleyCheck
             }
         }
 
-        return "배구: 공 튕김(벽·천장·그물 기둥·캡)·바닥 득점(랠리)·서브권 교대·5점 승리·공중 강스파이크·땅 Ctrl 무효·보스 키 즉시 종료·기록 저장/불러오기·창 추적 및 바탕화면 판·AI 타구·결정론·표정 자세 유효성 모두 통과";
+        // 과일 공·꼭지 헤딩 실수 (YELL 2026-11-16)
+        {
+            foreach (var (kind, (pal, rows)) in VolleyFruits.Art)
+            {
+                Expect(rows.Length == VolleySim.BallCells * 2 + 1 && rows.All(r => r.Length == rows.Length), $"과일 공 {kind}: 17×17 칸");
+                Expect(rows.All(r => r.All(ch => ch == '.' || VolleyFruits.Keys.IndexOf(ch) is >= 0 and var i && i < pal.Length)), $"과일 공 {kind}: 색 번호가 팔레트 안");
+            }
+            Expect(Enum.GetValues<VolleySim.BallKind>().Where(k => k != VolleySim.BallKind.Volleyball).All(VolleyFruits.Art.ContainsKey), "과일마다 그림이 있다");
+            var pick = new Random(5); int vb = 0; var seen = new HashSet<VolleySim.BallKind>();
+            for (int i = 0; i < 2000; i++) { var k = VolleySim.PickBall(pick); seen.Add(k); if (k == VolleySim.BallKind.Volleyball) vb++; }
+            Expect(seen.Count == 6 && vb is > 300 and < 500, $"판마다 무작위, 배구공은 가끔 (2000판 중 {vb})");
+
+            // 머리 바로 위에서 떨어지는 공: 꼭지가 아래(머리 쪽)면 실수, 위면 보통 튕김, 꼭지 없는 공은 실수 없음
+            VolleySim Drop(VolleySim.BallKind kind, double spin, out List<string> evs)
+            {
+                var list = new List<string>();
+                var w = new VolleySim(court, false, 3, new Random(2)) { Ball = kind };
+                w.OnEvent = (e, _) => list.Add(e);
+                w.BallX = w.PlayerX; w.BallY = w.PlayerY - 2 * w.PetR - w.BallR - 2; w.BallVx = 0; w.BallVy = 120; w.BallSpin = spin;
+                for (int i = 0; i < 20 && !list.Contains("hit") && !list.Contains("fumble"); i++) w.Update(1 / 60.0);
+                evs = list;
+                return w;
+            }
+            var down = Drop(VolleySim.BallKind.Apple, Math.PI, out var e1);
+            Expect(e1.Contains("fumble") && !e1.Contains("hit") && down.BallVy < 0 && down.BallVy > -260 * down.ScaleRatio && Math.Abs(down.BallVx) < 140 * down.ScaleRatio, $"꼭지가 머리 쪽이면 힘없이 툭 ({down.BallVx:F0},{down.BallVy:F0})");
+            down.Update(1 / 60.0);
+            Expect(down.PlayerPose == "shock", $"꼭지 실수하면 움찔 ({down.PlayerPose})");
+            var up = Drop(VolleySim.BallKind.Apple, 0, out var e2);
+            Expect(e2.Contains("hit") && !e2.Contains("fumble"), "꼭지가 위면 보통 튕김");
+            var side = Drop(VolleySim.BallKind.Gyul, Math.PI / 2, out var e3);
+            Expect(e3.Contains("hit") && !e3.Contains("fumble"), "꼭지가 옆(90°)이면 보통 튕김");
+            foreach (var plain in new[] { VolleySim.BallKind.Volleyball, VolleySim.BallKind.Coconut })
+            {
+                Drop(plain, Math.PI, out var e4);
+                Expect(e4.Contains("hit") && !e4.Contains("fumble"), $"꼭지 없는 공({plain})은 실수 없음");
+            }
+            var roll = new VolleySim(court, false, 3, new Random(3)) { Ball = VolleySim.BallKind.Orange };
+            roll.BallX = 600; roll.BallY = 300; roll.BallVx = 200; roll.BallVy = 0; roll.BallSpin = 0; roll.Stage = VolleySim.Phase.InPlay;
+            roll.Update(1 / 60.0);
+            Expect(roll.BallSpin > 0, "오른쪽으로 가면 시계 방향으로 돈다");
+            var sp = Sprites.Embedded();
+            Expect(sp.Has("emo/bang") && PetArt.Embedded.Poses.Contains("shock"), "느낌표 그림·움찔 자세가 있다");
+        }
+
+        return "배구: 과일 공(무작위·가끔 배구공)·꼭지 헤딩 실수·공 튕김(벽·천장·그물 기둥·캡)·바닥 득점(랠리)·서브권 교대·5점 승리·공중 강스파이크·땅 Ctrl 무효·보스 키 즉시 종료·기록 저장/불러오기·창 추적 및 바탕화면 판·AI 타구·결정론·표정 자세 유효성 모두 통과";
     }
 
     // ── 화면 없이 그려 보기 (--mode-scene volley <경로>) ──
@@ -296,7 +340,7 @@ static class VolleyCheck
                 if (shot == 0)
                 {
                     // 샷 0: 창 안 랠리 (점수 2:1)
-                    play = new VolleySim(windowCourt, false, k, new Random(10));
+                    play = new VolleySim(windowCourt, false, k, new Random(10)) { Ball = VolleySim.BallKind.Apple, BallSpin = 10 / 7.0 }; // 장면마다 다른 과일
                     play.ScorePlayer = 2;
                     play.ScoreRival = 1;
                     play.BallX = play.NetX - 40 * k;
@@ -313,7 +357,7 @@ static class VolleyCheck
                 else if (shot == 1)
                 {
                     // 샷 1: 강스파이크 순간 (공중 스파이크 연출)
-                    play = new VolleySim(windowCourt, false, k, new Random(20));
+                    play = new VolleySim(windowCourt, false, k, new Random(20)) { Ball = VolleySim.BallKind.Orange, BallSpin = 20 / 7.0 }; // 장면마다 다른 과일
                     play.ScorePlayer = 3;
                     play.ScoreRival = 2;
                     play.PlayerOnGround = false;
@@ -339,7 +383,7 @@ static class VolleyCheck
                 else if (shot == 2)
                 {
                     // 샷 2: 득점 순간 (공 바닥 닿음, 먼지 연출, 새로 켜진 점 반짝임)
-                    play = new VolleySim(windowCourt, false, k, new Random(30));
+                    play = new VolleySim(windowCourt, false, k, new Random(30)) { Ball = VolleySim.BallKind.Melon, BallSpin = 30 / 7.0 }; // 장면마다 다른 과일
                     play.ScorePlayer = 3;
                     play.ScoreRival = 2;
                     play.NewlyLitTeam = 0;
@@ -368,7 +412,7 @@ static class VolleyCheck
                 else if (shot == 3)
                 {
                     // 샷 3: 바탕화면 판 (창 없는 상태)
-                    play = new VolleySim(desktopCourt, true, k, new Random(40));
+                    play = new VolleySim(desktopCourt, true, k, new Random(40)) { Ball = VolleySim.BallKind.Gyul, BallSpin = 40 / 7.0 }; // 장면마다 다른 과일
                     play.ScorePlayer = 1;
                     play.ScoreRival = 0;
                     play.BallX = play.NetX + 30 * k;
