@@ -227,15 +227,43 @@ sealed partial class SwarmGame : IGameMode
         return side switch { 0 => (f.Left + 8 * k, along), 1 => (f.Right - 8 * k, along), 2 => (along, f.Top + 8 * k), _ => (along, f.Bottom - 8 * k) };
     }
 
-    // 러시 예고 (35~40초): 판 테두리 안쪽 띠(안쪽 2칸)가 3Hz 로 붉게 깜빡이고, 첫 물결이 들어올 변에 세모 (둘러싸기 Ring 이면 네 변 모두).
-    // 러시 동안은 모서리 ㄱ자가 붉게. 띠 i: 0 위 · 1 아래 · 2 왼쪽 · 3 오른쪽
-    static bool WarnOn(Swarm s) => s.Warning && ((int)(s.Clock * 6) & 1) == 0;
-    static Rectangle Band(Rectangle f, int i, int t) => i switch
+    // 러시 예고 (35~40초): 판 안쪽 가장자리에 흐린 주황 느낌표 여섯이 제각각 깜빡. 첫 물결이 들어올 변 쪽에만 (둘러싸기 Ring 이면 사방).
+    // YELL 2026-11-17: 붉은 테두리 띠·붉은 모서리는 너무 눈에 띈다 → 느낌표 시안 2번, 모서리는 원래 색. 자리는 러시마다 한 번 정한다 (rng 를 안 쓴다: 같은 씨 = 같은 판)
+    const int Marks = 6;
+    readonly (int X, int Y)[] marks = new (int, int)[Marks];
+    int marksFor = -1;
+
+    void PlaceMarks(Swarm s)
     {
-        0 => new(f.Left, f.Top, f.Width, t), 1 => new(f.Left, f.Bottom - t, f.Width, t),
-        2 => new(f.Left, f.Top + t, t, f.Height - 2 * t), _ => new(f.Right - t, f.Top + t, t, f.Height - 2 * t),
-    };
-    static bool Triangle(Swarm s, int side) => s.RushShape == Swarm.Shape.Ring || s.RushSide == side;
+        int key = (int)(s.Clock / 60) * 64 + s.RushSide * 8 + (int)s.RushShape;
+        if (marksFor == key) return;
+        marksFor = key;
+        var r = new Random(key * 7919 + 17);   // 러시마다 한 번 (프레임마다 만들지 않는다)
+        var f = s.Field;
+        int k = s.K;
+        for (int i = 0; i < Marks; i++)
+        {
+            int side = s.RushShape == Swarm.Shape.Ring ? r.Next(4) : s.RushSide;
+            double u = .1 + .8 * r.NextDouble();
+            int inset = (5 + r.Next(9)) * k + (side == 2 ? 22 * k : 0);   // 위 변은 기록 줄 아래로
+            marks[i] = side switch
+            {
+                0 => (f.Left + inset, f.Top + (int)(u * f.Height)),
+                1 => (f.Right - inset, f.Top + (int)(u * f.Height)),
+                2 => (f.Left + (int)(u * f.Width), f.Top + inset),
+                _ => (f.Left + (int)(u * f.Width), f.Bottom - inset),
+            };
+        }
+    }
+
+    // 느낌표마다 다른 박자로 깜빡 (켜진 것의 비트)
+    static int MarkMask(Swarm s)
+    {
+        if (!s.Warning) return 0;
+        int mask = 0;
+        for (int i = 0; i < Marks; i++) if ((((int)(s.Clock * 3.2 + i * .53)) & 1) == 0) mask |= 1 << i;
+        return mask;
+    }
 
     static int HpPx(Rectangle bar, int hp) => bar.Width * Math.Clamp(hp, 0, Swarm.MaxHp) / Swarm.MaxHp;
     static bool HpTrail(Swarm s) => s.Clock - s.HpAt < Swarm.HpTrailSec && s.HpFrom > s.Hp;
@@ -258,7 +286,8 @@ sealed partial class SwarmGame : IGameMode
         hud.Set(HashCode.Combine(SecLeft(s), HpPx(bar, s.Hp), HpTrail(s) ? HpPx(bar, s.HpFrom) : -1, HeartHidden(s), s.Level, s.Xp, (int)s.State, s.Shoes * 8 + s.Magnets));
         var boss = Boss(s);
         bossHud.Set(boss == null ? 0 : 1 + boss.Tier + 8 * (BossBar(s.Field, k).Width * boss.Hp / boss.MaxHp)); // 막대가 한 픽셀 줄 때만
-        rushHud.Set((s.Warning ? 1 : 0) | (WarnOn(s) ? 2 : 0) | (s.Rushing ? 4 : 0) | ((int)s.RushShape << 3) | (s.RushSide << 4));
+        if (s.Warning) PlaceMarks(s);
+        rushHud.Set((s.Warning ? 1 : 0) | (MarkMask(s) << 1));
         flagHud.Set(SwarmArt.Tier(maxStage) == SwarmArt.RainbowTier ? (int)(s.Clock * 2) % 6 : -1);   // 무지개 깃발은 0.5초마다 색이 바뀐다
 
         int keep = 0;
@@ -319,13 +348,8 @@ sealed partial class SwarmGame : IGameMode
         if (s.Clock - s.SwingAt < s.SwingLen + .05) rs.Add(o.Client(Overlay.Around(s.X, s.Y, s.RangePx + 3 * k, s.RangePx + 3 * k)));
         if (s.Clock - s.MagnetAt < RingSec) rs.Add(o.Client(Overlay.Around(s.X, s.Y, s.PickPx + 3 * k, s.PickPx + 3 * k)));   // 새 줍는 둘레 (점선 원)
         if (s.BossWarning) { var (wx, wy) = WarnAt(f0, k, s.BossSide, s.BossU); rs.Add(o.Client(Overlay.Around(wx, wy, 8 * k, 8 * k))); }
-        if (rushHud.Changed) // 러시 예고 띠·세모·붉은 모서리: 바뀔 때만
-            for (int i = 0; i < 4; i++)
-            {
-                var (tx, ty) = WarnAt(f0, k, i, .5);
-                rs.Add(o.Client(Band(f0, i, 2 * k)));
-                rs.Add(o.Client(Overlay.Around(tx, ty, 8 * k, 8 * k)));
-            }
+        if (rushHud.Changed) // 러시 예고 느낌표: 깜빡일 때만
+            for (int i = 0; i < Marks; i++) rs.Add(o.Client(Rectangle.Inflate(SwarmArt.Bang(k).Box(marks[i].X, marks[i].Y), 1, 1)));
         if (s.Clock < IntroSec + .1) rs.Add(o.Client(StartRect(f0, k, GameHud.Digits(s.Stage))));   // 시작 깃발 (사라질 때까지)
         if (flagHud.Changed || hud.Fresh) rs.Add(o.Client(RecordRect(f0, k, GameHud.Digits(s.Stage))));   // 기록 줄 깃발: 처음 한 번 (무지개는 색이 바뀔 때마다)
         if (Ended(s))
@@ -368,8 +392,12 @@ sealed partial class SwarmGame : IGameMode
         var arm = s.Weapon;
         Art(o, s);
         GameHud.Corners(o, g, fl, k);
-        if (s.Rushing) RedCorners(o, g, fl, k);
-        if (WarnOn(s)) for (int i = 0; i < 4; i++) g.FillRectangle(Pal.Red, o.Client(Band(fl, i, 2 * k)));   // 러시 예고: 테두리 안쪽 띠
+        if (s.Warning)   // 러시 예고: 판 안쪽 가장자리의 느낌표가 제각각 깜빡
+        {
+            int mask = MarkMask(s);
+            var bang = SwarmArt.Bang(k);
+            for (int i = 0; i < Marks; i++) if ((mask & 1 << i) != 0) bang.Put(o, g, marks[i].X, marks[i].Y);
+        }
 
         for (int pass = 0; pass < 2; pass++) // 자석·신발은 보석 더미에 묻히지 않게 위에
             foreach (var m in s.Gems)
@@ -431,9 +459,6 @@ sealed partial class SwarmGame : IGameMode
         DrawSwing(o, g, s);
         if (s.Clock - s.MagnetAt < RingSec && s.State == Swarm.Phase.Play) DrawRing(o, g, s);
         if (s.BossWarning && ((int)((s.Clock - s.BossWarnAt) * 6) & 1) == 0) { var (bwx, bwy) = WarnAt(fl, k, s.BossSide, s.BossU); DrawWarn(o, g, k, s.BossSide, bwx, bwy); }
-        if (WarnOn(s))
-            for (int side = 0; side < 4; side++)
-                if (Triangle(s, side)) { var (tx, ty) = WarnAt(fl, k, side, .5); DrawWarn(o, g, k, side, tx, ty); }
 
         // 시작할 때 머리 위에 이번 무기를 크게. 레벨이 오르거나 자석·신발을 주우면 + 와 그 그림이 잠깐 뜬다 (겹치면 나중 것)
         double popAt = Math.Max(s.UpAt, s.ItemAt);
@@ -487,18 +512,6 @@ sealed partial class SwarmGame : IGameMode
         }
         if (Ended(s)) DrawResult(o, g, s);
         ses?.DrawGuide(o, g, s.Clock, s.X, s.Feet);
-    }
-
-    // 러시 중 모서리 ㄱ자 (GameHud.Corners 와 같은 자리에 붉게 덧그린다)
-    static void RedCorners(Overlay o, Graphics g, Rectangle f0, int k)
-    {
-        var f = o.Client(f0);
-        int len = 8 * k, t = Math.Max(1, k);
-        var b = Pal.Red;
-        g.FillRectangle(b, f.Left, f.Top, len, t); g.FillRectangle(b, f.Left, f.Top, t, len);
-        g.FillRectangle(b, f.Right - len, f.Top, len, t); g.FillRectangle(b, f.Right - t, f.Top, t, len);
-        g.FillRectangle(b, f.Left, f.Bottom - t, len, t); g.FillRectangle(b, f.Left, f.Bottom - len, t, len);
-        g.FillRectangle(b, f.Right - len, f.Bottom - t, len, t); g.FillRectangle(b, f.Right - t, f.Bottom - len, t, len);
     }
 
     // 단계 표시: 기록 줄(남은 시간 아래, 작은 깃발 + 숫자: 한 판 내내)과 시작 1.5초의 큰 깃발 + 숫자. 깃발 색은 깬 가장 높은 단계(등급)

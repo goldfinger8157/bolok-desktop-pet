@@ -171,7 +171,7 @@ static class SwarmArt
         return new Stamp(bmp);
     }
 
-    static readonly Dictionary<(int Kind, int Scale), Stamp> made = new();   // Kind: 0~6 손(오른쪽) · 10~16 손(왼쪽) · 20~26 머리 위 · 30~32 갈래 · 40 위 화살표 · 50~59 깃발 · 60~69 왕관 · 80~ 엘리트
+    static readonly Dictionary<(int Kind, int Scale), Stamp> made = new();   // Kind: 0~6 손(오른쪽) · 10~16 손(왼쪽) · 20~26 머리 위 · 30~32 갈래 · 40 위 화살표 · 50~59 깃발 · 60~69 왕관 · 80~ 엘리트 · 90 러시 느낌표
     // 이미 만든 그림은 바로 (프레임마다 부르는 곳에서 람다·새 객체를 안 만든다: 만드는 쪽은 따로 둔 메서드)
     static Stamp? Peek(int kind, int scale) { lock (made) return made.TryGetValue((kind, scale), out var hit) ? hit : null; }
     static Stamp Store(int kind, int scale, Stamp stamp) { lock (made) return made.TryGetValue((kind, scale), out var hit) ? hit : made[(kind, scale)] = stamp; }
@@ -226,6 +226,12 @@ static class SwarmArt
     }
 
     public static Stamp Arrow(int scale) => Cached(40, scale, ArrowRows);
+
+    // 러시 예고 느낌표: 흐린 주황, 테두리 없이 두 칸 굵기 (YELL 2026-11-17 시안 2번)
+    static readonly string[] BangRows = { "aa", "aa", "aa", "aa", "..", "aa" };
+    static readonly Color BangColor = Color.FromArgb(0xE0, 0xA8, 0x58);
+    public static Stamp Bang(int scale) => Peek(90, scale) ?? Store(90, scale, BuildBang(scale));
+    static Stamp BuildBang(int scale) => Make(BangRows, scale, _ => BangColor);
 
     // 왕관 색 바꿈: 왕관 그림(금색 한 가지 + 갈색 선)의 금색을 등급 색으로
     const uint CrownGold = 0xFFFAB928;

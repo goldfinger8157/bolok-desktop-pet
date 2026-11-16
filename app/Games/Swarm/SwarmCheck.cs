@@ -138,7 +138,7 @@ sealed partial class SwarmGame
             return shot switch
             {
                 0 => s.Clock >= .6,
-                1 => s.Clock >= 36.5 && s.Warning && WarnOn(s),
+                1 => s.Clock >= 36.5 && s.Warning && MarkMask(s) != 0,
                 2 => s.Clock >= 41.6,
                 3 => s.Clock >= .5,
                 _ => Ended(s) && s.EndedFor > (shot == 7 ? 1.2 : 1.3),
