@@ -79,8 +79,14 @@ sealed partial class VolleyGame : IGameMode
     internal const int GrassCells = 5; // 바닥 잔디 띠 두께 (칸, 바닥선 아래로)
 
     // 그림이 닿는 자리: 바탕화면 판은 테두리·잔디 띠까지 (칠할 자리에 넣어야 남거나 안 그려지지 않는다)
-    // 점수판 자리: 네트 아래 바닥 (YELL 2026-11-16: 「점수판은 바닥에, 네트 아래」)
-    static int PipsY(VolleySim w) => w.FloorY - 6 * w.K;
+    // 점수판 자리: 경기장 바닥 아래, 네트 밑 (YELL 2026-11-16: 「점수판을 경기장 바닥 아래로」).
+    // 창이면 창 아래 가장자리 밑, 바탕화면 판이면 잔디 띠 밑. 화면 아래에 자리가 없으면 바닥 안쪽 네트 아래로
+    internal static int PipsY(VolleySim w, Rectangle field)
+    {
+        int below = w.Court.Bottom + (w.IsDesktop ? GrassCells * w.K : 0) + 7 * w.K;
+        return below + 6 * w.K <= field.Bottom || field.IsEmpty ? below : w.FloorY - 6 * w.K;
+    }
+    int PipsY(VolleySim w) => PipsY(w, ses?.Field ?? Rectangle.Empty);
 
     internal static Rectangle PaintCourt(VolleySim w) =>
         w.IsDesktop ? Rectangle.FromLTRB(w.Court.Left - 3, w.Court.Top - 3, w.Court.Right + 3, w.Court.Bottom + GrassCells * w.K + 3) : w.Court;
@@ -145,7 +151,7 @@ sealed partial class VolleyGame : IGameMode
         int courtW = Math.Clamp(cell * 5, 420, 680);
         int courtH = Math.Clamp((int)(cell * 2.8), 240, 360);
 
-        int floorY = Math.Clamp((int)petY, field.Top + courtH + 20, field.Bottom - 10 - GrassCells * scale); // 아래 잔디 띠 자리
+        int floorY = Math.Clamp((int)petY, field.Top + courtH + 20, field.Bottom - 10 - (GrassCells + 13) * scale); // 아래 잔디 띠와 그 밑 점수판 자리
         int centerX = Math.Clamp((int)petX + courtW / 4, field.Left + courtW / 2 + 10, field.Right - courtW / 2 - 10);
 
         return new Rectangle(centerX - courtW / 2, floorY - courtH, courtW, courtH);

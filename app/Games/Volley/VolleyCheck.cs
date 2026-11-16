@@ -337,6 +337,15 @@ static class VolleyCheck
             Expect(hev.Contains("bird") && hit.BallVx < 0 && hit.BirdHit, $"새에 맞으면 공은 튕기고 새는 휘청 ({hit.BallVx:F0})");
             for (int i = 0; i < 60 * 6 && hit.BirdOn; i++) { hit.Stage = VolleySim.Phase.InPlay; hit.Update(1 / 60.0); }
             Expect(!hit.BirdOn, "휘청 날아간 새는 시합장 밖으로 사라진다");
+            var pf = new Rectangle(0, 0, 1920, 1040);
+            var pw = new VolleySim(new Rectangle(400, 200, 800, 500), false, 3, new Random(9));
+            Expect(VolleyGame.PipsY(pw, pf) > pw.Court.Bottom, "점수판은 경기장 바닥 아래");
+            var pd = new VolleySim(new Rectangle(400, 200, 800, 300), true, 3, new Random(9));
+            Expect(VolleyGame.PipsY(pd, pf) > pd.Court.Bottom + VolleyGame.GrassCells * 3, "바탕화면 판은 잔디 띠 아래");
+            var pl = new VolleySim(new Rectangle(400, 500, 800, 540), false, 3, new Random(9));
+            Expect(VolleyGame.PipsY(pl, pf) < pl.FloorY, "화면 아래에 자리가 없으면 바닥 안쪽으로");
+            var lowDesk = new VolleySim(VolleyGame.MakeDesktopCourt(pf, 500, pf.Bottom, 3), true, 3, new Random(9));
+            Expect(VolleyGame.PipsY(lowDesk, pf) > lowDesk.Court.Bottom, "바탕화면 판은 화면 맨 아래에서 열려도 점수판이 잔디 아래 들어간다");
             Expect(VolleyFruits.Bird.All(f => f.Length == 9 && f.All(r => r.Length == 12 && r.All(c => c == '.' || VolleyFruits.BirdPal.ContainsKey(c)))), "새 그림 12×9, 색이 팔레트 안");
         }
 
