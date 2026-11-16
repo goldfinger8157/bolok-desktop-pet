@@ -426,7 +426,7 @@ public sealed class PetArt
             for (int i = 0; i < puffs.Length; i++)
             {
                 var (x, y, r) = puffs[i];
-                g.Ell(cx + x * rx, cy + y * ry, r, r * (i == 0 ? .7 : 1), c["shade"]);
+                g.Ell(cx - x * rx, cy + y * ry, r, r * (i == 0 ? .7 : 1), c["shade"]); // 꼬리는 뒤쪽(왼쪽)으로: 그림은 오른쪽을 보고 걷는다 (YELL 2026-11-16: 몸 방향과 이동 방향이 거꾸로)
             }
         }
         double bulge = cheek * 2.2 + f.N("puff") * 1.2; // 먹은 화면이 많을수록 불룩하다
@@ -470,7 +470,7 @@ public sealed class PetArt
         else DrawShape(cy - .8, rx - 1, ry - .6, c["fur"], true);
         if (pear) g.Ell(cx, cy + ry * .3 - .8, rx * 1.08 - 1, ry * .72 - .6, c["fur"], true);
         if (body == "blob" && !lying) g.Ell(cx, cy + ry * .45, rx * 1.05, ry * .45, c["fur"], true);
-        else if (body == "ghost" && !lying) g.Ell(cx + rx * .15, cy + ry * .75, rx * .65, ry * .45, c["fur"], true);
+        else if (body == "ghost" && !lying) g.Ell(cx - rx * .15, cy + ry * .75, rx * .65, ry * .45, c["fur"], true);
         if (roundEars)
             foreach (var x in earX) { double r = ear * RoundK(true); g.Ell(x, b.Hy - b.Hry * (ears == "big" ? .7 : .86), r, r, c["ear"]); }
         else if (ears == "long")
