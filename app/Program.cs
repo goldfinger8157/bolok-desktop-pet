@@ -78,6 +78,12 @@ static class Program
             return 0;
         }
 
+        if (args.Length >= 2 && args[0] == "--head-look") // 머리 장식·수면 모자 크기 보기 (지금 | 단계별): --head-look 그림.png [종 ...]
+        {
+            ApplicationConfiguration.Initialize();
+            HeadItems.Look(args[1], args.Length > 2 ? args[2..] : new[] { "hamster", "chick", "owl", "cat" });
+            return 0;
+        }
         if (args.Length >= 3 && args[0] == "--art-look") // 데이터로 그린 캐릭터 보기: --art-look 그림.png hamster '{"fur":"#FAB2CC",...}' (화면을 띄우지 않는다)
         {
             ApplicationConfiguration.Initialize();

@@ -217,7 +217,7 @@ public sealed class Overlay : Form
         if (Clover() is { } cl) // 네잎클로버·새싹: 바닥에서 살랑, 가끔 반짝 (줄기 끝이 땅에)
         {
             int k = b.Scale, s = Bolok.Clover.Scale(k), sway = Math.Sin(Environment.TickCount64 / 260.0) > .7 ? 1 : 0;
-            if (cl.Falling) Put(g, sp.Get("item/" + cl.Kind, 0, s, cl.Flip), (int)cl.X, (int)cl.Y); // 낙엽: 팔랑팔랑 뒤집히며 내려온다
+            if (cl.Falling) Put(g, sp.Get("item/" + cl.Kind, 0, HeadItems.ItemScale(k, b.P.Stage), cl.Flip), (int)cl.X, (int)cl.Y); // 낙엽: 팔랑팔랑 뒤집히며 내려온다 (머리에 앉을 크기로)
             else
             {
                 string gk = Bolok.Clover.Falls(cl.Kind) && sp.Has("item/" + cl.Kind + "_r1") ? cl.Kind + "_r1" : cl.Kind; // 땅의 낙엽은 90° 돌려 옆으로 누운 그림

@@ -223,7 +223,7 @@ public sealed class PetForm : Form, IGameHost
         Dbg.Log("screens-changed", ("screens", DescribeScreens()));
     }
 
-    public void SwapSprites(Sprites s) { sprites = s; drawn = default; capSpot.Clear(); cloverSpot.Clear(); Invalidate(); foreach (var o in overlays) o.Invalidate(); } // 머리 자리는 그림마다 다시 잰다
+    public void SwapSprites(Sprites s) { sprites = s; drawn = default; heads.Clear(); Invalidate(); foreach (var o in overlays) o.Invalidate(); } // 머리 자리는 그림마다 다시 잰다
 
     // 키우는 종. 그림(sprites)은 아직 못 받았으면 다른 종일 수 있다 — 알일 때는 공통 그림만 쓰니 티가 안 난다
     string species;
@@ -707,7 +707,7 @@ public sealed class PetForm : Form, IGameHost
         else if (a.Length > 1 && a[1] == "baby") { if (StartVisitWithBaby()) Dbg.Log("visit-baby"); }
         else if (a.Length > 1 && a[1] == "morning") { b.Emote("sun", 2.5); b.Greet("stretch", 1.6); }
         else if (a.Length > 1 && a[1] == "night") { b.Emote("moon", 2.5); b.Greet("stretch", 1.6); }
-        else if (a.Length > 1 && a[1] == "nightcap") { ForceNight = !ForceNight; capSpot.Clear(); Invalidate(); }
+        else if (a.Length > 1 && a[1] == "nightcap") { ForceNight = !ForceNight; heads.Clear(); Invalidate(); }
         else if (a.Length > 1 && a[1] == "dream") { nextDream = Environment.TickCount64 / 1000.0; Dbg.Log("dream-now", ("asleep", b.P.Asleep), ("pose", b.Pose), ("game", InGame), ("behind", b.Behind), ("x", (int)b.X), ("y", (int)b.Y)); } // 자는 중이면 꿈 구름을 바로
         else StartVisit(a.Length > 1 ? a[1] : null, counts: false);
     }
@@ -907,7 +907,7 @@ public sealed class PetForm : Form, IGameHost
         Item(h, "낙엽 더미 (땅에 떨구기)", () => CloverCommand(new[] { "clover", "drop", new[] { "fallen", "ginkgo", "maple", "redmaple" }[Random.Shared.Next(4)] }));
         Item(h, "벗기", () => CloverCommand(new[] { "clover", "off" }));
         var etc = Group("그 밖");
-        Item(etc, "밤 수면 모자 켜기/끄기", () => { ForceNight = !ForceNight; capSpot.Clear(); Invalidate(); });
+        Item(etc, "밤 수면 모자 켜기/끄기", () => { ForceNight = !ForceNight; heads.Clear(); Invalidate(); });
         Item(etc, "자리 비움: 안 함 (계속 깨어 있기)", () => { if (dev != null) dev.ForceAfk = false; });
         Item(etc, "자리 비움: 바로 (잠들기)", () => { if (dev != null) dev.ForceAfk = true; });
         Item(etc, "자리 비움: 자동", () => { if (dev != null) dev.ForceAfk = null; });
@@ -935,71 +935,21 @@ public sealed class PetForm : Form, IGameHost
 
     // 머리에 꽂은 네잎클로버·새싹. 그 열에서 가장 위 칸에 줄기 끝을 꽂는다 (프레임마다 몸이 들썩이면 같이)
     //   네잎클로버는 머리 왼쪽(뒤집히면 오른쪽), 새싹은 머리 꼭대기 가운데에서 자라난 것처럼 (YELL: 머리에 꽂은 잎사귀가 귀엽다)
-    readonly Dictionary<(string, int, bool, int), (int X, int Top)> cloverSpot = new();
-    readonly Dictionary<string, (int X, int Y)> cloverStem = new();
+    readonly HeadItems heads = new(); // 머리 장식·수면 모자 자리 재기와 그리기 (HeadItems.cs, 크기는 성장 단계별)
     void DrawClover(Graphics g, string name, int frame, bool flip, int shake)
     {
-        string item = "item/" + clover.Kind;
-        bool tilt = Clover.Falls(clover.Kind) && sprites.Has(item + "_45"); // 낙엽: 45° 기울여 꼭지부터 꽂는다 (YELL 2026-11-13: 꽂힌 게 제일 귀엽다)
-        bool mirror = tilt && clover.Look % 2 == 1;                           // 왼쪽·오른쪽 어느 쪽으로 기울지는 내려앉을 때마다 무작위
-        if (tilt) item += "_45";
-        if (clover.State != Clover.Phase.Worn || b.Pose is "fly" or "roll" or "flop" || !sprites.Has(item) || name.StartsWith("egg")) return;
-        int n = sprites.Frames(name), f = (frame % n + n) % n, side = clover.Kind == "sprout" ? 0 : Clover.Falls(clover.Kind) ? 3 : -4; // 새싹은 정수리 가운데, 네잎클로버·해바라기는 왼쪽 옆, 낙엽은 가운데에서 살짝 오른쪽 (YELL: 한가운데는 어색 → 6칸은 너무 치우침, 낙엽 폭 절반만큼 안으로)
-        if (!cloverSpot.TryGetValue((name, f, flip, side), out var spot))
-        {
-            var one = sprites.Get(name, f, 1, flip);
-            int top = one.Height;
-            for (int x = one.Width * 3 / 10; x < one.Width * 6 / 10; x++)
-                for (int y = 0; y < one.Height; y++)
-                    if (one.GetPixel(x, y).A > 0) { top = Math.Min(top, y); break; }
-            int row = Math.Min(one.Height - 1, top + 4), x0 = one.Width, x1 = 0;
-            for (int x = 0; x < one.Width; x++) if (one.GetPixel(x, row).A > 0) (x0, x1) = (Math.Min(x0, x), Math.Max(x1, x));
-            int col = Math.Clamp((x0 + x1) / 2 + (flip ? -side : side), 0, one.Width - 1), surface = one.Height - 1;
-            for (int y = 0; y < one.Height; y++) if (one.GetPixel(col, y).A > 0) { surface = y; break; }
-            cloverSpot[(name, f, flip, side)] = spot = (col, surface);
-        }
-        string stemKey = mirror ? item + "|m" : item;
-        if (!cloverStem.TryGetValue(stemKey, out var stem)) // 그림의 줄기 끝 (가장 아래 칸). 누운 낙엽은 맨 아래 줄의 가운데
-        {
-            var icon1 = sprites.Get(item, 0, 1, mirror);
-            stem = (20, 23);
-            for (int y = icon1.Height - 1, found = 0; y >= 0 && found == 0; y--)
-            {
-                int x0 = -1, x1 = -1;
-                for (int x = 0; x < icon1.Width; x++) if (icon1.GetPixel(x, y).A > 0) { if (x0 < 0) x0 = x; x1 = x; }
-                if (x0 >= 0) { stem = (x0, y); found = 1; }
-            }
-            cloverStem[stemKey] = stem;
-        }
-        int k = b.Scale, s = Clover.Scale(k);
-        var (sx, sy) = stem;
-        int sink = tilt ? k : 0; // 낙엽은 꼭지 끝이 머리에 한 칸 묻히게 (꽂힌 듯)
-        g.DrawImageUnscaled(sprites.Get(item, 0, s, mirror), 8 + shake + spot.X * k - sx * s, spot.Top * k - sy * s + sink); // 줄기 끝만 머리에 닿고 잎은 살짝 떠 있게 (YELL)
+        if (clover.State != Clover.Phase.Worn || b.Pose is "fly" or "roll" or "flop" || name.StartsWith("egg")) return;
+        heads.DrawWorn(g, sprites, name, frame, flip, b.Scale, b.P.Stage, clover.Kind, clover.Look, 8 + shake);
     }
 
     // 밤에 자는 동안 수면 모자 (머리 꼭대기: 몸 가운데 열에서 가장 위 칸). 프레임마다 자리를 따로 재서 숨 쉬며 들썩이는 머리를 따라간다
     // (YELL 2026-11-13: 움직임에 따라 같이 — 전에는 처음 본 프레임 자리에 멈춰 있었다).
     // 머리 장식(클로버·새싹·해바라기·낙엽)을 하고 있으면 모자는 안 쓴다 — 둘 중 하나만 (YELL 2026-11-13)
-    readonly Dictionary<(string, int, bool), (int X, int Top)> capSpot = new();
     public bool ForceNight; // 디버그·시험용
     bool CapShown => (Night || ForceNight) && b.P.Asleep && b.Pose == "sleep" && clover.State != Clover.Phase.Worn && sprites.Has("game/nightcap");
     void DrawCap(Graphics g, string name, int frame, bool flip, int shake)
     {
-        if (!CapShown) return;
-        int n = Math.Max(1, sprites.Frames(name)), f = (frame % n + n) % n;
-        if (!capSpot.TryGetValue((name, f, flip), out var spot))
-        {
-            var one = sprites.Get(name, f, 1, flip);
-            int top = one.Height;
-            for (int x = one.Width * 3 / 10; x < one.Width * 6 / 10; x++)
-                for (int y = 0; y < one.Height; y++)
-                    if (one.GetPixel(x, y).A > 0) { top = Math.Min(top, y); break; }
-            int row = Math.Min(one.Height - 1, top + 4), x0 = one.Width, x1 = 0;
-            for (int x = 0; x < one.Width; x++) if (one.GetPixel(x, row).A > 0) (x0, x1) = (Math.Min(x0, x), Math.Max(x1, x));
-            capSpot[(name, f, flip)] = spot = ((x0 + x1) / 2, top);
-        }
-        int k = b.Scale;
-        g.DrawImageUnscaled(sprites.Get("game/nightcap", 0, k), 8 + shake + (spot.X - 20 - 3) * k, (spot.Top - 23 + 2) * k);
+        if (CapShown) heads.DrawCap(g, sprites, name, frame, flip, b.Scale, b.P.Stage, 8 + shake);
     }
 
     // ── 날씨 (규칙은 Weather.cs): 하루 몇 번 볼록이 모니터에 눈·비가 조금. 일하는 창 위엔 안 그린다. 게임·잠·자리 비움엔 멈춘다 ──

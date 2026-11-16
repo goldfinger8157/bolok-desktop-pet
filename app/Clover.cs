@@ -130,6 +130,14 @@ public sealed class Clover
     public static string Check()
     {
         static void Expect(bool ok, string what) { if (!ok) throw new Exception("자가 검사 실패: 네잎클로버 — " + what); }
+        // 머리 장식·모자 크기는 성장 단계별 (YELL 2026-11-16): 아기 ≤ 어린이 ≤ 어른, 어른은 전과 같고, 배율 3에서 아기는 어른보다 작다
+        for (int k = 2; k <= 6; k++)
+        {
+            Expect(HeadItems.ItemScale(k, "adult_sweet") == Scale(k) && HeadItems.CapScale(k, "adult_grumpy") == k, $"어른 크기는 그대로 (배율 {k})");
+            Expect(HeadItems.ItemScale(k, "baby") <= HeadItems.ItemScale(k, "child") && HeadItems.ItemScale(k, "child") <= Scale(k)
+                && HeadItems.CapScale(k, "baby") <= HeadItems.CapScale(k, "child") && HeadItems.CapScale(k, "child") <= k, $"아기 ≤ 어린이 ≤ 어른 (배율 {k})");
+        }
+        Expect(HeadItems.ItemScale(3, "baby") < Scale(3) && HeadItems.CapScale(3, "baby") < 3, "배율 3에서 아기 장식·모자는 어른보다 작다");
         var area = new Rectangle(0, 0, 1920, 1040);
         var c = new Clover();
         var rng = new Random(1);
