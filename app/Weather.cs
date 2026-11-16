@@ -555,7 +555,8 @@ public sealed class Weather
         var bn = Fresh(null);
         wn.Begin(Sky.Rain, bn.Now, rng, Cover.Shelter, 30);
         Run(wn, bn, 3, () => false);
-        Expect(wn.Reaction == Cover.Umbrella && wn.UmbrellaUp, "비 피하기: 숨을 창이 없으면 우산");
+        for (int i = 0; i < 16 && !wn.UmbrellaUp; i++) Run(wn, bn, .5, () => false); // 마침 구르기·기지개 같은 혼자 놀기 중이면 발이 땅에 닿을 때까지 조금 더 (가끔 떨어지던 검사, 2026-11-16)
+        Expect(wn.Reaction == Cover.Umbrella && wn.UmbrellaUp, $"비 피하기: 숨을 창이 없으면 우산 ({bn.Mode}/{bn.Pose})");
 
         var wg = new Weather();
         var bg = Fresh(win);

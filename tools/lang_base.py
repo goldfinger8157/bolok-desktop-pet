@@ -65,7 +65,7 @@ t('note.worms_wind', 'Cloud box: Wind', '구름 상자: 바람')
 t('note.raid_move', '←→ / Mouse: Move', '←→ / 마우스: 움직이기')
 t('note.raid_fire', 'Fires automatically', '쏘는 건 자동이에요')
 t('note.swarm_move', '←↑↓→: Move', '←↑↓→: 움직이기')
-t('note.swarm_auto', 'Gun and sword are automatic', '총과 칼은 자동이에요')
+t('note.swarm_auto', 'Your weapon is automatic', '무기는 자동이에요')
 # 단계
 t('stage.egg', 'Egg', '알')
 t('stage.baby', 'Baby', '아기')

@@ -636,16 +636,16 @@
   "ru": "←↑↓→: Двигаться"
  },
  "note.swarm_auto": {
-  "en": "Gun and sword are automatic",
-  "ko": "총과 칼은 자동이에요",
-  "ja": "銃と剣は自動だよ",
-  "zh-Hans": "枪和剑自动攻击",
-  "zh-Hant": "槍和劍自動攻擊",
-  "es": "Pistola y espada automáticas",
-  "de": "Pistole und Schwert automatisch",
-  "fr": "Pistolet et épée automatiques",
-  "pt": "Arma e espada automáticas",
-  "ru": "Пистолет и меч бьют сами"
+  "en": "Your weapon is automatic",
+  "ko": "무기는 자동이에요",
+  "ja": "武器はオートだよ",
+  "zh-Hans": "武器会自动攻击",
+  "zh-Hant": "武器會自動攻擊",
+  "es": "El arma ataca sola",
+  "de": "Die Waffe greift automatisch an",
+  "fr": "L'arme attaque toute seule",
+  "pt": "A arma ataca sozinha",
+  "ru": "Оружие атакует само"
  },
  "stage.egg": {
   "en": "Egg",
