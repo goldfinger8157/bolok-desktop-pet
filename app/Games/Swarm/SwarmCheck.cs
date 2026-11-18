@@ -21,7 +21,8 @@ sealed partial class SwarmGame
     // ── 그려 보기 ──
     // 값 없음: 열 장 = 무기 일곱(각자 공격이 한창인 순간, 90초 뒤·레벨 5 이상) + 여왕과 보스 막대·생명 30% 아래 + 자석을 주운 순간(점선 원)과 보스 예고 + 5:00 결과(큰 왕관·반짝이)
     // 값 <무기 이름>: 그 무기 여섯 장 = 시작(머리 위 무기 그림) · 첫 레벨 업(갈래 그림) · 자석을 주운 순간 · 보스 예고 · 갈래가 다 찬 공격 · 끝
-    // 값 art: 무기·갈래 그림과 수류탄 그림만 크게 · table: 무기 표만 · check: 버그 떼 자가 검사만 · nade: 시작 안내·열한째·열두째만
+    // 값 spec: 특수기 여섯 장 = 산탄총 둘째 발 · 쌍검 칼 · 쌍권총 난사 · 바주카 새끼 폭탄 · 화염 불 자리 · 번쩍(밝은 손·무기 그림·반짝이)
+// 값 art: 무기·갈래 그림과 수류탄·특수기 그림만 크게 · table: 무기 표만 · check: 버그 떼 자가 검사만 · nade: 시작 안내·열한째·열두째만
     // 열한째 = 수류탄: 3개 든 판에서 하나 던져 터진 직후 + 둘째가 공중(그림자) + 옆에 떨어진 수류탄 + 표시의 수 1 / 열두째 = 빈 손: 0개에서 Ctrl (표시·머리 위 회색 수류탄이 깜빡)
     public static void Scene(string path, int k)
     {
@@ -32,13 +33,19 @@ sealed partial class SwarmGame
             Console.OutputEncoding = Encoding.UTF8;
             L.Use("ko");
             var part = ta.Split(':');
-            if (part.Length > 1 && int.TryParse(part[1], out int only1)) Console.WriteLine(Table(part.Length > 2 && int.TryParse(part[2], out int sd) ? sd : only1 >= 5 ? 80 : 40, only1, !(part.Length > 3 && part[3] == "off")));   // table:<단계>:<씨 수>:off = 수류탄 없이
+            if (part.Length > 1 && int.TryParse(part[1], out int only1))   // table:<단계>:<씨 수>:off = 수류탄 없이, :nospec = 특수기 없이 (고치기 전 표와 같아야 한다), 둘은 , 로 같이
+            {
+                var opts = part.Length > 3 ? part[3].Split(',') : Array.Empty<string>();
+                Console.WriteLine(Table(part.Length > 2 && int.TryParse(part[2], out int sd) ? sd : only1 >= 5 ? 80 : 40, only1, !opts.Contains("off"), !opts.Contains("nospec")));
+            }
             else Console.WriteLine(Tables());
             return;
         }
+        if (arg is { } tu && tu.StartsWith("tune:")) { Console.OutputEncoding = Encoding.UTF8; L.Use("ko"); Console.WriteLine(Tune(tu.Split(':'))); return; }   // tune:<단계>:<씨 수>:<무기>[,<무기>…][:nospec] 무기 몇 개만 빨리 (손잡이 맞출 때)
         if (arg == "art") { SwarmArt.Sheet(path, 8); return; }   // 위 둘은 줄 하나라 하나만 크게
         if (arg == "stage") { StageScene(path, k); return; }
-        if (arg == "bench") { Console.OutputEncoding = Encoding.UTF8; L.Use("ko"); Console.WriteLine(BenchOne(1, false) + "\n" + BenchOne(10, true)); return; }   // 속도만 (표 없이)
+        if (arg == "spec") { SpecScene(path, k); return; }   // 특수기 여섯 장 (SwarmSpecCheck.cs)
+        if (arg is "bench" or "bench:nospec") { Console.OutputEncoding = Encoding.UTF8; L.Use("ko"); Console.WriteLine(BenchLines(arg == "bench")); return; }   // 속도만 (표 없이). bench:nospec = 특수기를 끈 같은 빌드 (견주는 기준)
         var host = new SceneHost(scale: k);
         var game = new SwarmGame(host);
         var field = FieldAt(k);
@@ -178,28 +185,30 @@ sealed partial class SwarmGame
     //    10단계(생명을 프레임마다 채워 300초를 다 잰다) — 그리고 단계 1·3·5·10 무기 표 (--mode-bench swarm) ──
     public static string BenchRun()
     {
-        string one = BenchOne(1, false), ten = BenchOne(10, true);
-        return one + "\n" + ten + "\n" + Tables();
+        return BenchLines(true) + "\n" + BenchLines(false) + "\n" + Tables();
     }
 
-    static string BenchOne(int stage, bool refill)
+    // 화염 1단계 · 화염 10단계 · 쌍권총 10단계(난사) · 바주카 10단계(새끼 폭탄). specials=false 가 같은 빌드의 기준
+    static string BenchLines(bool specials) => string.Join("\n", new[] { BenchOne(1, false, Arm.Id.Flame, specials), BenchOne(10, true, Arm.Id.Flame, specials), BenchOne(10, true, Arm.Id.Pistols, specials), BenchOne(10, true, Arm.Id.Bazooka, specials) });
+
+    static string BenchOne(int stage, bool refill, Arm.Id id = Arm.Id.Flame, bool specials = true)
     {
         var host = new SceneHost();
         var game = new SwarmGame(host);
-        var s = new Swarm(TestField, 3, new Random(5), Arm.Id.Flame, stage);
+        var s = new Swarm(TestField, 3, new Random(5), id, stage) { SpecialsOn = specials };
         game.Begin(s);
         s.OnEvent = null;
         game.ses = Session.Fake(TestField);
         game.ses.Guide(GuideKeys);
         using var ov = host.Overlay(game);
         string speed = Bench.Run("swarm", ov, game, s.Field, () => { if (s.Done) return false; s.BotPlay(); return true; }, () => { s.Update(Tick); if (refill && s.State == Swarm.Phase.Play) s.Hp = Swarm.MaxHp; game.Track(); }, 60 * 330);
-        return speed + $" [{stage}단계 화염방사기{(refill ? ", 생명 채움" : "")}, {s.Time:0}초 버팀]";
+        return speed + $" [{stage}단계 {KoNames[(int)id]}{(refill ? ", 생명 채움" : "")}{(specials ? "" : ", 특수기 없이")}, {s.Time:0}초 버팀, 특수기 {s.Specials}번]";
     }
 
     // 자동 조종 한 판 (화면 없이 규칙만). 끝난 판을 돌려준다
-    static Swarm BotGame(Arm.Id id, int seed, int stage = 1, Func<Swarm, bool>? each = null, bool throws = true)
+    static Swarm BotGame(Arm.Id id, int seed, int stage = 1, Func<Swarm, bool>? each = null, bool throws = true, bool specials = true)
     {
-        var s = new Swarm(TestField, 3, new Random(seed), id, stage) { BotThrows = throws };
+        var s = new Swarm(TestField, 3, new Random(seed), id, stage) { BotThrows = throws, SpecialsOn = specials };
         for (int i = 0; i < 60 * (Swarm.WinSec + 10) && s.State == Swarm.Phase.Play; i++)
         {
             s.BotPlay();
@@ -221,14 +230,14 @@ sealed partial class SwarmGame
     public static string Tables() => string.Join("\n\n", new[] { 1, 3, 5, 10 }.Select(st => Table(st >= 5 ? 80 : 40, st)));
 
     // 무기 표: 무기 7 × 씨 seeds 개를 자동 조종으로 끝까지 (판마다 Swarm·Random 을 따로 쓰므로 나란히 돌려도 된다)
-    public static string Table(int seeds, int stage = 1, bool throws = true)
+    public static string Table(int seeds, int stage = 1, bool throws = true, bool specials = true)
     {
         var runs = new Swarm[Arm.Kinds * seeds];
-        Parallel.For(0, runs.Length, i => runs[i] = BotGame((Arm.Id)(i / seeds), 1000 + i % seeds, stage, null, throws));
+        Parallel.For(0, runs.Length, i => runs[i] = BotGame((Arm.Id)(i / seeds), 1000 + i % seeds, stage, null, throws, specials));
         var sb = new StringBuilder();
-        sb.AppendLine($"### {stage}단계 (씨 {seeds}개씩{(throws ? "" : ", 수류탄 없이")})");
-        sb.AppendLine("| 무기 | 5:00 비율 | 1:00 비율 | 평균 초 | 중앙 초 | 평균 레벨 | 3:00 레벨 | 잡은 수 | 받은 피해 | 남은 생명 | 잡은 보스 | 첫 보스(초) | 자석 | 던진 수 | 수류탄으로 잡은 수 |");
-        sb.AppendLine("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+        sb.AppendLine($"### {stage}단계 (씨 {seeds}개씩{(throws ? "" : ", 수류탄 없이")}{(specials ? "" : ", 특수기 없이")})");
+        sb.AppendLine("| 무기 | 5:00 비율 | 1:00 비율 | 평균 초 | 중앙 초 | 평균 레벨 | 3:00 레벨 | 잡은 수 | 받은 피해 | 남은 생명 | 잡은 보스 | 첫 보스(초) | 자석 | 던진 수 | 수류탄으로 잡은 수 | 특수기 수 | 특수기로 잡은 수 |");
+        sb.AppendLine("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
         var win = new double[Arm.Kinds];
         double meleeKills = 0, rangedKills = 0, meleeHurt = 0, rangedHurt = 0, secs = 0, one = 0, lv3 = 0;
         for (int w = 0; w < Arm.Kinds; w++)
@@ -241,10 +250,12 @@ sealed partial class SwarmGame
             (secs, one, lv3) = (secs + sorted.Average() / Arm.Kinds, one + mine.Count(r => r.Time >= 60) * 100.0 / seeds / Arm.Kinds, lv3 + lv180 / Arm.Kinds);
             if (w < 2) (meleeKills, meleeHurt) = (meleeKills + kills / 2, meleeHurt + hurt / 2);
             else (rangedKills, rangedHurt) = (rangedKills + kills / 5, rangedHurt + hurt / 5);
-            sb.AppendLine($"| {KoNames[w]} | {win[w]:0}% | {mine.Count(r => r.Time >= 60) * 100 / seeds}% | {sorted.Average():0} | {sorted[seeds / 2]:0} | {mine.Average(r => r.Level):0.0} | {lv180:0.0} | {kills:0} | {hurt:0} | {mine.Average(r => r.Hp):0} | {mine.Average(r => r.BossesKilled):0.0} | {first:0} | {mine.Average(r => r.Magnets):0.0} | {mine.Average(r => r.Thrown):0.0} | {mine.Average(r => r.NadeKills):0} |");
+            sb.AppendLine($"| {KoNames[w]} | {win[w]:0}% | {mine.Count(r => r.Time >= 60) * 100 / seeds}% | {sorted.Average():0} | {sorted[seeds / 2]:0} | {mine.Average(r => r.Level):0.0} | {lv180:0.0} | {kills:0} | {hurt:0} | {mine.Average(r => r.Hp):0} | {mine.Average(r => r.BossesKilled):0.0} | {first:0} | {mine.Average(r => r.Magnets):0.0} | {mine.Average(r => r.Thrown):0.0} | {mine.Average(r => r.NadeKills):0} | {mine.Average(r => r.Specials):0.0} | {mine.Average(r => r.SpecKills):0} |");
         }
+        double weakest = Math.Min(Math.Min(win[(int)Arm.Id.Pistols], win[(int)Arm.Id.Shotgun]), Math.Min(win[(int)Arm.Id.Bazooka], win[(int)Arm.Id.Flame]));
         double meleeWin = (win[0] + win[1]) / 2, rangedWin = (win[2] + win[4] + win[5]) / 3, midWin = (win[3] + win[6]) / 2, allWin = win.Average();
         sb.AppendLine($"평균: 5:00 {allWin:0.0}%, 1:00 {one:0}%, 버틴 초 {secs:0}, 3:00 레벨 {lv3:0.0}");
+        sb.AppendLine($"약한 무기(쌍권총·산탄총·바주카·화염) 가장 낮은 값 {weakest:0}%");
         sb.AppendLine($"근접(쌍검·장검) 5:00 평균 − 원거리(쌍권총·소총·바주카) 평균 = {meleeWin - rangedWin:+0.0;-0.0}%p ({meleeWin:0.0}% − {rangedWin:0.0}%), 중거리(산탄총·화염) {midWin:0.0}% (원거리 대비 {midWin - rangedWin:+0.0;-0.0}%p)");
         sb.Append($"근접/원거리: 잡은 수 {meleeKills / rangedKills:0.00}배, 받은 피해 {meleeHurt / rangedHurt:0.00}배");
         if (Goals.TryGetValue(stage, out var g))
@@ -256,6 +267,23 @@ sealed partial class SwarmGame
         return sb.ToString();
     }
 
+    // 무기 몇 개만 한 줄씩: 5:00 비율·평균 초·특수기 수·특수기로 잡은 수 (손잡이를 맞출 때 7개를 다 돌리지 않으려고)
+    static string Tune(string[] part)
+    {
+        int stage = int.Parse(part[1]), seeds = int.Parse(part[2]);
+        var ids = part[3].Split(',').Select(n => Arm.Find(n, out var id) ? id : throw new ArgumentException(n)).ToArray();
+        bool specials = !part.Skip(4).Contains("nospec");
+        var runs = new Swarm[ids.Length * seeds];
+        Parallel.For(0, runs.Length, i => runs[i] = BotGame(ids[i / seeds], 1000 + i % seeds, stage, null, true, specials));
+        var sb = new StringBuilder();
+        for (int w = 0; w < ids.Length; w++)
+        {
+            var mine = runs.Skip(w * seeds).Take(seeds).ToArray();
+            sb.AppendLine($"{stage}단계 {Arm.Name(ids[w])}: 5:00 {mine.Count(r => r.Won) * 100.0 / seeds:0.0}% · 평균 {mine.Average(r => r.Time):0}초 · 잡은 수 {mine.Average(r => r.Kills):0} · 특수기 {mine.Average(r => r.Specials):0.0}번 · 특수기로 잡은 수 {mine.Average(r => r.SpecKills):0}");
+        }
+        return sb.ToString().TrimEnd();
+    }
+
     // ── 자가 검사 (화면 없이 규칙만) ──
     static void Expect(bool ok, string what) { if (!ok) throw new Exception("자가 검사 실패: " + what); }
 
@@ -263,7 +291,7 @@ sealed partial class SwarmGame
     {
         const double tick = Tick;
         void Run(Swarm s, double sec) { for (int i = 0; i < sec * 60 && !s.Done; i++) s.Update(tick); }
-        Swarm Empty(int seed, Arm.Id id = Arm.Id.Pistols, int stage = 1) => new(TestField, 3, new Random(seed), id, stage) { Spawning = false, ShoeChance = 0, MagnetChance = 0, HeartChance = 0, GrenadeChance = 0 };
+        Swarm Empty(int seed, Arm.Id id = Arm.Id.Pistols, int stage = 1) => new(TestField, 3, new Random(seed), id, stage) { Spawning = false, ShoeChance = 0, MagnetChance = 0, HeartChance = 0, GrenadeChance = 0, SpecialsOn = false };   // 특수기는 꺼 둔다: 아래 무기 검사가 알·두 발·틱 피해를 세므로 (특수기는 따로 켠 검사에서)
         Swarm.Foe Dummy(Swarm s, Swarm.Kind kind, double dx, double dy, int hp = 9999, int tier = 1) // 제자리에 선 과녁
         {
             var f = s.Add(kind, s.X + dx, s.Y + dy, tier);
@@ -1043,7 +1071,7 @@ sealed partial class SwarmGame
         var over = new string?[bots.Length];
         Parallel.For(0, bots.Length, i => bots[i] = BotGame((Arm.Id)(i / seeds), i % seeds, 1, s =>
         {
-            if (TestField.Contains((int)s.X, (int)s.Y) && s.Foes.Count <= Swarm.MaxFoes + 4 && s.Shots.Count <= Swarm.MaxShots && s.Gems.Count <= Swarm.MaxGems && s.Hp <= Swarm.MaxHp && s.Magnets <= Swarm.MaxMagnets && s.Grenades <= Swarm.MaxGrenades && s.Nades.Count <= Swarm.MaxNades) return true;
+            if (TestField.Contains((int)s.X, (int)s.Y) && s.Foes.Count <= Swarm.MaxFoes + 4 && s.Shots.Count <= Swarm.MaxShots && s.Gems.Count <= Swarm.MaxGems && s.Hp <= Swarm.MaxHp && s.Magnets <= Swarm.MaxMagnets && s.Grenades <= Swarm.MaxGrenades && s.Nades.Count <= Swarm.MaxNades && s.Bombs.Count <= 4 && s.Fires.Count <= Arm.Spec.MaxFires) return true;
             over[i] = $"{s.Clock:0}초 벌레 {s.Foes.Count} 탄 {s.Shots.Count} 보석 {s.Gems.Count}";
             return false;
         }));
@@ -1055,6 +1083,11 @@ sealed partial class SwarmGame
             Expect(mine.All(s => s.State != Swarm.Phase.Play && s.Time <= Swarm.WinSec), $"판은 끝난다 ({KoNames[w]})");
             Expect(mine.Max(s => s.Time) >= 60, $"자동 조종이 1분은 버틴다 ({KoNames[w]}): {string.Join("·", mine.Select(s => $"{s.Time:0}초"))}");
             line.Append($"{(w > 0 ? ", " : "")}{KoNames[w]} {mine.Average(s => s.Time):0}초/{mine.Count(s => s.Won)}");
+        }
+        for (int w = 0; w < Arm.Kinds; w++)   // 특수기가 있는 무기는 봇 판마다 저절로 나온다 (장검·소총은 없다)
+        {
+            int total = bots.Skip(w * seeds).Take(seeds).Sum(s => s.Specials), want = (Arm.Id)w == Arm.Id.Bazooka ? 5 : 10;
+            Expect(Arm.New((Arm.Id)w).Every > 0 ? total >= want : total == 0, $"자동 조종 판에서 특수기가 나온다 ({KoNames[w]}): {total}번");
         }
         Expect(bots.Sum(s => s.Magnets) >= Arm.Kinds && bots.Sum(s => s.Shoes) >= Arm.Kinds, $"자동 조종도 자석·신발을 줍는다: 자석 {bots.Sum(s => s.Magnets)}개, 신발 {bots.Sum(s => s.Shoes)}켤레");
         Expect(bots.Sum(s => s.Thrown) >= Arm.Kinds && bots.Sum(s => s.NadeKills) > 0, $"자동 조종도 수류탄을 던진다: 던진 수 {bots.Sum(s => s.Thrown)}, 잡은 수 {bots.Sum(s => s.NadeKills)}");
@@ -1384,7 +1417,7 @@ sealed partial class SwarmGame
         for (int w = 0; w <= Arm.Kinds; w++)
         {
             bool ending = w == Arm.Kinds; // 마지막은 끝 화면 (큰 왕관·반짝이)
-            var paint = new Swarm(TestField, 3, new Random(5), ending ? Arm.Id.Flame : (Arm.Id)w) { Clock = ending ? Swarm.WinSec - 12 : 236, Hp = 45 };
+            var paint = new Swarm(TestField, 3, new Random(ending ? 6 : 5), ending ? Arm.Id.Flame : (Arm.Id)w) { Clock = ending ? Swarm.WinSec - 12 : 236, Hp = 45 };
             for (int i = 0; i < 12; i++) paint.LevelUp();
             if (ending) paint.BossesKilled = Swarm.Bosses;
             paint.Hp = 20;
@@ -1465,7 +1498,8 @@ sealed partial class SwarmGame
         {
             if (!ndLast && np.Clock >= Swarm.WinSec - .25) { ndLast = true; np.Grenades = 2; np.ThrowAt = -9; np.Throw(); }
         });
-        return $"버그 떼: 무기 {Arm.Kinds}가지 (판마다 하나, 뽑힌 수 {string.Join("·", drawn)}/200), 자동 조종 평균 초/끝까지 버틴 판({seeds}판씩) — {line}. 생명 {Swarm.MaxHp}, 보스 1분마다 {Swarm.Bosses}번, {Swarm.WinSec:0}초에 끝, 자석 {Swarm.MaxMagnets}개까지 둘레 {Swarm.PickRange:0}→{Swarm.PickRange + Swarm.MagnetStep * Swarm.MaxMagnets:0}";
+        string special = SpecCheck(game, host);
+        return $"버그 떼: 무기 {Arm.Kinds}가지 (판마다 하나, 뽑힌 수 {string.Join("·", drawn)}/200), 자동 조종 평균 초/끝까지 버틴 판({seeds}판씩) — {line}. 생명 {Swarm.MaxHp}, 보스 1분마다 {Swarm.Bosses}번, {Swarm.WinSec:0}초에 끝, 자석 {Swarm.MaxMagnets}개까지 둘레 {Swarm.PickRange:0}→{Swarm.PickRange + Swarm.MagnetStep * Swarm.MaxMagnets:0}. {special}";
 
         static void Frames2(SwarmGame g, int n) { for (int i = 0; i < n; i++) g.Frame(Tick); }
     }

@@ -19,7 +19,7 @@ sealed partial class SwarmGame : IGameMode
     Dictionary<string, int> stageBest = new(); // 무기 이름 → 그 무기로 깬 가장 높은 단계
     int? forceStage;                           // 디버그로 정한 다음 판 단계
     bool auto, practice;                       // practice: 디버그로 단계를 정한 판 (자동 조종 판처럼 기록·단계에 안 남는다)
-    Watch hud, bossHud, rushHud, flagHud, nadeHud;
+    Watch hud, bossHud, rushHud, flagHud, nadeHud, specHud;
     bool ctrlWas;                              // 지난 프레임에 Ctrl 이 눌려 있었다 (누르는 순간만 던지게)
     readonly Random pickRng = new();
     internal Func<Rectangle, Session>? FakeOpen;   // 자가 검사: 판을 열지 않고 Start 를 돌려 본다
@@ -29,6 +29,7 @@ sealed partial class SwarmGame : IGameMode
         ["kill"] = Sound.Hit, ["bigkill"] = Sound.Boom, ["boom"] = Sound.Boom, ["swing"] = Sound.Tap, ["hurt"] = Sound.Hurt, ["over"] = Sound.Hurt,
         ["level"] = Sound.Pick, ["heart"] = Sound.Pick, ["magnet"] = Sound.Pick, ["shoe"] = Sound.Pick, ["win"] = Sound.Pick,
         ["grenade"] = Sound.Pick, ["throw"] = Sound.Tap, ["noammo"] = Sound.Tap, ["nade"] = Sound.Boom,   // 수류탄: 줍기, 던지기, 빈 손(톡), 터짐
+        ["cluster"] = Sound.Boom,   // 바주카 새끼 폭탄: 첫 것이 터질 때만 한 번 더 쾅 (특수기 "special" 자체는 소리 없음: 산탄총은 저절로 두 번, 난사는 네 번 울린다)
     };
     // 시작 안내 (줄 순서 규칙: 마우스 → 키 → Esc)
     static readonly string[] GuideKeys = { "note.swarm_move", "note.swarm_auto", "note.swarm_grenade", "note.esc" };
@@ -78,7 +79,7 @@ sealed partial class SwarmGame : IGameMode
             if (e is "level" or "hurt" or "big" or "bigkill" or "magnet" or "shoe" or "over" or "win" or "rush" or "grenade" or "throw" or "nade")
                 Dbg.Log("swarm", ("event", e), ("stage", s.Stage), ("sec", (int)s.Time), ("weapon", Arm.Name(s.Weapon.Which)), ("level", s.Level), ("kills", s.Kills), ("hp", s.Hp), ("foes", s.Foes.Count), ("shoes", s.Shoes), ("magnets", s.Magnets), ("boss", s.BossesKilled), ("grenades", s.Grenades), ("nadekills", s.NadeKills));
         };
-        hud = bossHud = rushHud = flagHud = nadeHud = default;
+        hud = bossHud = rushHud = flagHud = nadeHud = specHud = default;
         ctrlWas = true;   // Ctrl 을 누른 채 시작해도 안 나간다 (떼었다 다시 눌러야 던진다)
         gemRects.Clear();
         flakes.Trim(0);
@@ -109,7 +110,7 @@ sealed partial class SwarmGame : IGameMode
         if (swarm is not { } s) return;
         swarm = null;
         if (!auto) Keep(s, quit);
-        ses?.Close(host.Pet, quit, s.Won || s.Time >= 100, "swarm", ("stage", s.Stage), ("sec", (int)s.Time), ("kills", s.Kills), ("level", s.Level), ("weapon", Arm.Name(s.Weapon.Which)), ("boss", s.BossesKilled), ("thrown", s.Thrown), ("nadekills", s.NadeKills), ("esc", quit));
+        ses?.Close(host.Pet, quit, s.Won || s.Time >= 100, "swarm", ("stage", s.Stage), ("sec", (int)s.Time), ("kills", s.Kills), ("level", s.Level), ("weapon", Arm.Name(s.Weapon.Which)), ("boss", s.BossesKilled), ("thrown", s.Thrown), ("nadekills", s.NadeKills), ("specials", s.Specials), ("speckills", s.SpecKills), ("esc", quit));
         ses = null;
         host.ShowPet(true);
         Dbg.Log("mode-end", ("id", Id));
@@ -152,6 +153,10 @@ sealed partial class SwarmGame : IGameMode
     Stamp gem = null!, bigGem = null!, heart = null!, magnet = null!, shoe = null!, flash = null!, plus = null!, crown = null!, bigCrown = null!, spark = null!, bossIcon = null!;
     readonly Stamp[] itemIcon = new Stamp[5];  // Swarm.Item 순서 (주웠을 때 머리 위에 뜨는 그림: 자석·신발·수류탄만)
     readonly Stamp[] nadeFly = new Stamp[4];   // 날아가는 수류탄 네 장 (도는 차례)
+    readonly Stamp[] bladeFly = new Stamp[4];  // 날아가는 칼 네 장 (쌍검 특수기)
+    readonly Stamp[] fireFloor = new Stamp[2]; // 불 자리 두 장 (화염 특수기, 0.16초마다 번갈아)
+    readonly Stamp[] handLit = new Stamp[2];   // 특수기 번쩍: 밝은 손 (오른쪽·왼쪽)
+    Stamp bomb = null!, iconLit = null!;       // 새끼 폭탄, 밝은 머리 그림
     Stamp nade = null!, nadeBright = null!, nadeGray = null!, nadeGrayBig = null!, shadeBig = null!, shadeSmall = null!;   // 수류탄: 줍는 것·표시(작은 배율), 번쩍, 회색(0개·빈 손), 머리 위 회색, 그림자
     readonly Stamp[] upIcon = new Stamp[4];    // Swarm.Up 순서
     readonly Stamp[] hand = new Stamp[2];      // 이번 판 무기: 오른쪽·왼쪽
@@ -176,6 +181,9 @@ sealed partial class SwarmGame : IGameMode
         (nade, nadeBright, nadeGray, nadeGrayBig) = (SwarmArt.Nade(small), SwarmArt.NadeBright(small), SwarmArt.NadeGray(small), SwarmArt.NadeGray(k));
         for (int i = 0; i < nadeFly.Length; i++) nadeFly[i] = SwarmArt.NadeFly(i, k);   // 날아가는 그림은 한 칸 크게 (든 수류탄과 비슷한 크기로 보이게)
         (shadeBig, shadeSmall) = (SwarmArt.NadeShade(false, k), SwarmArt.NadeShade(true, k));
+        for (int i = 0; i < bladeFly.Length; i++) bladeFly[i] = SwarmArt.BladeFly(i, k);
+        (bomb, fireFloor[0], fireFloor[1]) = (SwarmArt.Bomb(k), SwarmArt.FireFloor(0, k), SwarmArt.FireFloor(1, k));
+        (handLit[0], handLit[1], iconLit) = (SwarmArt.HandBright(id, small, false), SwarmArt.HandBright(id, small, true), SwarmArt.IconBright(id, small));
         for (var u = Swarm.Up.Fast; u <= Swarm.Up.Power; u++) upIcon[(int)u] = SwarmArt.UpIcon(u, k);
         upIcon[(int)Swarm.Up.Heal] = heart;
         (hand[0], hand[1], weaponIcon, weaponBig) = (SwarmArt.Hand(id, small, false), SwarmArt.Hand(id, small, true), SwarmArt.Icon(id, small), SwarmArt.Icon(id, k + 1));
@@ -241,6 +249,22 @@ sealed partial class SwarmGame : IGameMode
     }
 
     static int NadeFrame(Swarm s, in Swarm.Nade d) => (d.Spin * (int)((s.Clock - d.At) * 12)) & 3;   // 도는 장 (왼쪽으로 던지면 거꾸로)
+
+    // 특수기 그림 (글자 없이): 번쩍(0.25초: 위쪽 무기 그림과 손에 든 무기가 밝은 판), 그 앞 0.12초는 무기 그림 오른쪽 위에 반짝이
+    static bool SpecFlash(Swarm s) => s.State == Swarm.Phase.Play && s.Clock - s.SpecialAt < Arm.Spec.FlashSec;
+    static bool SpecSpark(Swarm s) => s.State == Swarm.Phase.Play && s.Clock - s.SpecialAt < Arm.Spec.SparkSec;
+    (int X, int Y) SparkAt(Rectangle f, int k) { var (wx, wy) = WeaponAt(f, k); return (wx + weaponIcon.Bmp.Width / 2, wy - weaponIcon.Bmp.Height / 2); }
+    static int BladeFrame(Swarm s) => (int)((s.Clock - s.BladeAt) * 16) & 3;   // 도는 장 (Clock 으로만: 같은 씨 = 같은 판)
+    static int FireFrame(Swarm s) => (int)(s.Clock / .16) & 1;
+    // 불 자리는 꺼지기 0.4초 전부터 0.1초마다 깜빡이며 꺼진다 (true 면 이번 프레임은 그리지 않는다)
+    static bool FireHidden(Swarm s, in Swarm.FireSpot f) => s.Clock - f.At >= Arm.Spec.FloorSec - .4 && ((int)((s.Clock - f.At) * 10) & 1) == 1;
+
+    // 날아가는 새끼 폭탄의 바닥 자리와 높이 (포물선: 높이는 그림 전용)
+    static (double X, double Y, double H) BombAt(Swarm s, in Swarm.Bomb b)
+    {
+        double u = Math.Clamp((s.Clock - b.At) / b.Fly, 0, 1);
+        return (b.X0 + (b.X1 - b.X0) * u, b.Y0 + (b.Y1 - b.Y0) * u, 4 * Arm.Spec.BombArc * s.K / 3.0 * u * (1 - u));
+    }
 
     // 보스 생명: 판 아래 가운데에 보스 그림 + 막대 (여럿이면 가장 오래된 보스)
     static Rectangle BossBar(Rectangle f, int k) => new(f.Left + f.Width / 2 - 20 * k, f.Bottom - 9 * k, 50 * k, 3 * k);
@@ -328,6 +352,13 @@ sealed partial class SwarmGame : IGameMode
             if (step < BlastArt.Frames) BlastArt.Burst(BlastArt.Variant(d.X1, d.Y1), step, (int)(Swarm.NadeBlast * (k / 3.0) * 1.2), GameHud.Small(k));
         }
         nadeHud.Set(HashCode.Combine(s.Grenades, NadeFlash(s), EmptyHand(s) ? (EmptyOn(s) ? 2 : 1) : 0));   // 수 · 번쩍 · 빈 손 깜빡임 차례
+        for (int i = 0; i < s.Bombs.Count; i++)   // 새끼 폭발도 날아가는 동안 한 장씩 미리 그린다 (크기가 새로라 처음 터질 때 프레임이 튀지 않게)
+        {
+            ref var b = ref s.Bombs[i];
+            int step = (int)((s.Clock - b.At) / b.Fly * (BlastArt.Frames + 1));
+            if (step < BlastArt.Frames) BlastArt.Burst(BlastArt.Variant(b.X1, b.Y1), step, (int)(s.Weapon.Blast * Arm.Spec.BombBlast * (k / 3.0) * 1.2), GameHud.Small(k));
+        }
+        specHud.Set(SpecFlash(s) ? (SpecSpark(s) ? 2 : 1) : 0);   // 특수기 번쩍: 없음 · 밝은 판 · 밝은 판 + 반짝이
 
         int keep = 0;
         for (int i = 0; i < flakes.Count; i++) if (s.Clock - flakes[i].Born < FlakeSec) flakes[keep++] = flakes[i];
@@ -387,6 +418,15 @@ sealed partial class SwarmGame : IGameMode
             rs.Add(o.Client(Rectangle.Inflate(nadeFly[NadeFrame(s, d)].Box((int)nx, (int)(ny - nh)), 1, 1)));
             rs.Add(o.Client(Rectangle.Inflate(ShadeOf(s, nh).Box((int)nx, (int)(ny + 8 * k / 3.0)), 1, 1)));
         }
+        for (int i = 0; i < s.Bombs.Count; i++)   // 새끼 폭탄: 폭탄과 그림자 두 자리 (공중인 동안 프레임마다)
+        {
+            ref var b = ref s.Bombs[i];
+            var (bx, by, bh) = BombAt(s, b);
+            rs.Add(o.Client(Rectangle.Inflate(bomb.Box((int)bx, (int)(by - bh)), 1, 1)));
+            rs.Add(o.Client(Rectangle.Inflate(shadeSmall.Box((int)bx, (int)(by + 8 * k / 3.0)), 1, 1)));
+        }
+        if (s.BladeOut) rs.Add(o.Client(Rectangle.Inflate(bladeFly[BladeFrame(s)].Box((int)s.BladeX, (int)s.BladeY), 1, 1)));   // 날아가는 칼 (공중인 동안 프레임마다)
+        for (int i = 0; i < s.Fires.Count; i++) rs.Add(o.Client(Rectangle.Inflate(fireFloor[0].Box((int)s.Fires[i].X, (int)s.Fires[i].Y), 1, 1)));   // 불 자리 (있는 동안 프레임마다: 장이 바뀌고 깜빡이며 꺼진다)
         if (!flameRect.IsEmpty) rs.Add(o.Client(flameRect));
         foreach (var r in gemRects) rs.Add(o.Client(r));
         foreach (var p in s.Pops) rs.Add(o.Client(BlastArt.PopRect(p.X, p.Y, p.R * 1.2, small)));
@@ -424,6 +464,12 @@ sealed partial class SwarmGame : IGameMode
             var (gx, gy) = GrenadeAt(f0, k);
             rs.Add(o.Client(Rectangle.Union(Rectangle.Union(Rectangle.Inflate(nade.Box(gx, gy), 1, 1), Rectangle.Inflate(nadeBright.Box(gx, gy - small), 1, 1)), Overlay.Around(gx + 9 * k, gy, 4 * small, 5 * small))));
         }
+        if (specHud.Changed)   // 특수기 번쩍: 위쪽 무기 그림과 오른쪽 위 반짝이 (손에 든 무기는 볼록이 둘레 자리 안이다)
+        {
+            var (wx, wy) = WeaponAt(f0, k);
+            var (sx, sy) = SparkAt(f0, k);
+            rs.Add(o.Client(Rectangle.Inflate(Rectangle.Union(weaponIcon.Box(wx, wy), spark.Box(sx, sy)), 1, 1)));
+        }
         if (bossHud.Changed)
         {
             var (bx, by) = BossIconAt(f0, k);
@@ -456,11 +502,22 @@ sealed partial class SwarmGame : IGameMode
         for (int pass = 0; pass < 2; pass++) // 자석·신발은 보석 더미에 묻히지 않게 위에
             foreach (var m in s.Gems)
                 if (m.Item >= Swarm.Item.Magnet == (pass == 1)) GemArt(m).Put(o, g, (int)m.X, (int)ShowY(s, m));
+        for (int i = 0; i < s.Fires.Count; i++)   // 불 자리: 바닥에 깔린다 (보석 다음·그림자와 벌레 앞). 꺼지기 0.4초 전부터 깜빡
+        {
+            ref var fs = ref s.Fires[i];
+            if (!FireHidden(s, fs)) fireFloor[FireFrame(s)].Put(o, g, (int)fs.X, (int)fs.Y);
+        }
         for (int i = 0; i < s.Nades.Count; i++)   // 날아가는 수류탄의 그림자: 바닥에 깔린다 (보석 다음·벌레 앞)
         {
             ref var d = ref s.Nades[i];
             var (nx, ny, nh) = NadeAt(s, d);
             ShadeOf(s, nh).Put(o, g, (int)nx, (int)(ny + 8 * k / 3.0));
+        }
+        for (int i = 0; i < s.Bombs.Count; i++)   // 새끼 폭탄 그림자
+        {
+            ref var b = ref s.Bombs[i];
+            var (bx, by, _) = BombAt(s, b);
+            shadeSmall.Put(o, g, (int)bx, (int)(by + 8 * k / 3.0));
         }
         order.Clear();
         order.AddRange(s.Foes);
@@ -487,6 +544,7 @@ sealed partial class SwarmGame : IGameMode
         }
         order.Clear();
         for (int i = 0; i < s.Shots.Count; i++) DrawShot(o, g, s, ref s.Shots[i]);
+        if (s.BladeOut) bladeFly[BladeFrame(s)].Put(o, g, (int)s.BladeX, (int)s.BladeY);   // 날아가는 칼 (탄 위·불길 아래)
         for (int i = 0; i < flakes.Count; i++) // 불길: 멀어질수록 크고 붉게
         {
             ref var f = ref flakes[i];
@@ -506,12 +564,13 @@ sealed partial class SwarmGame : IGameMode
             if (s.State == Swarm.Phase.Play)
             {
                 int hy = (int)(s.Y + 2 * k);
+                var (hr, hl) = SpecFlash(s) ? (handLit[0], handLit[1]) : (hand[0], hand[1]);   // 특수기 번쩍: 밝은 손
                 if (SwarmArt.Dual(arm.Which))
                 {
-                    hand[0].Put(o, g, (int)(s.X + 9 * k), hy);
-                    hand[1].Put(o, g, (int)(s.X - 9 * k), hy);
+                    if (!(s.BladeOut && s.BladeHand > 0)) hr.Put(o, g, (int)(s.X + 9 * k), hy);   // 칼을 던진 손은 빈다
+                    if (!(s.BladeOut && s.BladeHand < 0)) hl.Put(o, g, (int)(s.X - 9 * k), hy);
                 }
-                else hand[s.AimDir < 0 ? 1 : 0].Put(o, g, (int)(s.X + s.AimDir * 8 * k), hy);
+                else (s.AimDir < 0 ? hl : hr).Put(o, g, (int)(s.X + s.AimDir * 8 * k), hy);
                 if (arm.Kind is Arm.Sort.Bullets or Arm.Sort.Rocket && s.Clock - s.FireAt < .07)
                     flash.Put(o, g, (int)(s.X + s.AimDir * (8 * k + hand[0].Bmp.Width / 2 + 2 * small)), hy - small);
             }
@@ -524,6 +583,12 @@ sealed partial class SwarmGame : IGameMode
             ref var d = ref s.Nades[i];
             var (nx, ny, nh) = NadeAt(s, d);
             nadeFly[NadeFrame(s, d)].Put(o, g, (int)nx, (int)(ny - nh));
+        }
+        for (int i = 0; i < s.Bombs.Count; i++)   // 날아가는 새끼 폭탄 (수류탄과 같이 공중)
+        {
+            ref var b = ref s.Bombs[i];
+            var (bx, by, bh) = BombAt(s, b);
+            bomb.Put(o, g, (int)bx, (int)(by - bh));
         }
 
         // 시작할 때 머리 위에 이번 무기를 크게. 레벨이 오르거나 자석·신발을 주우면 + 와 그 그림이 잠깐 뜬다 (겹치면 나중 것)
@@ -555,7 +620,8 @@ sealed partial class SwarmGame : IGameMode
             g.FillRectangle(Pal.White, c.X + now, c.Y, HpPx(bar, s.HpFrom) - now, c.Height);
         }
         var (wx, wy) = WeaponAt(fl, k);
-        weaponIcon.Put(o, g, wx, wy);                                                        // 이번 판 무기
+        (SpecFlash(s) ? iconLit : weaponIcon).Put(o, g, wx, wy);                              // 이번 판 무기 (특수기를 쓴 0.25초는 밝은 판, 처음 0.12초는 오른쪽 위에 반짝이)
+        if (SpecSpark(s)) { var (spx, spy) = SparkAt(fl, k); spark.Put(o, g, spx, spy); }
         DrawStage(o, g, s);
         var (lx, ly) = LevelAt(fl, k);
         GameHud.Star(o, g, lx, ly, small, s.Level);                                          // 레벨: 별 + 숫자, 아래에 보석 막대
@@ -730,7 +796,8 @@ sealed partial class SwarmGame : IGameMode
 
     // 디버그: swarm / swarm weapon <id> / swarm auto [id] (알아서 한다, 기록 안 남김) / swarm at <초> / swarm boss [1~4] / swarm up [n] / swarm hp <n> / swarm item <heart|magnet|shoe|grenade> / swarm grenade (지금 던진다: 0개면 하나 채우고 쿨다운을 지운다) / swarm stop /
     //   swarm level <n> (n 단계로, 하는 중이면 같은 무기로 새 판: 연습 판이라 기록·단계가 안 바뀐다) / swarm level set <n> (저장된 단계를 n 으로, 깬 단계는 n-1) /
-    //   swarm rush [wall|ring] (지금 예고를 띄우고 1초 뒤 그 모양으로, 안 주면 차례대로) / swarm elite [bug|wasp|beetle] (볼록이 옆에 엘리트 하나)
+    //   swarm rush [wall|ring] (지금 예고를 띄우고 1초 뒤 그 모양으로, 안 주면 차례대로) / swarm elite [bug|wasp|beetle] (볼록이 옆에 엘리트 하나) /
+//   swarm special (다음 공격에 특수기가 나온다: 산탄총·쌍검·쌍권총·바주카포·화염방사기만)
     public bool Command(string[] a)
     {
         if (a.Length == 0 || a[0] != Id) return false;
@@ -760,6 +827,7 @@ sealed partial class SwarmGame : IGameMode
                 if (s != null && arg is "heart" or "magnet" or "shoe" or "grenade") s.Drop(arg == "heart" ? Swarm.Item.Heart : arg == "magnet" ? Swarm.Item.Magnet : arg == "grenade" ? Swarm.Item.Grenade : Swarm.Item.Shoe);
                 break;
             case "grenade": s?.ThrowNow(); break;
+            case "special": s?.ChargeNow(); break;
             default: StartWith(null); break;
         }
         return true;

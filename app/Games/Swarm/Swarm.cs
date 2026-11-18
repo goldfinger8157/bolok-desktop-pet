@@ -7,6 +7,8 @@ namespace Bolok;
 // 자석은 영구 아이템: 주울 때마다 보석을 줍는 둘레가 넓어진다 (다섯 개까지). 신발은 그 판 내내 걸음이 빨라진다, 세 켤레까지.
 // 수류탄 (YELL 2026-11-18, 계획 docs/swarm-grenade.md): 1개로 시작해 3개까지 든다. Ctrl 을 누르는 순간 가던 쪽 120px 앞으로 던지고, 0.55초 뒤 떨어진 자리에서 터져 둘레 벌레에게 큰 피해를 준다 (볼록이는 안 다친다).
 //   벌레를 잡다 보면 가끔, 2번 보스·여왕은 꼭 하나씩 떨어뜨린다
+// 특수기 (YELL 2026-11-18, 계획 docs/swarm-specials.md): 쌍검·쌍권총·산탄총·바주카포·화염방사기가 공격 N 번째마다 저절로 쓴다 (장검·소총은 없다, 키 없음). 횟수 세기라 rng 를 안 쓴다
+//   산탄총 두 발 연속 · 쌍검 칼 던지기 · 쌍권총 8방향 난사 · 바주카 새끼 폭탄 셋 · 화염 불 바닥. 숫자는 SwarmArms.cs 의 Arm.Spec
 // 보스는 1분마다 넷(마지막 4:00 은 여왕). 5:00 이 되면 끝·승리. 화면과 무관한 규칙이라 --selfcheck 로 검사한다
 // 난이도 (YELL 2026-11-16, 계획 docs/swarm-levels.md): 판 안은 1분 주기(잔잔 → 예고 → 러시 → 숨 고르기 → 보스, 마지막 분은 여왕 + 마무리 러시),
 // 판 밖은 5:00 을 버틸 때마다 +1 되는 「단계」(Stage). 단계가 오르면 체력·수·빠르기·엘리트가 오른다 (값은 Tune.Of)
@@ -25,6 +27,7 @@ sealed class Swarm
         public double X, Y, R, Speed, Hit = -9, StunUntil = -9, BurnUntil = -9, BurnTick;   // Hit 은 번쩍임 전용, 멈칫은 StunUntil
         public double DashAt = 1e9, DashX, DashY, SpawnDue = 1e9;   // 돌진(3번 보스·여왕): 떨기 시작하는 때와 방향. 여왕이 벌레를 낳는 때
         public bool Winding, Dead;
+        public int Cut;                             // 마지막으로 맞은 칼(쌍검 특수기)의 번호: 같은 길에서 두 번 안 맞게 (새 벌레는 0)
         public bool Elite;                          // 엘리트 (2단계부터): 체력 ×2.5, 닿는 피해 ×1.5, 걸음 ×0.9. 금색 테두리
     }
 
@@ -32,6 +35,7 @@ sealed class Swarm
     {
         public double X, Y, Vx, Vy, Until, Knock, Stun, Blast, Tx, Ty;
         public int Dmg, Pierce;
+        public bool Special;           // 특수기 탄 (엘리트 배율, 잡은 수 세기). 바주카는 터지면 새끼 폭탄
         public Ammo Ammo;
         Foe? hit0, hit1, hit2, hit3;   // 이 탄이 이미 뚫고 지나간 벌레 (뚫는 탄이 같은 놈을 두 번 치지 않게. 관통은 넷까지)
         public readonly bool Seen(Foe f) => ReferenceEquals(f, hit0) || ReferenceEquals(f, hit1) || ReferenceEquals(f, hit2) || ReferenceEquals(f, hit3);
@@ -40,6 +44,8 @@ sealed class Swarm
     public sealed class Gem { public Item Item; public double X, Y; public int Xp; public bool Pull; public double ShownX = double.NaN, ShownY; } // Pull: 보스를 잡아 둘레 밖에서도 끌려온다, Shown: 그리는 쪽이 마지막으로 그린 자리
     public sealed class Pop { public double X, Y, At, R; }
     public struct Nade { public double X0, Y0, X1, Y1, At; public int Spin; }   // 던진 자리 → 떨어질 자리, 던진 때, 도는 쪽(±1)
+    public struct Bomb { public double X0, Y0, X1, Y1, At, Fly; }              // 새끼 폭탄: 터진 자리 → 떨어질 자리, 터진(날기 시작한) 때, 날아가는 시간
+    public struct FireSpot { public double X, Y, At; }                          // 불 자리 (화염 특수기): 놓인 자리와 때
 
     // 배율 3 기준 px·초. 판은 앱이 볼록이 둘레에 220×150 칸(배율 3 이면 660×450)으로 잡는다
     public const double WinSec = 300, MoveSpeed = 170, PickRange = 56, SafeSec = 1, SwingSec = .2, EndSec = 3.5, HurtPush = 60, HpTrailSec = .4,
@@ -56,7 +62,7 @@ sealed class Swarm
     // ── 1분 주기 (분 안의 초): 잔잔 0~35 · 예고 35~40 · 러시 40~55(물결 5번, 3초마다) · 숨 고르기 55~60 · 보스 60.
     //    마지막 분은 4:00 여왕 → 4:35 예고 → 4:40~5:00 마무리 러시(물결 5번, 4초마다) ──
     public const double WarnFrom = 35, RushFrom = 40, RushTo = 55, WaveGap = 3, FinaleGap = 4, FinaleFrom = 280, RushLen = 15,
-        BaseFrom = 1.4, BaseGrow = 8.2,           // 잔잔 기준 초당 수 base1(t) = 1.4 + 8.2·t/300 (손잡이 ②: 계획은 3.4, 봇 표에 맞춰 8.2)
+        BaseFrom = 1.4, BaseGrow = 8.8,           // 잔잔 기준 초당 수 base1(t) = 1.4 + 8.8·t/300 (손잡이 ②: 계획 3.4 → 봇 표 8.2 → 무기 특기를 자주 터지게 하며 8.8, 2026-11-18)
         CalmWasp = .28, CalmBeetle1 = .16, CalmBeetle2 = .24, RushWasp = .30, RushBeetle = .10,   // 구성: 말벌은 20초부터, 딱정벌레는 60·180초부터
         RingHole = .25, FinaleHole = .33, WallGap = 26, WallRow = 18, KeepOut = 150;       // 대열: 구멍 25%(마무리 33%), 한쪽 줄 간격·줄 사이, 볼록이 둘레 비우는 거리
     public const int Waves = 5;
@@ -104,6 +110,8 @@ sealed class Swarm
     public readonly List<Foe> Foes = new();
     public readonly Bag<Shot> Shots = new(64);
     public readonly Bag<Nade> Nades = new(MaxNades);   // 공중에 있는 수류탄
+    public readonly Bag<Bomb> Bombs = new(4);          // 공중에 있는 새끼 폭탄 (한 번에 셋: 로켓이 2초에 한 번이라 겹치지 않는다)
+    public readonly Bag<FireSpot> Fires = new(Arm.Spec.MaxFires);   // 불 자리 (많아야 두 벌. 꽉 차면 가장 오래된 것을 지우고 넣는다)
     public readonly List<Gem> Gems = new();
     public readonly List<Pop> Pops = new();
     public readonly List<Gem> Gone = new();        // 이번 프레임에 사라진 보석 (그리는 쪽이 그 자리를 지운다)
@@ -117,6 +125,15 @@ sealed class Swarm
     public int SwingHand = -1, SwingCount;         // 쌍검: 이번에 휘두른 손(1 오른쪽·-1 왼쪽), 휘두른 횟수
     public bool SwingSpin;                         // 이번 휘두름이 한 바퀴 회전 베기였다
     public double AimAngle;                        // 화염: 겨눈 쪽 (천천히 돈다)
+    // 특수기: 켜짐(표·검사에서 끈다. 끄면 고치기 전과 똑같은 판), 쓴 횟수, 특수기로 잡은 수, 특수기 탄 수, 마지막으로 쓴 때(번쩍 신호)
+    public bool SpecialsOn = true;
+    public int Specials, SpecKills, SpecShots;
+    public double SpecialAt = -9;
+    public int Charge => charge;
+    public bool SpecialBusy => BladeOut || Bombs.Count > 0 || Fires.Count > 0 || pendAt < 1e8 || sprayLeft > 0;   // 날아가는 칼·새끼 폭탄·불 자리·미뤄 둔 둘째 발·난사 물결이 하나라도 남았다 (검사용)
+    public bool BladeOut, BladeBack;               // 쌍검: 던진 칼이 공중에 있다, 돌아오는 중이다
+    public double BladeX, BladeY, BladeAt;         // 칼의 자리, 던진 때
+    public int BladeHand;                          // 던진 손 (1 오른쪽·-1 왼쪽: 그림에서 그 손을 비운다)
     public bool FlameOn;                           // 불길을 뿜는 중 (닿는 거리 안에 벌레가 있다)
     public double MagnetChance = .03, ShoeChance = .05, HeartChance = .04;   // 벌레를 잡을 때 자석·신발이, 딱정벌레를 잡을 때 하트가 나올 확률
     public int Hp = MaxHp, HpFrom = MaxHp, Level = 1, Xp, Kills, Dir = 1, AimDir = 1, Magnets, Shoes, BossesKilled, DamageTaken, Born, Level180 = -1;   // Born: 지금까지 나온 벌레 수, Level180: 3:00 때 레벨
@@ -166,6 +183,11 @@ sealed class Swarm
 
     readonly Random rng;
     readonly double sf;
+    int charge;                                    // 특수기까지 센 공격 수
+    double pendAt = 1e9, pendDir;                  // 산탄총: 미뤄 둔 둘째 발이 나올 때와 겨눈 쪽
+    int sprayLeft; double sprayNext, sprayBase;    // 쌍권총: 남은 물결 수, 다음 물결 때, 첫 물결의 기준 각
+    double bladeVx, bladeVy, bladeTrav, bladeReach; int bladePass, bladeDmg;   // 쌍검: 나가는 쪽(단위), 나간 거리, 가는 거리, 던질 때·돌아설 때 +1, 칼 피해
+    double floorDue;                               // 화염: 다음 불 바닥 틱
     double endAt, spawnDue, cool;   // cool: 다음 공격까지 남은 시간 (쏠 때 남은 자투리를 이어 간다: 쿨이 프레임 길이에 맞춰 잘리지 않게)
     double steerX, steerY, magnetFrom = MagnetFirst, fireEvAt = -9, bossSince;
     int magnetsOut, shoesOut, grenadesOut, bossWarned = -1, bossSeen = -1;   // 판 위에 떨어져 있는 자석·신발·수류탄, 예고한·들어온 보스 차례
@@ -225,6 +247,7 @@ sealed class Swarm
         Attack(dt);
         MoveShots(dt);
         MoveNades();
+        MoveSpecials(dt);
         Burn();
         Sweep();
         Touch();
@@ -242,7 +265,15 @@ sealed class Swarm
         }
     }
 
-    void Go(Phase p, string ev) { (State, endAt, Moving, FlameOn) = (p, Math.Min(Clock, WinSec), false, false); Nades.Trim(0); OnEvent?.Invoke(ev); }   // 판이 끝나면 공중 수류탄도 사라진다
+    void Go(Phase p, string ev) { (State, endAt, Moving, FlameOn) = (p, Math.Min(Clock, WinSec), false, false); Nades.Trim(0); ClearSpecials(); OnEvent?.Invoke(ev); }   // 판이 끝나면 공중 수류탄도 사라진다
+
+    // 판이 끝나면 새끼 폭탄·불 자리·공중 칼·미뤄 둔 둘째 발·난사 물결도 사라진다
+    void ClearSpecials()
+    {
+        Bombs.Trim(0);
+        Fires.Trim(0);
+        (BladeOut, BladeBack, pendAt, sprayLeft) = (false, false, 1e9, 0);
+    }
 
     // ── 벌레: 1분 주기로 나온다 (잔잔 기준 초당 수는 base1: 1.4 → 9.6). 잔잔(낱마리) → 예고 → 러시(물결 5번, 대열로) → 숨 고르기 → 보스. 마지막 분은 여왕 → 마무리 러시 ──
     void Spawn(double dt)
@@ -613,6 +644,7 @@ sealed class Swarm
             if (SwingArc < Math.PI - .01 && Math.Abs(Turn(Math.Atan2(f.Y - Y, f.X - X), SwingDir)) > SwingArc + .01) continue;
             Damage(f, dmg, knock, w.Stun, X, Y);
         }
+        if (w.Which == Arm.Id.Twin && Proc(!BladeOut)) ThrowBlade();   // 칼이 공중이면 다 찬 채로 다음 휘두름을 기다린다
         OnEvent?.Invoke("swing");
     }
 
@@ -646,6 +678,7 @@ sealed class Swarm
         {
             case Arm.Id.Shotgun: // 알은 닿는 거리까지만 날아간다
                 for (int i = 0; i < w.Count; i++) Fire(Ammo.Pellet, front + (w.Count == 1 ? 0 : -w.ArcHalf + 2 * w.ArcHalf * i / (w.Count - 1)), w.Range / w.Speed);
+                if (Proc()) (pendAt, pendDir) = (Clock + Arm.Spec.DoubleGap, front);   // 두 발 연속: 0.12초 뒤 같은 쪽으로 한 번 더
                 break;
             case Arm.Id.Rifle:
                 Fire(Ammo.Round, front + (rng.NextDouble() * 2 - 1) * w.ArcHalf, w.Range * 1.1 / w.Speed);
@@ -657,13 +690,15 @@ sealed class Swarm
                     int extra = i / count;
                     Fire(Ammo.Bullet, Math.Atan2(f.Y - Y, f.X - X) + (extra + 1) / 2 * (extra % 2 == 0 ? -.06 : .06), w.Range * 1.25 / w.Speed);
                 }
+                if (Proc()) (sprayLeft, sprayNext, sprayBase) = (Arm.Spec.SprayVolleys, Clock, front);   // 난사: 평소 쏘기는 그대로 두고 그 위에 물결이 얹힌다 (겨눈 놈 쪽부터)
                 break;
         }
         Array.Clear(aim); // 잡힌 벌레를 붙들고 있지 않게
         FireEvent(.1);
     }
 
-    void Fire(Ammo ammo, double a, double life)
+    // dmg·pierce 를 안 주면 무기 값 그대로. 특수기 탄도 여기를 지나므로 MaxShots 가 그대로 막는다 (꽉 차면 조용히 안 나간다)
+    void Fire(Ammo ammo, double a, double life, int dmg = -1, int pierce = -1, bool special = false)
     {
         if (Shots.Count >= MaxShots) return;
         var w = Weapon;
@@ -671,8 +706,9 @@ sealed class Swarm
         s = new Shot
         {
             Ammo = ammo, X = X, Y = Y, Vx = Math.Cos(a) * w.Speed * sf, Vy = Math.Sin(a) * w.Speed * sf, Until = Clock + life,
-            Dmg = w.Dmg, Pierce = w.Pierce, Knock = w.Knock, Stun = w.Stun, Blast = w.Blast,
+            Dmg = dmg >= 0 ? dmg : w.Dmg, Pierce = pierce >= 0 ? pierce : w.Pierce, Knock = special ? w.Knock * Arm.Spec.SpecKnock : w.Knock, Stun = special ? 0 : w.Stun, Blast = w.Blast, Special = special,
         };
+        if (special) SpecShots++;
     }
 
     // 연사·불길은 소리 사건을 gap 초에 한 번만 내보낸다
@@ -702,8 +738,14 @@ sealed class Swarm
         }
         if (best == null) { cool = 0; return; }
         (cool, FireAt, AimDir) = (cool + w.Cool, Clock, best.X >= X ? 1 : -1);
+        int before = Shots.Count;
         Fire(Ammo.Rocket, Math.Atan2(best.Y - Y, best.X - X), w.Range * 1.3 / w.Speed);
-        if (Shots.Count > 0) (Shots[Shots.Count - 1].Tx, Shots[Shots.Count - 1].Ty) = (best.X, best.Y);
+        if (Shots.Count > before)
+        {
+            ref var rk = ref Shots[Shots.Count - 1];
+            (rk.Tx, rk.Ty) = (best.X, best.Y);
+            if (Proc()) rk.Special = true;   // 새끼 폭탄: 이 로켓이 터지면 셋이 흩어진다
+        }
         OnEvent?.Invoke("fire");
     }
 
@@ -732,6 +774,7 @@ sealed class Swarm
             f.BurnUntil = Clock + w.BurnSec;
             Damage(f, w.Dmg, 0, 0, X, Y, flash: false);
         }
+        if (Proc()) PlaceFires();   // 틱 하나가 공격 한 번: 40틱(불길 4.4초)마다 겨눈 쪽 길에 불 자리
         FireEvent(.25);
     }
 
@@ -775,7 +818,8 @@ sealed class Swarm
                     double dx = f.X - s.X, dy = f.Y - s.Y, r = f.R + 3 * sf;
                     if (dx * dx + dy * dy >= r * r) continue;
                     s.Mark(f);
-                    Damage(f, s.Dmg, s.Knock, s.Stun, f.X - s.Vx, f.Y - s.Vy); // 날아가던 쪽으로 밀린다
+                    bool killed = Damage(f, s.Special ? Versus(f, s.Dmg) : s.Dmg, s.Knock, s.Stun, f.X - s.Vx, f.Y - s.Vy); // 날아가던 쪽으로 밀린다
+                    if (killed && s.Special) SpecKills++;
                     if (s.Pierce-- <= 0) { gone = true; break; }
                 }
                 if (!gone && Clock > s.Until) gone = true;
@@ -788,16 +832,190 @@ sealed class Swarm
     // 로켓이 터진다: 반지름 안 모두에게 피해, 바깥으로 밀친다. 볼록이는 다치지 않는다
     void Explode(in Shot s)
     {
-        double blast = s.Blast * sf;
+        Blow(s.X, s.Y, s.Blast * sf, s.Dmg, s.Knock, s.Stun, false);
+        BoomAt = Clock;   // BoomAt 은 로켓만 (새끼 폭탄은 안 건드린다: 바주카 장면이 본다)
+        OnEvent?.Invoke("boom");
+        if (s.Special) Cluster(s.X, s.Y);
+    }
+
+    // 폭발 하나: 반지름(blastPx) 안 모두에게 피해·밀침·멈칫과 터짐 그림. 로켓과 새끼 폭탄이 같이 쓴다 (special 이면 엘리트 배율·잡은 수 세기)
+    void Blow(double x, double y, double blastPx, int dmg, double knock, double stun, bool special)
+    {
+        int before = Kills;
         foreach (var f in Foes)
         {
-            double dx = f.X - s.X, dy = f.Y - s.Y, r = blast + f.R;
+            double dx = f.X - x, dy = f.Y - y, r = blastPx + f.R;
             if (f.Dead || dx * dx + dy * dy >= r * r) continue;
-            Damage(f, s.Dmg, s.Knock, s.Stun, s.X, s.Y);
+            Damage(f, special ? Versus(f, dmg) : dmg, knock, stun, x, y);
         }
-        Pops.Add(new Pop { X = s.X, Y = s.Y, At = Clock, R = blast });
-        BoomAt = Clock;
-        OnEvent?.Invoke("boom");
+        if (special) SpecKills += Kills - before;
+        Pops.Add(new Pop { X = x, Y = y, At = Clock, R = blastPx });
+    }
+
+    // ══ 특수기 (docs/swarm-specials.md) ══
+    // 발동: 공격 한 번마다 부른다. 확률이 아니라 N 번째마다 꼭 한 번. ready 가 false 면 (쌍검: 칼이 아직 공중) 다 찬 채로 다음 공격을 기다린다
+    bool Proc(bool ready = true)
+    {
+        int every = Weapon.Every > 0 ? EveryNow : 0;
+        if (!SpecialsOn || every <= 0) return false;
+        if (charge < every) charge++;
+        if (charge < every || !ready) return false;
+        (charge, Specials, SpecialAt) = (0, Specials + 1, Clock);
+        OnEvent?.Invoke("special");
+        return true;
+    }
+
+    public void ChargeNow() => charge = Math.Max(0, EveryNow - 1);   // 디버그: 다음 공격에 발동
+
+    // 특수기 피해: 무기 피해 × 배율 × 벌레 체력 배율 (수류탄과 같은 생각: 단계가 올라도 특수기가 무뎌지지 않는다). 엘리트(2단계부터)에게는 더 세다. 보스는 배율 없음
+    public int SpecDmg(double x) => Math.Max(1, (int)Math.Round(Weapon.Dmg * x * T.HpX * (Stage >= 2 ? Arm.Spec.HiDmg[(int)Weapon.Which] : 1), MidpointRounding.AwayFromZero));
+    public int EveryNow => Stage >= 2 && Arm.Spec.HiEvery[(int)Weapon.Which] > 0 ? Arm.Spec.HiEvery[(int)Weapon.Which] : Weapon.Every;   // 2단계부터 박자를 당기는 무기가 있다
+    public static int Versus(Foe f, int dmg) => f.Elite ? (int)Math.Round(dmg * Arm.Spec.Elite, MidpointRounding.AwayFromZero) : dmg;
+
+    // 미뤄 둔 둘째 발·난사 물결 → 칼 → 새끼 폭탄 → 불 바닥 (rng 를 안 쓴다)
+    void MoveSpecials(double dt)
+    {
+        var w = Weapon;
+        if (Clock >= pendAt) // 산탄총 둘째 발: 첫 발 때 겨눈 쪽 그대로, 지금 볼록이 자리에서. 알 수는 지금 값, 퍼짐은 ×1.3
+        {
+            pendAt = 1e9;
+            double half = w.ArcHalf * Arm.Spec.DoubleSpread;
+            int dmg = SpecDmg(Arm.Spec.DoubleDmg);
+            for (int i = 0; i < w.Count; i++) Fire(Ammo.Pellet, pendDir + (w.Count == 1 ? 0 : -half + 2 * half * i / (w.Count - 1)), w.Range / w.Speed, dmg, -1, true);
+            FireAt = Clock;
+            FireEvent(.1);
+        }
+        while (sprayLeft > 0 && Clock >= sprayNext) // 쌍권총 난사: 물결마다 8발, 물결마다 22.5° 돌려 (프레임이 길어도 빠뜨리지 않는다)
+        {
+            double a0 = sprayBase + (Arm.Spec.SprayVolleys - sprayLeft) * Math.PI / Arm.Spec.SprayDirs;
+            int dmg = SpecDmg(Arm.Spec.SprayDmg), pierce = w.Pierce + Arm.Spec.SprayPierce;
+            for (int i = 0; i < Arm.Spec.SprayDirs; i++) Fire(Ammo.Bullet, a0 + i * 2 * Math.PI / Arm.Spec.SprayDirs, w.Range / w.Speed, dmg, pierce, true);
+            FireAt = Clock;
+            FireEvent(.1);
+            sprayLeft--;
+            sprayNext += Arm.Spec.SprayGap;
+        }
+        MoveBlade(dt);
+        if (Bombs.Count > 0)
+        {
+            int keep = 0;
+            for (int i = 0, n = Bombs.Count; i < n; i++)
+            {
+                var b = Bombs[i];
+                if (Clock - b.At < b.Fly) { Bombs[keep++] = b; continue; }
+                if (b.Fly <= Arm.Spec.BombFly + 1e-9) OnEvent?.Invoke("cluster");   // 소리는 첫 것이 터질 때만 한 번
+                Blow(b.X1, b.Y1, w.Blast * Arm.Spec.BombBlast * sf, SpecDmg(Arm.Spec.BombDmg), w.Knock * Arm.Spec.BombKnock, Arm.Spec.BombStun, true);
+            }
+            Bombs.Trim(keep);
+        }
+        if (Fires.Count > 0) BurnFloor();
+    }
+
+    // 쌍검: 이번에 휘두른 손의 칼이 가장 가까운 벌레 쪽으로 날아간다
+    void ThrowBlade()
+    {
+        var w = Weapon;
+        (BladeOut, BladeBack, BladeX, BladeY, BladeAt, BladeHand) = (true, false, X, Y, Clock, SwingHand);
+        (bladeVx, bladeVy, bladeTrav, bladeReach, bladeDmg) = (Math.Cos(SwingDir), Math.Sin(SwingDir), 0, w.Range * Arm.Spec.BladeReach * sf, SpecDmg(Arm.Spec.BladeDmg));
+        bladePass++;
+    }
+
+    // 칼: 나갈 때 한 번, 돌아올 때 한 번 다 뚫는다. 나갈 때만 밀치고 (돌아올 때는 벌레를 볼록이 쪽으로 끌지 않게 멈칫만), 그때 볼록이 자리를 쫓아와 손에 잡힌다
+    void MoveBlade(double dt)
+    {
+        if (!BladeOut) return;
+        if (!BladeBack)
+        {
+            double step = Arm.Spec.BladeOut * sf * dt;
+            var (cx, cy) = Inside(BladeX + bladeVx * step, BladeY + bladeVy * step);   // 판 밖에 닿으면 거기서 돌아선다
+            bool wall = Math.Abs(cx - (BladeX + bladeVx * step)) > 1e-9 || Math.Abs(cy - (BladeY + bladeVy * step)) > 1e-9;
+            bladeTrav += Dist(BladeX, BladeY, cx, cy);
+            (BladeX, BladeY) = (cx, cy);
+            BladeHit(true);
+            if (wall || bladeTrav >= bladeReach) (BladeBack, bladePass) = (true, bladePass + 1);
+            return;
+        }
+        double d = Dist(BladeX, BladeY, X, Y), back = Arm.Spec.BladeBack * sf * dt;
+        if (d > .01)
+        {
+            double go = Math.Min(back, d);
+            (BladeX, BladeY) = (BladeX + (X - BladeX) / d * go, BladeY + (Y - BladeY) / d * go);
+        }
+        BladeHit(false);
+        if (Dist(BladeX, BladeY, X, Y) <= 12 * sf || Clock - BladeAt >= Arm.Spec.BladeMax) (BladeOut, BladeBack) = (false, false);   // 손에 잡혔다 (1.5초가 넘으면 그냥 손으로)
+    }
+
+    void BladeHit(bool outward)
+    {
+        var w = Weapon;
+        double r0 = Arm.Spec.BladeR * sf;
+        foreach (var f in Foes)
+        {
+            if (f.Dead || f.Cut == bladePass) continue;
+            double dx = f.X - BladeX, dy = f.Y - BladeY, r = r0 + f.R;
+            if (dx * dx + dy * dy >= r * r) continue;
+            f.Cut = bladePass;
+            if (Damage(f, Versus(f, bladeDmg), outward ? w.Knock * Arm.Spec.SpecKnock : 0, 0, f.X - bladeVx, f.Y - bladeVy)) SpecKills++;
+        }
+    }
+
+    // 바주카: 터진 자리에서 120° 간격으로 세 개가 흩어진다. 기준 각은 특수기 횟수 × 황금각 (rng 없이 매번 다른 쪽)
+    void Cluster(double x, double y)
+    {
+        if (Bombs.Count > 4 - Arm.Spec.Bomblets) return;
+        double far = (Weapon.Blast + Arm.Spec.BombFar) * sf, a0 = Specials * 2.39996;
+        for (int i = 0; i < Arm.Spec.Bomblets; i++)
+        {
+            double a = a0 + i * 2 * Math.PI / Arm.Spec.Bomblets;
+            var (x1, y1) = Inside(x + Math.Cos(a) * far, y + Math.Sin(a) * far);
+            Bombs.Add() = new Bomb { X0 = x, Y0 = y, X1 = x1, Y1 = y1, At = Clock, Fly = Arm.Spec.BombFly + i * Arm.Spec.BombStep };
+        }
+    }
+
+    // 화염: 겨눈 쪽 길에 불 자리 (거리 100 이면 셋). 놓인 뒤에는 그 자리에 남는다. 꽉 차면 가장 오래된 것을 지운다
+    void PlaceFires()
+    {
+        int n = Math.Max(1, (int)(Weapon.Range / Arm.Spec.FloorGap));
+        if (Fires.Count == 0) floorDue = Clock + Arm.Spec.FloorEvery;
+        double ca = Math.Cos(AimAngle), sa = Math.Sin(AimAngle);
+        for (int i = 0; i < n; i++)
+        {
+            if (Fires.Count >= Arm.Spec.MaxFires)
+            {
+                for (int j = 1; j < Fires.Count; j++) Fires[j - 1] = Fires[j];
+                Fires.Trim(Fires.Count - 1);
+            }
+            double d = RangePx * (i + .7) / n;
+            var (fx, fy) = Inside(X + ca * d, Y + sa * d);
+            Fires.Add() = new FireSpot { X = fx, Y = fy, At = Clock };
+        }
+    }
+
+    // 불 바닥: 시간이 다한 자리는 지우고, 0.3초마다 어느 자리든 안에 든 벌레에게 한 번 (여러 자리에 걸쳐 서 있어도 한 번). 불붙음은 하나뿐 (불길·바닥이 같은 BurnUntil 을 늘리기만 한다)
+    void BurnFloor()
+    {
+        int keep = 0;
+        for (int i = 0, n = Fires.Count; i < n; i++) if (Clock - Fires[i].At < Arm.Spec.FloorSec) Fires[keep++] = Fires[i];
+        Fires.Trim(keep);
+        if (Fires.Count == 0 || Clock < floorDue) return;
+        floorDue += Arm.Spec.FloorEvery;
+        if (floorDue <= Clock) floorDue = Clock + Arm.Spec.FloorEvery;
+        int dmg = SpecDmg(Arm.Spec.FloorDmg);
+        double r0 = Arm.Spec.FloorR * sf;
+        foreach (var f in Foes)
+        {
+            if (f.Dead) continue;
+            bool on = false;
+            for (int i = 0; i < Fires.Count && !on; i++)
+            {
+                double dx = f.X - Fires[i].X, dy = f.Y - Fires[i].Y, r = r0 + f.R;
+                on = dx * dx + dy * dy < r * r;
+            }
+            if (!on) continue;
+            if (Clock >= f.BurnUntil) f.BurnTick = Clock + BurnEvery;
+            f.BurnUntil = Math.Max(f.BurnUntil, Clock + Weapon.BurnSec);
+            if (Damage(f, Versus(f, dmg), 0, 0, X, Y, flash: false)) SpecKills++;
+        }
     }
 
     // ── 수류탄: Ctrl 을 누르는 순간 가던 쪽(8방향) ThrowDist 앞으로 던진다. 떨어지면 바로 터진다 (심지 없음) ──
