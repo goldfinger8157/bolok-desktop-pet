@@ -647,6 +647,18 @@
   "pt": "A arma ataca sozinha",
   "ru": "Оружие атакует само"
  },
+ "note.swarm_grenade": {
+  "en": "Ctrl: Grenade",
+  "ko": "Ctrl: 수류탄",
+  "ja": "Ctrl: 手榴弾",
+  "zh-Hans": "Ctrl:手榴弹",
+  "zh-Hant": "Ctrl:手榴彈",
+  "es": "Ctrl: Granada",
+  "de": "Strg: Granate",
+  "fr": "Ctrl : Grenade",
+  "pt": "Ctrl: Granada",
+  "ru": "Ctrl: граната"
+ },
  "stage.egg": {
   "en": "Egg",
   "ko": "알",

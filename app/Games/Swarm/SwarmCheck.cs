@@ -21,7 +21,8 @@ sealed partial class SwarmGame
     // ── 그려 보기 ──
     // 값 없음: 열 장 = 무기 일곱(각자 공격이 한창인 순간, 90초 뒤·레벨 5 이상) + 여왕과 보스 막대·생명 30% 아래 + 자석을 주운 순간(점선 원)과 보스 예고 + 5:00 결과(큰 왕관·반짝이)
     // 값 <무기 이름>: 그 무기 여섯 장 = 시작(머리 위 무기 그림) · 첫 레벨 업(갈래 그림) · 자석을 주운 순간 · 보스 예고 · 갈래가 다 찬 공격 · 끝
-    // 값 art: 무기·갈래 그림만 크게 · table: 무기 표만 · check: 버그 떼 자가 검사만
+    // 값 art: 무기·갈래 그림과 수류탄 그림만 크게 · table: 무기 표만 · check: 버그 떼 자가 검사만 · nade: 시작 안내·열한째·열두째만
+    // 열한째 = 수류탄: 3개 든 판에서 하나 던져 터진 직후 + 둘째가 공중(그림자) + 옆에 떨어진 수류탄 + 표시의 수 1 / 열두째 = 빈 손: 0개에서 Ctrl (표시·머리 위 회색 수류탄이 깜빡)
     public static void Scene(string path, int k)
     {
         string? arg = GameModes.SceneArg;
@@ -31,17 +32,20 @@ sealed partial class SwarmGame
             Console.OutputEncoding = Encoding.UTF8;
             L.Use("ko");
             var part = ta.Split(':');
-            if (part.Length > 1 && int.TryParse(part[1], out int only1)) Console.WriteLine(Table(part.Length > 2 && int.TryParse(part[2], out int sd) ? sd : only1 >= 5 ? 80 : 40, only1));
+            if (part.Length > 1 && int.TryParse(part[1], out int only1)) Console.WriteLine(Table(part.Length > 2 && int.TryParse(part[2], out int sd) ? sd : only1 >= 5 ? 80 : 40, only1, !(part.Length > 3 && part[3] == "off")));   // table:<단계>:<씨 수>:off = 수류탄 없이
             else Console.WriteLine(Tables());
             return;
         }
-        if (arg == "art") { SwarmArt.Sheet(path, 8); return; }
+        if (arg == "art") { SwarmArt.Sheet(path, 8); return; }   // 위 둘은 줄 하나라 하나만 크게
         if (arg == "stage") { StageScene(path, k); return; }
         if (arg == "bench") { Console.OutputEncoding = Encoding.UTF8; L.Use("ko"); Console.WriteLine(BenchOne(1, false) + "\n" + BenchOne(10, true)); return; }   // 속도만 (표 없이)
         var host = new SceneHost(scale: k);
         var game = new SwarmGame(host);
         var field = FieldAt(k);
-        bool one = Arm.Find(arg, out var only);
+        bool one = Arm.Find(arg, out var only), nadeOnly = arg == "nade";
+        int[] only3 = { 12, 10, 11 };   // nade: 시작 안내(네 줄이 깃발·머리 위 무기와 안 겹치는지) · 수류탄 · 빈 손
+        double nadeAt = -1;   // 수류탄 장면에서 첫 수류탄을 던진 때 (-1 이면 아직)
+        bool second = false;
         Swarm s = null!;
         void New(int seed, Arm.Id id, double clock = 0, int levels = 0)
         {
@@ -50,12 +54,14 @@ sealed partial class SwarmGame
             (s.UpAt, s.LastUp) = (-9, null);
             game.Begin(s);
             s.OnEvent = null;
+            game.ses = null;
         }
         if (one) New(5, only);
         using var ov = host.Overlay(game);
         int made = -1;
-        SceneKit.Shots(path, ov, Rectangle.Inflate(field, 20, 20), one ? 6 : 10, shot =>
+        SceneKit.Shots(path, ov, Rectangle.Inflate(field, 20, 20), one ? 6 : nadeOnly ? 3 : 12, shot0 =>
         {
+            int shot = nadeOnly ? only3[shot0] : shot0;
             bool fresh = made != shot;
             made = shot;
             if (one)
@@ -70,10 +76,29 @@ sealed partial class SwarmGame
                 if (shot < Arm.Kinds) New(5 + shot, (Arm.Id)shot);
                 else if (shot == 7) New(11, Arm.Id.Rifle, 237, 12);
                 else if (shot == 8) { New(12, Arm.Id.Shotgun, 57.6, 4); s.Magnets = 2; s.Drop(Swarm.Item.Magnet); }
-                else { New(13, Arm.Id.Long, 296, 14); s.BossesKilled = Swarm.Bosses; }
+                else if (shot == 9) { New(13, Arm.Id.Long, 296, 14); s.BossesKilled = Swarm.Bosses; }
+                else if (shot == 10) // 수류탄: 가만히 선 채 (옆에 떨어진 것을 안 줍게) 벌레 몇 마리 앞으로 하나 던지고, 터진 직후에 둘째가 공중
+                {
+                    New(14, Arm.Id.Long, 100);
+                    (s.Grenades, s.BotThrows, nadeAt, second) = (3, false, -1, false);
+                    s.Drop(Swarm.Item.Grenade, -90);
+                    foreach (var (bx, by) in new[] { (150, -6), (172, 20), (160, -34), (186, -12), (140, 30), (176, 44), (-70, 80), (-96, 96), (-60, 110) }) s.Add(Swarm.Kind.Bug, s.X + bx, s.Y + by).Speed = 20;
+                }
+                else if (shot == 12) { New(5, Arm.Id.Long); game.ses = Session.Fake(field); game.ses.Guide(GuideKeys); }   // 시작 0.8초: 안내 네 줄 (nade 에서만)
+                else // 빈 손: 0개에서 Ctrl
+                {
+                    New(15, Arm.Id.Long, 100);
+                    (s.Grenades, s.BotThrows) = (0, false);
+                }
             }
-            var (dx, dy) = s.BotSteer();
-            s.Steer(dx, dy);
+            if (!one && shot is 10 or 11)
+            {
+                s.Steer(0, 0);
+                if (shot == 10 && nadeAt < 0 && s.Clock >= 100.2) { nadeAt = s.Clock; s.Steer(1, 0); s.Throw(); }
+                else if (shot == 10 && !second && nadeAt >= 0 && s.Clock >= nadeAt + .45) { second = true; s.ThrowAt = -9; s.Steer(-1, 1); s.Throw(); }   // 장면에서만 쿨다운을 지운다
+                else if (shot == 11 && s.Clock >= 100.2 && s.EmptyAt < 0) s.Throw();
+            }
+            else s.BotPlay();
             s.Update(Tick);
             if (s.State == Swarm.Phase.Play) s.Hp = !one && shot == 7 ? Math.Clamp(s.Hp, 12, 26) : Math.Max(s.Hp, 60); // 장면을 찍을 때까지 버티게
             game.Track();
@@ -88,6 +113,9 @@ sealed partial class SwarmGame
                     _ => Ended(s) && s.EndedFor > 1.2,
                 };
             if (shot < Arm.Kinds) return s.Clock >= 90 && s.Level >= 5 && game.Striking(s) || s.Clock >= 150;
+            if (shot == 10) return s.Clock - s.NadeBoomAt is > .17 and < .23 && s.Nades.Count == 1 || s.Clock >= 104;
+            if (shot == 12) return s.Clock >= .8;
+            if (shot == 11) return s.Clock - s.EmptyAt is > .02 and < .06 || s.Clock >= 104;
             if (shot == 7) return s.Clock >= 244 && Boss(s) is { Tier: Swarm.Bosses } && !HeartHidden(s) || s.Clock >= 260;
             if (shot == 8) return s.Clock - s.MagnetAt is > .2 and < .5 && s.BossWarning && s.Clock - s.BossWarnAt < .15 || s.Clock >= 59.5;
             return Ended(s) && s.EndedFor > 1.2;
@@ -162,20 +190,19 @@ sealed partial class SwarmGame
         game.Begin(s);
         s.OnEvent = null;
         game.ses = Session.Fake(TestField);
-        game.ses.Guide("note.swarm_move", "note.swarm_auto", "note.esc");
+        game.ses.Guide(GuideKeys);
         using var ov = host.Overlay(game);
-        string speed = Bench.Run("swarm", ov, game, s.Field, () => { if (s.Done) return false; var (dx, dy) = s.BotSteer(); s.Steer(dx, dy); return true; }, () => { s.Update(Tick); if (refill && s.State == Swarm.Phase.Play) s.Hp = Swarm.MaxHp; game.Track(); }, 60 * 330);
+        string speed = Bench.Run("swarm", ov, game, s.Field, () => { if (s.Done) return false; s.BotPlay(); return true; }, () => { s.Update(Tick); if (refill && s.State == Swarm.Phase.Play) s.Hp = Swarm.MaxHp; game.Track(); }, 60 * 330);
         return speed + $" [{stage}단계 화염방사기{(refill ? ", 생명 채움" : "")}, {s.Time:0}초 버팀]";
     }
 
     // 자동 조종 한 판 (화면 없이 규칙만). 끝난 판을 돌려준다
-    static Swarm BotGame(Arm.Id id, int seed, int stage = 1, Func<Swarm, bool>? each = null)
+    static Swarm BotGame(Arm.Id id, int seed, int stage = 1, Func<Swarm, bool>? each = null, bool throws = true)
     {
-        var s = new Swarm(TestField, 3, new Random(seed), id, stage);
+        var s = new Swarm(TestField, 3, new Random(seed), id, stage) { BotThrows = throws };
         for (int i = 0; i < 60 * (Swarm.WinSec + 10) && s.State == Swarm.Phase.Play; i++)
         {
-            var (dx, dy) = s.BotSteer();
-            s.Steer(dx, dy);
+            s.BotPlay();
             s.Update(Tick);
             if (each != null && !each(s)) break;
         }
@@ -194,14 +221,14 @@ sealed partial class SwarmGame
     public static string Tables() => string.Join("\n\n", new[] { 1, 3, 5, 10 }.Select(st => Table(st >= 5 ? 80 : 40, st)));
 
     // 무기 표: 무기 7 × 씨 seeds 개를 자동 조종으로 끝까지 (판마다 Swarm·Random 을 따로 쓰므로 나란히 돌려도 된다)
-    public static string Table(int seeds, int stage = 1)
+    public static string Table(int seeds, int stage = 1, bool throws = true)
     {
         var runs = new Swarm[Arm.Kinds * seeds];
-        Parallel.For(0, runs.Length, i => runs[i] = BotGame((Arm.Id)(i / seeds), 1000 + i % seeds, stage));
+        Parallel.For(0, runs.Length, i => runs[i] = BotGame((Arm.Id)(i / seeds), 1000 + i % seeds, stage, null, throws));
         var sb = new StringBuilder();
-        sb.AppendLine($"### {stage}단계 (씨 {seeds}개씩)");
-        sb.AppendLine("| 무기 | 5:00 비율 | 1:00 비율 | 평균 초 | 중앙 초 | 평균 레벨 | 3:00 레벨 | 잡은 수 | 받은 피해 | 남은 생명 | 잡은 보스 | 첫 보스(초) | 자석 |");
-        sb.AppendLine("|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+        sb.AppendLine($"### {stage}단계 (씨 {seeds}개씩{(throws ? "" : ", 수류탄 없이")})");
+        sb.AppendLine("| 무기 | 5:00 비율 | 1:00 비율 | 평균 초 | 중앙 초 | 평균 레벨 | 3:00 레벨 | 잡은 수 | 받은 피해 | 남은 생명 | 잡은 보스 | 첫 보스(초) | 자석 | 던진 수 | 수류탄으로 잡은 수 |");
+        sb.AppendLine("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
         var win = new double[Arm.Kinds];
         double meleeKills = 0, rangedKills = 0, meleeHurt = 0, rangedHurt = 0, secs = 0, one = 0, lv3 = 0;
         for (int w = 0; w < Arm.Kinds; w++)
@@ -214,7 +241,7 @@ sealed partial class SwarmGame
             (secs, one, lv3) = (secs + sorted.Average() / Arm.Kinds, one + mine.Count(r => r.Time >= 60) * 100.0 / seeds / Arm.Kinds, lv3 + lv180 / Arm.Kinds);
             if (w < 2) (meleeKills, meleeHurt) = (meleeKills + kills / 2, meleeHurt + hurt / 2);
             else (rangedKills, rangedHurt) = (rangedKills + kills / 5, rangedHurt + hurt / 5);
-            sb.AppendLine($"| {KoNames[w]} | {win[w]:0}% | {mine.Count(r => r.Time >= 60) * 100 / seeds}% | {sorted.Average():0} | {sorted[seeds / 2]:0} | {mine.Average(r => r.Level):0.0} | {lv180:0.0} | {kills:0} | {hurt:0} | {mine.Average(r => r.Hp):0} | {mine.Average(r => r.BossesKilled):0.0} | {first:0} | {mine.Average(r => r.Magnets):0.0} |");
+            sb.AppendLine($"| {KoNames[w]} | {win[w]:0}% | {mine.Count(r => r.Time >= 60) * 100 / seeds}% | {sorted.Average():0} | {sorted[seeds / 2]:0} | {mine.Average(r => r.Level):0.0} | {lv180:0.0} | {kills:0} | {hurt:0} | {mine.Average(r => r.Hp):0} | {mine.Average(r => r.BossesKilled):0.0} | {first:0} | {mine.Average(r => r.Magnets):0.0} | {mine.Average(r => r.Thrown):0.0} | {mine.Average(r => r.NadeKills):0} |");
         }
         double meleeWin = (win[0] + win[1]) / 2, rangedWin = (win[2] + win[4] + win[5]) / 3, midWin = (win[3] + win[6]) / 2, allWin = win.Average();
         sb.AppendLine($"평균: 5:00 {allWin:0.0}%, 1:00 {one:0}%, 버틴 초 {secs:0}, 3:00 레벨 {lv3:0.0}");
@@ -236,7 +263,7 @@ sealed partial class SwarmGame
     {
         const double tick = Tick;
         void Run(Swarm s, double sec) { for (int i = 0; i < sec * 60 && !s.Done; i++) s.Update(tick); }
-        Swarm Empty(int seed, Arm.Id id = Arm.Id.Pistols, int stage = 1) => new(TestField, 3, new Random(seed), id, stage) { Spawning = false, ShoeChance = 0, MagnetChance = 0, HeartChance = 0 };
+        Swarm Empty(int seed, Arm.Id id = Arm.Id.Pistols, int stage = 1) => new(TestField, 3, new Random(seed), id, stage) { Spawning = false, ShoeChance = 0, MagnetChance = 0, HeartChance = 0, GrenadeChance = 0 };
         Swarm.Foe Dummy(Swarm s, Swarm.Kind kind, double dx, double dy, int hp = 9999, int tier = 1) // 제자리에 선 과녁
         {
             var f = s.Add(kind, s.X + dx, s.Y + dy, tier);
@@ -661,15 +688,15 @@ sealed partial class SwarmGame
         Run(hive, .4);
         Expect(hive.Foes.Count == 5 && hive.Foes.Skip(1).All(f => f.Kind == Swarm.Kind.Bug), $"여왕은 6초마다 벌레 넷을 낳는다: {hive.Foes.Count - 1}");
 
-        // 보스가 남기는 것: 보석 15·20·25·30 + 하트, 1·3번은 자석도
+        // 보스가 남기는 것: 보석 15·20·25·30 + 하트, 1·3번은 자석도, 여왕은 수류탄도 (든 것 + 판 위 것이 3 미만일 때)
         for (int tier = 1; tier <= Swarm.Bosses; tier++)
         {
             var kill = Empty(13);
             kill.Hp = 50;
             Dummy(kill, Swarm.Kind.Boss, 220, 0, 1, tier);
             Run(kill, .6);   // 잡은 직후 (보석은 날아오는 중이라 아직 안 주워졌다)
-            Expect(kill.BossesKilled == 1 && kill.Gems.Count(m => m.Item == Swarm.Item.Heart) == 1 && kill.Gems.Count(m => m.Item == Swarm.Item.Magnet) == tier % 2 && kill.Gems.Any(m => m.Xp == 10 + 5 * tier),
-                $"{tier}번 보스가 남기는 것: 보석 {kill.Gems.Max(m => m.Xp)}, 하트 {kill.Gems.Count(m => m.Item == Swarm.Item.Heart)}, 자석 {kill.Gems.Count(m => m.Item == Swarm.Item.Magnet)}");
+            Expect(kill.BossesKilled == 1 && kill.Gems.Count(m => m.Item == Swarm.Item.Heart) == 1 && kill.Gems.Count(m => m.Item == Swarm.Item.Magnet) == tier % 2 && kill.Gems.Count(m => m.Item == Swarm.Item.Grenade) == (tier == Swarm.Bosses ? 1 : 0) && kill.Gems.Any(m => m.Xp == 10 + 5 * tier),
+                $"{tier}번 보스가 남기는 것: 보석 {kill.Gems.Max(m => m.Xp)}, 하트 {kill.Gems.Count(m => m.Item == Swarm.Item.Heart)}, 자석 {kill.Gems.Count(m => m.Item == Swarm.Item.Magnet)}, 수류탄 {kill.Gems.Count(m => m.Item == Swarm.Item.Grenade)}");
         }
 
 
@@ -700,7 +727,7 @@ sealed partial class SwarmGame
         for (int seed = 0; seed < 50; seed++) Expect(new Swarm(TestField, 3, new Random(seed), null, 1).Weapon.Which == new Swarm(TestField, 3, new Random(seed), null, 7).Weapon.Which, "단계가 달라도 같은 씨면 같은 무기");
         var tw1 = new Swarm(TestField, 3, new Random(77), Arm.Id.Rifle);
         var tw2 = new Swarm(TestField, 3, new Random(77), Arm.Id.Rifle, 1);
-        for (int i = 0; i < 60 * 25; i++) { foreach (var twin in new[] { tw1, tw2 }) { var (bx, by) = twin.BotSteer(); twin.Steer(bx, by); twin.Update(tick); } }
+        for (int i = 0; i < 60 * 25; i++) { foreach (var twin in new[] { tw1, tw2 }) { twin.BotPlay(); twin.Update(tick); } }
         Expect((tw1.X, tw1.Y, tw1.Foes.Count, tw1.Kills, tw1.Born, tw1.Hp, tw1.Gems.Count) == (tw2.X, tw2.Y, tw2.Foes.Count, tw2.Kills, tw2.Born, tw2.Hp, tw2.Gems.Count) && tw1.Born > 30, $"1단계 두 번은 같은 판이다: 벌레 {tw1.Born}마리");
 
         // 1분 주기: 씨 하나로 300초를 돌려(볼록이 무적, 벌레는 프레임마다 치워 상한·보스가 수를 바꾸지 않게) 구간마다 나온 수를 센다
@@ -1016,7 +1043,7 @@ sealed partial class SwarmGame
         var over = new string?[bots.Length];
         Parallel.For(0, bots.Length, i => bots[i] = BotGame((Arm.Id)(i / seeds), i % seeds, 1, s =>
         {
-            if (TestField.Contains((int)s.X, (int)s.Y) && s.Foes.Count <= Swarm.MaxFoes + 4 && s.Shots.Count <= Swarm.MaxShots && s.Gems.Count <= Swarm.MaxGems && s.Hp <= Swarm.MaxHp && s.Magnets <= Swarm.MaxMagnets) return true;
+            if (TestField.Contains((int)s.X, (int)s.Y) && s.Foes.Count <= Swarm.MaxFoes + 4 && s.Shots.Count <= Swarm.MaxShots && s.Gems.Count <= Swarm.MaxGems && s.Hp <= Swarm.MaxHp && s.Magnets <= Swarm.MaxMagnets && s.Grenades <= Swarm.MaxGrenades && s.Nades.Count <= Swarm.MaxNades) return true;
             over[i] = $"{s.Clock:0}초 벌레 {s.Foes.Count} 탄 {s.Shots.Count} 보석 {s.Gems.Count}";
             return false;
         }));
@@ -1030,6 +1057,7 @@ sealed partial class SwarmGame
             line.Append($"{(w > 0 ? ", " : "")}{KoNames[w]} {mine.Average(s => s.Time):0}초/{mine.Count(s => s.Won)}");
         }
         Expect(bots.Sum(s => s.Magnets) >= Arm.Kinds && bots.Sum(s => s.Shoes) >= Arm.Kinds, $"자동 조종도 자석·신발을 줍는다: 자석 {bots.Sum(s => s.Magnets)}개, 신발 {bots.Sum(s => s.Shoes)}켤레");
+        Expect(bots.Sum(s => s.Thrown) >= Arm.Kinds && bots.Sum(s => s.NadeKills) > 0, $"자동 조종도 수류탄을 던진다: 던진 수 {bots.Sum(s => s.Thrown)}, 잡은 수 {bots.Sum(s => s.NadeKills)}");
 
         // ── 조작: 판이 앞 창일 때만 방향키로 움직인다. 글자 키(WASD)나 다른 창에서 누른 키로는 안 움직인다. 보스 키로 끝내면 티가 나지 않는다 ──
         var keys = new HashSet<Keys> { Keys.W, Keys.A, Keys.S, Keys.D, Keys.Space };
@@ -1049,6 +1077,249 @@ sealed partial class SwarmGame
         Expect(play.X == x0 && play.Y == y0 && !play.Moving, "다른 창을 쓰는 동안 누른 방향키로는 안 움직인다");
         game.Stop(true);
         Expect(!game.Running && host.Pet.Mode == Mode.Wander && !host.Pet.Emoting, "보스 키(Esc)로 끝내면 결과 화면·표정 없이 바로 끝난다");
+
+        // ══ 수류탄 (docs/swarm-grenade.md 8장) ══
+        // 시작 1개·공중 0·저장 글에 없음 / 소리
+        var nd0 = Empty(40);
+        Expect(nd0.Grenades == 1 && nd0.Nades.Count == 0 && nd0.Thrown == 0 && nd0.NadeKills == 0 && Swarm.StartGrenades == 1 && Swarm.MaxGrenades == 3, "시작하면 수류탄 1개, 공중 0");
+        var ndSave = new SwarmGame(host);
+        ndSave.LoadState("{\"Sec\":10,\"Kills\":5}");
+        Expect(ndSave.SaveState() is { } ndJson && !ndJson.Contains("renade", StringComparison.OrdinalIgnoreCase) && !ndJson.Contains("Thrown"), "저장 글에 수류탄이 없다 (그 판뿐)");
+        Expect(Sounds["grenade"] == Sound.Pick && Sounds["throw"] == Sound.Tap && Sounds["noammo"] == Sound.Tap && Sounds["nade"] == Sound.Boom, "수류탄 소리: 줍기·던지기·빈 손·터짐");
+
+        // 방향: 조종 값 쪽 120px (대각선은 85·85), 서 있으면 마지막으로 움직인 쪽, 한 번도 안 움직였으면 Dir 쪽, 벽 앞에서는 판 안으로 잘린다
+        foreach (var (ndx, ndy) in new[] { (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1) })
+        {
+            var ndDir = Empty(41);
+            ndDir.Steer(ndx, ndy);
+            double ndLen = Math.Sqrt(ndx * ndx + ndy * ndy);
+            Expect(ndDir.Throw() && ndDir.Nades.Count == 1 && Math.Abs(ndDir.Nades[0].X1 - ndDir.Nades[0].X0 - ndx / ndLen * 120) < .01 && Math.Abs(ndDir.Nades[0].Y1 - ndDir.Nades[0].Y0 - ndy / ndLen * 120) < .01 && ndDir.Nades[0].Spin == (ndx < 0 ? -1 : 1),
+                $"({ndx},{ndy}) 쪽으로 120px 던진다: {ndDir.Nades[0].X1 - ndDir.Nades[0].X0:0.0}, {ndDir.Nades[0].Y1 - ndDir.Nades[0].Y0:0.0}");
+        }
+        var ndFace = Empty(42);
+        ndFace.Steer(0, -1);
+        ndFace.Update(tick);
+        ndFace.Steer(0, 0);
+        ndFace.Update(tick);
+        Expect(ndFace.Throw() && Math.Abs(ndFace.Nades[0].X1 - ndFace.Nades[0].X0) < .01 && Math.Abs(ndFace.Nades[0].Y0 - ndFace.Nades[0].Y1 - 120) < .01, "움직이다 멈추면 마지막으로 움직인 쪽 (위)");
+        var ndStill = Empty(42);
+        Expect(ndStill.Throw() && ndStill.Nades[0].X1 - ndStill.Nades[0].X0 == 120 && ndStill.Nades[0].Y1 == ndStill.Nades[0].Y0, "한 번도 안 움직였으면 오른쪽");
+        var ndLeft = Empty(42);
+        ndLeft.Dir = -1;
+        Expect(ndLeft.Throw() && ndLeft.Nades[0].X1 - ndLeft.Nades[0].X0 == -120 && ndLeft.Nades[0].Spin == -1, "왼쪽을 보게 한 판은 왼쪽 (거꾸로 돈다)");
+        var ndWall = Empty(43);
+        ndWall.X = TestField.Right - 14;
+        ndWall.Steer(1, 0);
+        Expect(ndWall.Throw() && ndWall.Nades[0].X1 == TestField.Right - 12 && ndWall.Nades[0].X1 - ndWall.Nades[0].X0 < 120, "벽 앞에서는 떨어질 자리가 판 안으로 잘린다");
+
+        // 수·쿨다운·빈 손
+        var ndCool = Empty(44);
+        ndCool.Grenades = 3;
+        string ndHeard = "";
+        ndCool.OnEvent = e => ndHeard += e + " ";
+        Expect(ndCool.Throw() && ndCool.Grenades == 2 && ndCool.Thrown == 1 && ndCool.ThrowAt == ndCool.Clock && ndCool.GrenadeAt == ndCool.Clock && ndHeard == "throw ", "던지면 3 → 2");
+        Run(ndCool, .3);
+        Expect(!ndCool.Throw() && ndCool.Grenades == 2 && ndCool.Thrown == 1 && ndCool.Nades.Count == 1, "0.6초 안의 둘째는 조용히 무시된다 (수 그대로)");
+        Run(ndCool, .31);
+        Expect(ndCool.Throw() && ndCool.Grenades == 1 && ndCool.Thrown == 2, "0.6초 뒤엔 나간다");
+        var ndNone = Empty(45);
+        ndNone.Grenades = 0;
+        ndHeard = "";
+        ndNone.OnEvent = e => ndHeard += e + " ";
+        Run(ndNone, .5);
+        Expect(!ndNone.Throw() && ndNone.Nades.Count == 0 && ndNone.Thrown == 0 && ndNone.EmptyAt == ndNone.Clock && ndHeard == "noammo ", "0개면 안 나가고 noammo 사건 + EmptyAt");
+
+        // 입력: 누르는 순간만 (꾹 눌러도 한 번), 앞 창일 때만, Ctrl 을 누른 채 시작하면 안 나간다, Shift 로는 아무 일도 없다, 던진 직후 Esc 는 바로 끝
+        var ndKeys = new HashSet<Keys> { Keys.ControlKey };
+        bool ndFront = true;
+        var ndIn = Empty(46);
+        game.Begin(ndIn);
+        ndIn.OnEvent = null;
+        (game.swarm, game.ses) = (ndIn, Session.Fake(TestField, ndKeys.Contains, () => ndFront));
+        host.Pet.StartPuppet();
+        Frames(20);
+        Expect(ndIn.Thrown == 0 && ndIn.Grenades == 1, "Ctrl 을 누른 채 시작해도 안 나간다");
+        ndKeys.Clear();
+        Frames(3);
+        ndKeys.Add(Keys.ControlKey);
+        Frames(20);
+        Expect(ndIn.Thrown == 1 && ndIn.Grenades == 0 && ndIn.Nades.Count + (ndIn.NadeBoomAt > 0 ? 1 : 0) >= 1, $"Ctrl 을 20프레임 누르고 있어도 한 번: {ndIn.Thrown}");
+        ndIn.Grenades = 3;
+        Frames(20);
+        Expect(ndIn.Thrown == 1 && ndIn.Grenades == 3, "꾹 누르고 있으면 둘째는 안 나간다");
+        ndKeys.Clear();
+        Frames(45);
+        ndKeys.Add(Keys.ControlKey);
+        Frames(3);
+        Expect(ndIn.Thrown == 2 && ndIn.Grenades == 2, "뗐다 다시 누르면 둘째");
+        (ndFront, ndIn.Grenades) = (false, 3);
+        ndKeys.Clear();
+        Frames(45);
+        ndKeys.Add(Keys.ControlKey);
+        Frames(20);
+        Expect(ndIn.Thrown == 2 && ndIn.Grenades == 3, "판이 앞 창이 아니면 Ctrl 로 안 나간다");
+        (ndFront, ndIn.Grenades) = (true, 3);
+        ndKeys.Clear();
+        Frames(45);
+        ndKeys.Add(Keys.ShiftKey);
+        Frames(20);
+        Expect(ndIn.Thrown == 2 && ndIn.Grenades == 3 && ndIn.Nades.Count == 0, "Shift 로는 아무 일도 없다 (2차 보상 몫)");
+        ndKeys.Clear();
+        Frames(45);
+        ndKeys.Add(Keys.ControlKey);
+        Frames(2);
+        Expect(ndIn.Thrown == 3 && ndIn.Nades.Count == 1, "공중에 하나 떠 있다");
+        game.Stop(true);
+        Expect(!game.Running && host.Pet.Mode == Mode.Wander && !host.Pet.Emoting, "던진 직후 Esc 도 바로 끝난다 (남는 것 없음)");
+
+        // 폭발: 0.55초 뒤 떨어진 자리에서 터진다. 반지름(80 + 몸) 안만 70 깎이고 밀침 30·멈칫, 보스는 절반(35)·밀침 ¼·멈칫 없음. 볼록이는 안 다친다
+        var ndBoom = Empty(47);
+        ndBoom.Weapon.Range = 0;   // 무기가 과녁을 건드리지 않게
+        Swarm.Foe ndHit = Dummy(ndBoom, Swarm.Kind.Bug, 150, -40, 100), ndBoss = Dummy(ndBoom, Swarm.Kind.Boss, 120, 30, 5000), ndIn88 = Dummy(ndBoom, Swarm.Kind.Bug, 208, 0, 100), ndOut92 = Dummy(ndBoom, Swarm.Kind.Bug, 120, 92, 100), ndFar = Dummy(ndBoom, Swarm.Kind.Bug, -150, 0, 100);
+        double ndLx = ndBoom.X + 120, ndLy = ndBoom.Y;
+        double NdDist(Swarm.Foe f, double ax, double ay) => Math.Sqrt((f.X - ax) * (f.X - ax) + (f.Y - ay) * (f.Y - ay));
+        Expect(ndBoom.Throw(), "던진다");
+        Run(ndBoom, .5);
+        Expect(ndBoom.Nades.Count == 1 && ndHit.Hp == 100 && ndBoom.NadeBoomAt < 0 && ndBoom.Pops.Count == 0, "0.55초가 되기 전에는 안 터진다");
+        Run(ndBoom, .1);
+        Expect(ndBoom.Nades.Count == 0 && ndBoom.NadeBoomAt > 0 && ndBoom.BoomAt < 0 && ndBoom.Pops.Count == 1 && Math.Abs(ndBoom.Pops[0].R - Swarm.NadeBlast) < .01 && Math.Abs(ndBoom.Pops[0].X - ndLx) < .01, "떨어지면 터진다: 터짐 그림, 바주카의 BoomAt 은 그대로");
+        Expect(ndHit.Hp == 100 - ndBoom.NadeDamage(false) && ndHit.Hp == 30 && ndIn88.Hp == 30 && ndOut92.Hp == 100 && ndFar.Hp == 100, $"반지름 안만 깎인다: {ndHit.Hp}·{ndIn88.Hp} / 밖 {ndOut92.Hp}·{ndFar.Hp}");
+        Expect(Math.Abs(NdDist(ndHit, ndLx, ndLy) - 80) < 1 && ndHit.StunUntil > ndBoom.Clock + .3 && Math.Abs(ndHit.StunUntil - ndBoom.NadeBoomAt - Swarm.NadeStun) < .02, $"보통 벌레는 30px 밀리고 0.4초 멈칫: {NdDist(ndHit, ndLx, ndLy):0.0}");
+        Expect(ndBoss.Hp == 5000 - ndBoom.NadeDamage(true) && ndBoom.NadeDamage(true) == 35 && Math.Abs(NdDist(ndBoss, ndLx, ndLy) - 37.5) < .6 && ndBoss.StunUntil < ndBoom.Clock, $"보스는 절반 피해·밀침 ¼·멈칫 없음: {5000 - ndBoss.Hp}, {NdDist(ndBoss, ndLx, ndLy):0.0}");
+        Expect(ndBoom.Hp == Swarm.MaxHp && ndBoom.DamageTaken == 0, "볼록이는 안 다친다");
+
+        // 피해 숫자: 0초 70, 300초 220, 단계마다 × HpX, 보스는 × 0.5 × BossX
+        var ndNum = Empty(48);
+        Expect(ndNum.NadeDamage(false) == 70 && ndNum.NadeDamage(true) == 35, $"0초: {ndNum.NadeDamage(false)}·{ndNum.NadeDamage(true)}");
+        ndNum.Clock = 300;
+        Expect(ndNum.NadeDamage(false) == 220 && ndNum.NadeDamage(true) == 110, $"300초: {ndNum.NadeDamage(false)}·{ndNum.NadeDamage(true)}");
+        foreach (var (ndStage, ndSec) in new[] { (5, 0), (5, 120), (10, 240) })
+        {
+            var ndStg = Empty(48, Arm.Id.Pistols, ndStage);
+            ndStg.Clock = ndSec;
+            double ndBase = 70 + .5 * ndSec;
+            Expect(ndStg.NadeDamage(false) == (int)Math.Round(ndBase * ndStg.T.HpX, MidpointRounding.AwayFromZero) && ndStg.NadeDamage(true) == (int)Math.Round(ndBase * .5 * ndStg.T.BossX, MidpointRounding.AwayFromZero) && ndStg.NadeDamage(false) > ndBase, $"{ndStage}단계 {ndSec}초: × HpX·× 0.5 × BossX: {ndStg.NadeDamage(false)}·{ndStg.NadeDamage(true)}");
+        }
+
+        // 제 발밑에서 터져도 안 다친다 (떨어질 자리로 걸어간다). 잡은 벌레는 보석을 남기고 NadeKills 가 는다
+        var ndSelf = Empty(49);
+        ndSelf.Weapon.Range = 0;
+        var ndMark = Dummy(ndSelf, Swarm.Kind.Bug, 120, 0, 100);
+        Expect(ndSelf.Throw(), "던진다");
+        ndSelf.Steer(1, 0);
+        Run(ndSelf, .56);
+        Expect(ndSelf.NadeBoomAt > 0 && NdDist(ndMark, ndSelf.X, ndSelf.Y) < 80 && ndMark.Hp == 30 && ndSelf.Hp == Swarm.MaxHp && ndSelf.DamageTaken == 0, "떨어질 자리로 걸어가 서 있어도 안 다친다");
+        var ndKill = Empty(50);
+        ndKill.Weapon.Range = 0;
+        foreach (var (kx, ky) in new[] { (130, 0), (120, 28), (115, -28) }) Dummy(ndKill, Swarm.Kind.Bug, kx, ky, 5);
+        ndKill.Throw();
+        Run(ndKill, .6);
+        Expect(ndKill.Kills == 3 && ndKill.NadeKills == 3 && ndKill.Gems.Count(m => m.Item == Swarm.Item.Gem) == 3 && ndKill.Pops.Count >= 4, $"잡힌 벌레는 보석을 남기고 NadeKills 가 는다: {ndKill.NadeKills}");
+
+        // 줍기: 1 → 2 → 3, 3개에서 더 주워도 3 (아이템은 사라진다)
+        var ndPick = Empty(51);
+        ndHeard = "";
+        ndPick.OnEvent = e => ndHeard += e + " ";
+        for (int n = 1; n <= 4; n++)
+        {
+            ndPick.Drop(Swarm.Item.Grenade, 0);
+            ndPick.Update(tick);
+            Expect(ndPick.Grenades == Math.Min(3, 1 + n) && ndPick.Gems.Count == 0 && ndPick.LastItem == Swarm.Item.Grenade && ndPick.ItemAt == ndPick.Clock && ndPick.GrenadeAt == ndPick.Clock, $"수류탄을 주우면 {Math.Min(3, 1 + n)}개: {ndPick.Grenades}");
+        }
+        Expect(ndHeard == "grenade grenade grenade grenade ", $"줍는 사건: {ndHeard}");
+
+        // 떨어지기 (GrenadeChance = 1): 30초 전엔 안 나온다, 나온 뒤 40초는 안 나온다, 든 것 + 판 위 것이 3이면 안 나온다, 하나 던지면 다시
+        var ndDrop = Empty(52);
+        ndDrop.GrenadeChance = 1;
+        int NdOut() => ndDrop.Gems.Count(m => m.Item == Swarm.Item.Grenade);
+        void NdKill() { Dummy(ndDrop, Swarm.Kind.Bug, 200, 0, 1); Run(ndDrop, 1.5); }
+        ndDrop.Clock = Swarm.GrenadeFirst - 12;
+        NdKill();
+        Expect(ndDrop.Kills == 1 && NdOut() == 0, "30초 전에는 수류탄이 안 나온다");
+        ndDrop.Clock = Swarm.GrenadeFirst;
+        NdKill();
+        NdKill();
+        Expect(ndDrop.Kills == 3 && NdOut() == 1, $"하나 떨어지면 한동안은 또 안 나온다: {NdOut()}");
+        ndDrop.Clock += Swarm.GrenadeGap;
+        NdKill();
+        Expect(ndDrop.Kills == 4 && NdOut() == 2, $"40초가 지나면 다시: {NdOut()}");
+        ndDrop.Clock += Swarm.GrenadeGap;
+        NdKill();
+        Expect(ndDrop.Kills == 5 && NdOut() == 2, "든 것(1) + 판 위 것(2)이 3이면 안 나온다");
+        ndDrop.Throw();
+        Run(ndDrop, 1);
+        ndDrop.Clock += Swarm.GrenadeGap;
+        NdKill();
+        Expect(NdOut() == 3 && ndDrop.Grenades == 0, $"하나 던지면 다시 나올 수 있다: 판 위 {NdOut()}, 든 것 {ndDrop.Grenades}");
+        var ndFirst = Empty(52);   // 30초까지는 rng 를 더 쓰지 않는다: 같은 씨의 첫 30초는 수류탄 없는 판과 같다
+        var ndRef = new Swarm(TestField, 3, new Random(52), Arm.Id.Pistols) { Spawning = false, ShoeChance = 0, MagnetChance = 0, HeartChance = 0 };
+        for (int i = 0; i < 60 * 6; i++) { Dummy(ndFirst, Swarm.Kind.Bug, 200, 0, 1); Dummy(ndRef, Swarm.Kind.Bug, 200, 0, 1); Run(ndFirst, 1); Run(ndRef, 1); if (i == 20) break; }
+        Expect(ndFirst.Kills == ndRef.Kills && ndFirst.Gems.Count == ndRef.Gems.Count && ndFirst.Clock < Swarm.GrenadeFirst, "처음 30초는 수류탄이 있어도 같은 판 (rng 를 더 쓰지 않는다)");
+        var ndBoss2 = Empty(53);
+        ndBoss2.Grenades = 3;
+        Dummy(ndBoss2, Swarm.Kind.Boss, 220, 0, 1, Swarm.Bosses);
+        Run(ndBoss2, .6);
+        Expect(ndBoss2.BossesKilled == 1 && ndBoss2.Gems.All(m => m.Item != Swarm.Item.Grenade), "3개를 채웠으면 여왕도 수류탄을 안 준다");
+        var ndBoss3 = Empty(53);
+        ndBoss3.Drop(Swarm.Item.Grenade, -200);   // 판 위에 이미 둘 (든 1 + 위 2 = 3)
+        ndBoss3.Drop(Swarm.Item.Grenade, -200);
+        Dummy(ndBoss3, Swarm.Kind.Boss, 220, 0, 1, 4);
+        Run(ndBoss3, .6);
+        Expect(ndBoss3.BossesKilled == 1 && ndBoss3.Gems.Count(m => m.Item == Swarm.Item.Grenade) == 2, "든 것 + 판 위 것이 3이면 여왕도 안 준다");
+
+        // MaxGems: 보석이 넘쳐도 수류탄은 밀려나지 않는다. 벌레 떼 한가운데서 터뜨려도 보석 150 이하·값 합 그대로
+        var ndCap = Empty(54);
+        ndCap.Gems.Add(new Swarm.Gem { X = ndCap.X + 200, Y = ndCap.Y + 120, Item = Swarm.Item.Grenade });
+        for (int i = 0; i < Swarm.MaxGems; i++) ndCap.Gems.Add(new Swarm.Gem { X = ndCap.X + 200 + i % 5, Y = ndCap.Y + 120, Xp = 1 });
+        Dummy(ndCap, Swarm.Kind.Bug, 150, 0, 1);
+        Run(ndCap, .6);
+        Expect(ndCap.Kills == 1 && ndCap.Gems.Count == Swarm.MaxGems && ndCap.Gems.Any(m => m.Item == Swarm.Item.Grenade) && ndCap.Gems.Where(m => m.Item == Swarm.Item.Gem).Sum(m => m.Xp) + ndCap.Xp == Swarm.MaxGems + 1, "보석 상한에서 수류탄은 밀려나지 않는다 (보석만 합쳐진다)");
+        var ndMass = Empty(55);
+        (ndMass.Weapon.Range, ndMass.SafeUntil) = (0, 1e9);
+        for (int i = 0; i < 120; i++) ndMass.Gems.Add(new Swarm.Gem { X = ndMass.X + 200 + i % 5, Y = ndMass.Y + 120, Xp = 1 });
+        for (int i = 0; i < 100; i++) Dummy(ndMass, Swarm.Kind.Bug, 160 + 8.4 * Math.Sqrt(i + .5) * Math.Cos(i * 2.39996), 8.4 * Math.Sqrt(i + .5) * Math.Sin(i * 2.39996), 5);
+        ndMass.Throw();
+        Run(ndMass, .6);
+        Expect(ndMass.Kills >= 40 && ndMass.Gems.Count == Swarm.MaxGems && ndMass.Gems.Sum(m => m.Xp) + ndMass.Xp == 120 + ndMass.Kills, $"벌레 100마리 한가운데에서 터뜨려도 보석 150 이하·값 합 그대로: 잡은 {ndMass.Kills}, 보석 {ndMass.Gems.Count}");
+
+        // 판이 끝나면 공중 수류탄이 없다 (5:00 승리, 생명이 다해 끝, 끝난 뒤엔 못 던진다)
+        var ndWin = Empty(56);
+        (ndWin.Weapon.Range, ndWin.SafeUntil, ndWin.Clock) = (0, 1e9, Swarm.WinSec - .2);
+        ndWin.Throw();
+        Run(ndWin, .3);
+        Expect(ndWin.State == Swarm.Phase.Win && ndWin.Nades.Count == 0 && ndWin.NadeBoomAt < 0 && ndWin.Thrown == 1, "5:00 이 되면 공중 수류탄도 사라진다 (터지지 않고)");
+        var ndOver = Empty(57);
+        ndOver.Hp = 1;
+        Dummy(ndOver, Swarm.Kind.Boss, 3, 0);
+        ndOver.Grenades = 3;
+        ndOver.Throw();
+        Run(ndOver, .1);
+        Expect(ndOver.State == Swarm.Phase.Over && ndOver.Nades.Count == 0 && ndOver.Thrown == 1 && !ndOver.Throw() && ndOver.Thrown == 1, "생명이 다해 끝나도 공중 수류탄은 없고, 끝난 뒤엔 못 던진다");
+
+        // 씨가 같으면 같은 판 (자동 조종이 던지는 판): 자리·잡은 수·던진 수·수류탄으로 잡은 수·든 수가 같다
+        int ndThrows = 0;
+        foreach (var ndId in new[] { Arm.Id.Rifle, Arm.Id.Flame })
+        {
+            Swarm ndA = BotGame(ndId, 77), ndB = BotGame(ndId, 77);
+            Expect((ndA.X, ndA.Y, ndA.Kills, ndA.Thrown, ndA.NadeKills, ndA.Grenades, ndA.Born, ndA.Gems.Count, ndA.Hp, ndA.Time) == (ndB.X, ndB.Y, ndB.Kills, ndB.Thrown, ndB.NadeKills, ndB.Grenades, ndB.Born, ndB.Gems.Count, ndB.Hp, ndB.Time), $"같은 씨로 두 판이 같다: {ndId}");
+            ndThrows += ndA.Thrown;
+        }
+        Expect(ndThrows > 0, $"자동 조종이 던진다: {ndThrows}");
+
+        // 안내: 네 줄, 새 글이 열 언어에 다 있다
+        Expect(GuideKeys.Length == 4 && GuideKeys[2] == "note.swarm_grenade" && GuideKeys[^1] == "note.esc" && GuideKeys[0] == "note.swarm_move", "안내는 네 줄 (이동 · 자동 · Ctrl · Esc)");
+        foreach (var (ndCode, _) in L.Languages) Expect(L.Has("note.swarm_grenade", ndCode) && L.Raw("note.swarm_grenade", ndCode).Length > 4, $"note.swarm_grenade 가 {ndCode} 에 있다");
+
+        // 디버그: swarm item grenade 로 하나 떨어뜨린다, swarm grenade 는 0개여도 하나 던진다
+        var ndCmd = new SwarmGame(host) { FakeOpen = f => Session.Fake(f) };
+        ndCmd.Command(new[] { "swarm", "weapon", "flame" });
+        ndCmd.Command(new[] { "swarm", "item", "grenade" });
+        Expect(ndCmd.Running && ndCmd.swarm!.Gems.Count(m => m.Item == Swarm.Item.Grenade) == 1, "swarm item grenade");
+        ndCmd.swarm!.Grenades = 0;
+        ndCmd.Command(new[] { "swarm", "grenade" });
+        Expect(ndCmd.swarm.Nades.Count == 1 && ndCmd.swarm.Thrown == 1 && ndCmd.swarm.Grenades == 0, "swarm grenade: 0개여도 하나 날아간다");
+        ndCmd.Command(new[] { "swarm", "stop" });
+        Expect(!ndCmd.Running && host.Pet.Mode == Mode.Wander, "swarm stop");
 
         // ── 디버그 명령: swarm weapon <이름> 으로 그 무기 판을 시작하고, 하는 중이면 그 무기로 새 판 ──
         var cmd = new SwarmGame(host) { FakeOpen = f => Session.Fake(f) };
@@ -1123,7 +1394,7 @@ sealed partial class SwarmGame
             game.Begin(paint);
             paint.OnEvent = null;
             game.ses = Session.Fake(TestField);
-            game.ses.Guide("note.swarm_move", "note.swarm_auto", "note.esc");
+            game.ses.Guide(GuideKeys);
             game.ses.GuideUntil = paint.Clock + 2;
             using var ov = host.Overlay(game);
             double until = paint.Clock + 20;
@@ -1131,8 +1402,7 @@ sealed partial class SwarmGame
             var (bad, first) = SceneKit.Repaint(ov, game, TestField, () =>
             {
                 if (paint.Done || paint.Clock >= until) return false;
-                var (dx, dy) = paint.BotSteer();
-                paint.Steer(dx, dy);
+                paint.BotPlay();
                 paint.Update(tick);
                 if (paint.State == Swarm.Phase.Play) paint.Hp = Math.Max(paint.Hp, 12); // 끝까지 그려 보게
                 if (paint.Done && !ending) return false; // 큰 피해(여왕 40)로 죽어 닫힌 판은 거기까지 (앱은 그때 판을 닫는다)
@@ -1149,7 +1419,7 @@ sealed partial class SwarmGame
         Expect(painted >= 1, "다시 칠할 자리 검사에 깜빡이는 생명 하트가 들어 있다");
 
         // 단계 표시를 다시 칠할 자리: 시작 깃발·엘리트(금 테두리·반짝이) · 예고 띠와 세모·붉은 모서리·한쪽 줄/둘러싸기 · 이긴 결과(깃발 ↑·무지개 왕관)
-        void Repaints(string what, Swarm p, double secs, int maxStage = 0)
+        void Repaints(string what, Swarm p, double secs, int maxStage = 0, Action<Swarm>? each = null)
         {
             (game.stage, game.maxStage, game.practice, game.auto) = (p.Stage, maxStage, false, false);
             game.Begin(p);
@@ -1160,8 +1430,8 @@ sealed partial class SwarmGame
             var (bad2, first2) = SceneKit.Repaint(ov2, game, TestField, () =>
             {
                 if (p.Done || p.Clock >= until) return false;
-                var (dx, dy) = p.BotSteer();
-                p.Steer(dx, dy);
+                p.BotPlay();
+                each?.Invoke(p);   // 프레임마다 (수류탄 검사가 던지고 놓는다)
                 p.Update(tick);
                 if (p.State == Swarm.Phase.Play) p.Hp = Math.Max(p.Hp, 40);
                 if (p.Done) return false;
@@ -1180,6 +1450,21 @@ sealed partial class SwarmGame
         Repaints("마무리 러시", new Swarm(TestField, 3, new Random(33), Arm.Id.Flame, 2) { Clock = 273 }, 24, 7);
         Repaints("이긴 결과 (깃발 ↑·무지개 왕관)", new Swarm(TestField, 3, new Random(34), Arm.Id.Long, 10) { SafeUntil = 1e9, Clock = Swarm.WinSec - 3, BossesKilled = 2 }, 8, 9);
         Repaints("이긴 결과 (큰 왕관·보라)", new Swarm(TestField, 3, new Random(35), Arm.Id.Long, 7) { SafeUntil = 1e9, Clock = Swarm.WinSec - 3, BossesKilled = 4 }, 8, 6);
+        // 수류탄: 6초 동안 0.7초마다 던지고 (수를 채운다) 옆에 수류탄 하나, 마지막에 빈 손 한 번. 그리고 5:00 직전에 던진 직후 (판이 끝나며 공중 수류탄이 지워지는 프레임)
+        int ndFrame = 0;
+        bool ndEmptied = false;
+        var ndRep = new Swarm(TestField, 3, new Random(36), Arm.Id.Rifle) { Clock = 100 };
+        ndRep.Drop(Swarm.Item.Grenade, -100);
+        Repaints("수류탄 (던지기·터짐·줍기·빈 손)", ndRep, 6.3, 0, np =>
+        {
+            if (ndFrame++ % 42 == 0) { np.Grenades = 3; np.Throw(); }
+            if (!ndEmptied && np.Clock >= 105.7) { ndEmptied = true; np.Grenades = 0; np.ThrowAt = -9; np.Throw(); }
+        });
+        bool ndLast = false;
+        Repaints("수류탄 (5:00 직전에 던진 직후)", new Swarm(TestField, 3, new Random(37), Arm.Id.Long, 3) { SafeUntil = 1e9, Clock = Swarm.WinSec - 2 }, 5, 0, np =>
+        {
+            if (!ndLast && np.Clock >= Swarm.WinSec - .25) { ndLast = true; np.Grenades = 2; np.ThrowAt = -9; np.Throw(); }
+        });
         return $"버그 떼: 무기 {Arm.Kinds}가지 (판마다 하나, 뽑힌 수 {string.Join("·", drawn)}/200), 자동 조종 평균 초/끝까지 버틴 판({seeds}판씩) — {line}. 생명 {Swarm.MaxHp}, 보스 1분마다 {Swarm.Bosses}번, {Swarm.WinSec:0}초에 끝, 자석 {Swarm.MaxMagnets}개까지 둘레 {Swarm.PickRange:0}→{Swarm.PickRange + Swarm.MagnetStep * Swarm.MaxMagnets:0}";
 
         static void Frames2(SwarmGame g, int n) { for (int i = 0; i < n; i++) g.Frame(Tick); }

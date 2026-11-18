@@ -7,6 +7,7 @@ namespace Bolok;
 // 모두 오른쪽을 보는 그림이고 왼쪽은 뒤집어 쓴다 (돌리지 않는다: 작은 도트가 뭉개진다). 테두리는 펫과 같은 진한 갈색.
 // 배율마다 한 번만 만들어 둔다.
 // 단계 표시(깃발·위 화살표)와 왕관 색 바꿈·엘리트 테두리도 여기서 만든다 (docs/swarm-levels.md 3·5장)
+// 수류탄 그림(몸·날아가는 네 장·그림자)도 여기서 (docs/swarm-grenade.md 5장): sprites.png 의 game/grenade 는 미니건 것이라 쓰지 않는다 (게임 모듈끼리 매이지 않게)
 static class SwarmArt
 {
     public static readonly Dictionary<char, Color> Colors = new()
@@ -137,6 +138,71 @@ static class SwarmArt
         },
     };
 
+    // ── 수류탄: 왼쪽 금 고리(핀), 쇠 뚜껑, 오른쪽으로 내려오는 손잡이, 띠 두른 국방색 몸. 줍는 것·표시·머리 위가 같이 쓴다 ──
+    static readonly string[] NadeRows =
+    {
+        "..oo.ooo.",
+        "oyyooglo.",
+        "oyo.odgoo",
+        ".o.oooodo",
+        "..oeeeeoo",
+        ".oewefeeo",
+        ".oeeefeeo",
+        ".offffffo",
+        ".oeeefeeo",
+        "..oeefeo.",
+        "...oooo..",
+    };
+
+    // 날아가는 수류탄 (뚜껑이 위): 글자 격자를 90° 씩 돌려 네 장 (비트맵을 돌리지 않으니 뭉개지지 않는다)
+    static readonly string[] FlyRows =
+    {
+        "..ooo..",
+        "..olo..",
+        ".ooooo.",
+        "oeweeeo",
+        "oeeefeo",
+        "oeeffeo",
+        ".ooooo.",
+    };
+
+    // 그림자 (바닥, 점무늬라 반투명이 필요 없다): 낮게 날 때 큰 것, 높이가 꼭대기의 절반을 넘으면 작은 것
+    static readonly string[] ShadeBig = { ".d.d.d.", "d.d.d.d", ".d.d.d." };
+    static readonly string[] ShadeSmall = { ".d.d.", "d.d.d" };
+
+    // 줄을 시계 방향으로 90° 돌린다 (정사각형 격자)
+    static string[] Rot(string[] rows)
+    {
+        int n = rows.Length;
+        var turned = new string[n];
+        for (int y = 0; y < n; y++)
+        {
+            var c = new char[n];
+            for (int x = 0; x < n; x++) c[x] = rows[n - 1 - x][y];
+            turned[y] = new string(c);
+        }
+        return turned;
+    }
+
+    static readonly string[][] Fly = BuildFly();
+    static string[][] BuildFly()
+    {
+        var all = new string[4][];
+        all[0] = FlyRows;
+        for (int i = 1; i < 4; i++) all[i] = Rot(all[i - 1]);
+        return all;
+    }
+
+    // 밝은 판(번쩍): 국방색 → 흰 쇠. 회색 판(0개·빈 손): 국방색·금 → 쇠
+    static Color Bright(char ch) => ch switch { 'e' => Colors['w'], 'f' => Colors['l'], _ => Colors[ch] };
+    static Color Gray(char ch) => ch switch { 'e' => Colors['g'], 'f' => Colors['d'], 'y' => Colors['l'], _ => Colors[ch] };
+
+    public static Stamp Nade(int scale) => Peek(100, scale) ?? Store(100, scale, Make(NadeRows, scale));
+    public static Stamp NadeBright(int scale) => Peek(101, scale) ?? Store(101, scale, Make(NadeRows, scale, Bright));
+    public static Stamp NadeGray(int scale) => Peek(102, scale) ?? Store(102, scale, Make(NadeRows, scale, Gray));
+    public static Stamp NadeFly(int frame, int scale) => Peek(110 + (frame & 3), scale) ?? Store(110 + (frame & 3), scale, Make(Fly[frame & 3], scale));
+    public static Stamp NadeShade(bool small, int scale) => Peek(small ? 121 : 120, scale) ?? Store(small ? 121 : 120, scale, Make(small ? ShadeSmall : ShadeBig, scale));
+
     public static bool Dual(Arm.Id id) => id is Arm.Id.Twin or Arm.Id.Pistols;   // 양손에 하나씩 드는 무기
 
     static string[] Flip(string[] rows)
@@ -171,7 +237,7 @@ static class SwarmArt
         return new Stamp(bmp);
     }
 
-    static readonly Dictionary<(int Kind, int Scale), Stamp> made = new();   // Kind: 0~6 손(오른쪽) · 10~16 손(왼쪽) · 20~26 머리 위 · 30~32 갈래 · 40 위 화살표 · 50~59 깃발 · 60~69 왕관 · 80~ 엘리트 · 90 러시 느낌표
+    static readonly Dictionary<(int Kind, int Scale), Stamp> made = new();   // Kind: 0~6 손(오른쪽) · 10~16 손(왼쪽) · 20~26 머리 위 · 30~32 갈래 · 40 위 화살표 · 50~59 깃발 · 60~69 왕관 · 80~ 엘리트 · 90 러시 느낌표 · 100 수류탄 · 101 밝은 판 · 102 회색 판 · 110~113 날아가는 네 장 · 120·121 그림자
     // 이미 만든 그림은 바로 (프레임마다 부르는 곳에서 람다·새 객체를 안 만든다: 만드는 쪽은 따로 둔 메서드)
     static Stamp? Peek(int kind, int scale) { lock (made) return made.TryGetValue((kind, scale), out var hit) ? hit : null; }
     static Stamp Store(int kind, int scale, Stamp stamp) { lock (made) return made.TryGetValue((kind, scale), out var hit) ? hit : made[(kind, scale)] = stamp; }
@@ -286,15 +352,16 @@ static class SwarmArt
     // 자가 검사: 줄 길이가 같고 색 글자가 팔레트 안인지
     public static string? Broken()
     {
-        foreach (var (rows, i) in Hands.Concat(Ups).Concat(new[] { FlagRows, ArrowRows }).Select((r, i) => (r, i)))
+        foreach (var (rows, i) in Hands.Concat(Ups).Concat(new[] { FlagRows, ArrowRows, NadeRows, FlyRows, ShadeBig, ShadeSmall }).Select((r, i) => (r, i)))
             if (rows.Any(r => r.Length != rows[0].Length || r.Any(ch => ch != '.' && !Colors.ContainsKey(ch) && !(rows == FlagRows && ch is 'a' or 'h' or 'k')))) return $"그림 {i}";
+        if (FlyRows.Length != FlyRows[0].Length || Fly.Any(f => f.Length != FlyRows.Length || f.Any(r => r.Length != FlyRows.Length))) return "날아가는 수류탄은 정사각형";
         return Hands.Length == Arm.Kinds && Ups.Length == 3 ? null : "그림 수";
     }
 
     // 그려 보기: 무기 일곱 자루(손·왼손·머리 위)와 갈래 그림을 크게 한 장에
     public static void Sheet(string path, int scale)
     {
-        using var bmp = new Bitmap(Arm.Kinds * 22 * scale, 64 * scale);
+        using var bmp = new Bitmap(Arm.Kinds * 22 * scale, 88 * scale);
         using (var g = Graphics.FromImage(bmp))
         {
             g.Clear(Color.FromArgb(150, 160, 170));
@@ -306,6 +373,9 @@ static class SwarmArt
                 Icon((Arm.Id)i, scale).Draw(g, x, 40 * scale);
                 if (i < 3) UpIcon((Swarm.Up)i, scale).Draw(g, x, 56 * scale);
             }
+            // 수류탄: 몸 · 밝은 판 · 회색 판 · 날아가는 네 장 · 그림자 둘
+            var set = new[] { Nade(scale), NadeBright(scale), NadeGray(scale), NadeFly(0, scale), NadeFly(1, scale), NadeFly(2, scale), NadeFly(3, scale), NadeShade(false, scale), NadeShade(true, scale) };
+            for (int i = 0; i < set.Length; i++) set[i].Draw(g, i * 16 * scale + 11 * scale, 74 * scale);
         }
         bmp.Save(path);
     }
