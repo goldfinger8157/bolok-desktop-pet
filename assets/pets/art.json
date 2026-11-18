@@ -79,7 +79,7 @@
     "carry": [{"up": 1, "mouth": "w"}, {"up": 1, "mouth": "w"}, {"up": 1, "mouth": "w"}, {"up": 1, "mouth": "w", "eye": "blink"}],
     "fix": [{"turn": 2, "hammer": 0}, {"turn": 2, "hammer": 1, "sq": 1}],
     "think": [{"turn": -1, "mark": "dots"}, {"turn": -1, "mark": "dots"}, {"turn": -1, "eye": "blink", "mark": "dots"}, {"turn": -1, "mark": "dots"}],
-    "block": [{"raise": 7, "eye": "wide", "mouth": "o", "dy": -1}]
+    "block": [{"sq": -3, "eye": "wide", "mouth": "o", "dy": -1}]
   },
   "species": {
     "hamster": {"name": "햄스터", "form_colors": {"baby": {"fur": "#FFCDAA", "shade": "#F0AA8C"}, "adult_sweet": {"fur": "#FAC48C"}, "adult_grumpy": {"fur": "#C49670", "shade": "#A07454"}, "final_sweet": {"fur": "#FAC48C"}, "final_grumpy": {"fur": "#C49670", "shade": "#A07454"}}, "variants": [{"fur": "#F2EEE8", "shade": "#D6CFC6", "cream": "#FFFFFF"}, {"fur": "#8C8488", "shade": "#6E676B", "cream": "#E8E2DE"}], "eye_art": [".eeee.", "ewwiie", "ewiiie", "eiiiwe", ".eeee."], "iris": "#6E4632", "note": "볼록이 기본 캐릭터. 눈은 손그림: 까만 테에 짙은 갈색 홍채, 반짝임 (YELL 2026-11-12: 종마다 따로 그려 품질 높이기)"},

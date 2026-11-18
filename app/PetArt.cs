@@ -26,7 +26,7 @@ public sealed class PetArt
     static readonly string[] FrameKeys =
     {
         "sq", "sqk", "dy", "lie", "dangle", "turn", "step", "puff", "eye", "mouth", "hold", "belly", "tear", "heart", "z", "blushy", "cover",
-        "sweat", "hands", "up", "raise", "hammer", "dirt", "mark", "vein", "stars", "rot",
+        "sweat", "hands", "up", "hammer", "dirt", "mark", "vein", "stars", "rot",
     };
 
     // art.json 의 객체 하나 (숫자·글·색·참거짓을 파이썬 dict.get 처럼 꺼낸다)
@@ -702,19 +702,6 @@ public sealed class PetArt
             {
                 g.Ell(fx + .5 + s * rx * .6, cy - ry - f.N("up"), 2.4, 2, c["line"]);
                 g.Ell(fx + .5 + s * rx * .6, cy - ry - f.N("up"), 1.5, 1.2, c["paw"]);
-            }
-        if (f.Has("raise")) // 블로킹: 몸 양옆에서 두 팔을 V 자로 머리 위까지 쭉 (귀와 헷갈리지 않게 바깥으로 벌린다), 값 = 머리 위로 올라간 높이
-            foreach (int s in new[] { -1, 1 })
-            {
-                double sx = fx + .5 + s * rx * .82, sy = cy - ry * .1, hx = fx + .5 + s * rx * 1.25, hy = cy - ry - f.N("raise");
-                for (int pass = 0; pass < 2; pass++)
-                    for (double t = 0; t <= 1; t += .04)
-                    {
-                        double x = sx + (hx - sx) * t, y = sy + (hy - sy) * t;
-                        if (pass == 0) g.Ell(x, y, 1.9, 1.9, c["line"]); else g.Ell(x, y, 1.1, 1.1, c["fur"]);
-                    }
-                g.Ell(hx, hy, 2.9, 2.5, c["line"]);
-                g.Ell(hx, hy, 2.0, 1.6, c["paw"]);
             }
         if (f.Has("hammer")) Hammer(g, (int)f.N("hammer"), (int)(fx + rx), (int)cy, c);
         if (f.Has("dirt")) // 튀는 흙
