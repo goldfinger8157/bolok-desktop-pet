@@ -44,7 +44,7 @@ Get **`Bolok.exe`** from the [latest release](https://github.com/goldfinger8157/
 | Bug Raid (버그 습격) | A classic fixed shooter in a small box next to your pet: bug squadrons swoop in, line up and dive at you. It fires automatically | Mouse or ← → to move |
 | Bug Swarm (버그 떼) | Bugs pour in from every side of a small arena around your pet. Each run gives one random weapon (twin blades, longsword, twin pistols, shotgun, rifle, bazooka or flamethrower) that attacks on its own and grows as you level up. A life gauge, a boss every minute, a queen at 4:00, and permanent magnets that widen your pickup range. Every minute a warning flashes and a rush pours in. Hold out for five minutes to raise your stage: tougher bugs, golden elites and a crown that changes colour as you climb | Arrow keys to move |
 | Fortress (포트리스) | Turn-based artillery on window islands, with wind. Seven cannons (bouncing, cluster, drill and push shells among them) and a yellow power-up storm | Mouse to aim, hold left and release to fire, ← → to walk, ↑ to jump |
-| Volleyball (배구) | Bounce a fruit ball (tangerine, orange, apple, coconut, melon, sometimes a volleyball) over the net against a rival, inside the window you were using, or on a small grass court if there is none. Head a stem and you fumble; birds fly across. First to 5 | ← → to move, ↑ to jump, Ctrl in the air to spike |
+| Volleyball (배구) | Bounce a fruit ball (tangerine, orange, apple, coconut, melon, sometimes a volleyball) over the net against a rival, inside the window you were using, or on a small grass court if there is none. Head a stem and you fumble; birds fly across; spikes are aimed over the net for you, jumping at the net blocks, and stones pop up to trip whoever runs into them. First to 5 | ← → to move, ↑ to jump, Ctrl in the air to spike |
 
 **Esc always quits instantly** (the boss key): whichever window has the focus, everything the game drew disappears at once, with no result screen, and your pet goes back to what it was doing. Games only use the mouse, the arrow keys, Ctrl, Shift and Esc — no letter keys.
 
@@ -109,7 +109,7 @@ out\Bolok.exe
 | 버그 습격 | 볼록이 옆 작은 판에서 하는 고전 슈팅이에요. 버그 편대가 날아들어 줄을 서고 내려와 공격해요. 쏘는 건 자동이에요 | 마우스나 ← → 로 움직이기 |
 | 버그 떼 | 볼록이 둘레 작은 판으로 벌레가 사방에서 몰려와요. 판마다 무기 하나(쌍검·장검·쌍권총·산탄총·돌격소총·바주카포·화염방사기)가 무작위로 나와 알아서 싸우고 레벨이 오르면 세져요. 생명 게이지, 1분마다 보스, 4분엔 여왕, 주울수록 줍는 둘레가 넓어지는 영구 자석. 매 분 붉은 예고 뒤 러시가 몰려와요. 5분을 버티면 단계가 올라 벌레가 세지고 금테 엘리트가 나오며, 왕관 색이 바뀌어요 | 방향키로 움직이기 |
 | 포트리스 | 창이 섬이 되는 턴제 포격전. 바람이 불어요. 대포 일곱 가지(튕김탄·집속탄·드릴탄·밀치기탄 포함)와 노란 파워업 폭풍 | 마우스로 조준, 왼쪽 누르고 있다 놓으면 쏘기, ← → 걷기, ↑ 점프 |
-| 배구 | 쓰던 창 안(없으면 작은 잔디 경기장)에서 라이벌과 과일 공(귤·오렌지·사과·야자열매·수박, 가끔 배구공)을 넘겨요. 꼭지에 헤딩하면 실수, 가끔 새가 날아가요. 5점 먼저 | ← → 이동, ↑ 점프, 공중에서 Ctrl 강스파이크 |
+| 배구 | 쓰던 창 안(없으면 작은 잔디 경기장)에서 라이벌과 과일 공(귤·오렌지·사과·야자열매·수박, 가끔 배구공)을 넘겨요. 꼭지에 헤딩하면 실수, 가끔 새가 날아가요. 스파이크는 네트를 넘게 도와 주고, 네트 앞에서 뛰면 블로킹, 달리다 돌부리에 걸리면 넘어져요. 5점 먼저 | ← → 이동, ↑ 점프, 공중에서 Ctrl 강스파이크 |
 
 **Esc 는 언제나 바로 끝내기**(보스 키)예요. 어느 창을 쓰고 있든 게임이 그린 것이 한꺼번에 사라지고, 결과 화면 없이 볼록이는 하던 대로 돌아가요. 게임은 마우스·방향키·Ctrl·Shift·Esc 만 써요 (글자 키는 안 써요).
 

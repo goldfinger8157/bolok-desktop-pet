@@ -141,5 +141,23 @@ static class VolleyFruits
         },
     };
 
+    // 돌부리 (YELL 2026-11-18: 시안 2번 갈색 뾰족 돌부리). 10×6 칸 글자 그림, 솟을 때는 아래부터 ¼·½·¾·전부 네 장
+    // (run/volley/mock/stone.ps1 의 글자 그림). 솟는 처음 두 장에는 양옆에 흙 알갱이
+    public static readonly string[] Stone =
+    {
+        "....o.....",
+        "...obo....",
+        "..obtto...",
+        "..obbto...",
+        ".obbbbbo..",
+        "okbbbbbko.",
+    };
+    public static readonly Dictionary<char, string> StonePal = new()
+    {
+        ['o'] = "#3B3440", ['b'] = "#8A6A4A", ['t'] = "#B08A60", ['k'] = "#5E4630",
+    };
+    public const int StoneMargin = 2;                                    // 양옆 흙 알갱이 자리 (칸)
+    public static int StoneRows(int frame) => (Stone.Length * (frame + 1) + 3) / 4; // 2·3·5·6 줄 (위로 올림)
+
     public const string Keys = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"; // 색 번호 글자 (첫 글자 = 색 0)
 }

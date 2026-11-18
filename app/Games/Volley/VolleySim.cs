@@ -2,12 +2,21 @@ using System.Drawing;
 
 namespace Bolok;
 
-// 볼록이 배구: 핵심 시뮬레이션·물리·규칙·라이벌 AI (화면·앱과 무관한 순수 계산)
+// 볼록이 배구: 핵심 시뮬레이션·물리·규칙 (화면·앱과 무관한 순수 계산)
 // 피카츄 배구 / Arcade Volleyball (1988) 식 물리와 랠리 규칙
-sealed class VolleySim
+// 손잡이는 VolleyTune.cs, 돌부리·블로킹·스파이크 보조는 VolleyRules.cs, 봇은 VolleyBot.cs (같은 클래스를 나눠 둠)
+sealed partial class VolleySim
 {
     public enum Phase { Serving, InPlay, PointScored, GameOver }
     public enum Actor { Player, Rival }
+
+    // 마지막으로 공에 닿은 방식 · 득점 종류 (득점 표용, VolleyTune 5장)
+    public enum Touch { None, Normal, Spike, Block, BlockMiss, Fumble }
+    public enum PointKind { Spike, Block, Normal, Fumble, BlockMiss, Trip, Bird, Own }
+    public const int PointKinds = 8;
+
+    static int Dir(Actor a) => a == Actor.Player ? 1 : -1;        // 상대 쪽 (플레이어 +1, 라이벌 -1)
+    static Actor Other(Actor a) => a == Actor.Player ? Actor.Rival : Actor.Player;
 
     // 공 종류 (YELL 2026-11-16: 과일 공 — 판마다 무작위, 가끔 배구공). 그림은 VolleyFruits
     public enum BallKind { Volleyball, Gyul, Orange, Apple, Coconut, Melon }
@@ -17,8 +26,23 @@ sealed class VolleySim
 
     // 스파이크 너그러움 (YELL 2026-11-16: 「스파이크가 생각보다 어렵다」): 닿기 직전 이만큼 안에 누른 Ctrl 도 친다
     public const double SpikeGraceSec = .18;
-    double spikePressedAt = -9;
-    bool spikeWas;
+
+    // 선수 한 명의 몸 (플레이어·라이벌이 같은 규칙·같은 물리를 쓰도록 한 곳에 모은다)
+    sealed class Body
+    {
+        public double X, Y, Vx, Vy;
+        public bool OnGround = true;
+        public string Pose = "idle";
+        public double FumbleUntil = -1;
+        public double SpikePressedAt = -9;
+        public bool SpikeWas, SpikeReq, SmartSpike;  // SmartSpike: 봇이 「넘길 수 있을 때만」 스파이크한다고 알림 (닿는 순간 다시 계산)
+        public int Axis, JumpSerial;
+        public bool BlockJump;                       // 이번 점프가 네트 가까이에서 뛴 블로킹 점프인가
+        public double RunSec; public int RunDir; public bool RunRolled; // 땅에서 같은 방향으로 달린 시간, 이 달리기에서 돌을 뽑았나
+        public double TripUntil = -9, TripDustX, TripDustTimer;          // 넘어져 있는 동안 · 먼지
+    }
+    readonly Body P = new(), R = new();
+    Body Of(Actor a) => a == Actor.Player ? P : R;
 
     // 날아가는 새 (YELL 2026-11-16): 경기 중 가끔 시합장을 가로지른다. 공이 맞으면 공은 튕겨 나가고 새는 휘청 날아간다
     public bool Birds { get; set; }                 // 실제 경기만 켠다 (검사는 따로 켠다)
@@ -33,6 +57,7 @@ sealed class VolleySim
     public double BirdVy { get; set; }
     public double BirdTurn { get; private set; }    // 맞으면 빙글 (라디안)
     double birdBaseY, birdAge;
+    bool birdSinceTouch;                            // 마지막 타구 뒤에 공이 새에 맞았다 (득점 종류 「새」)
 
     public void SpawnBird()
     {
@@ -66,6 +91,8 @@ sealed class VolleySim
                 BallVx *= .92; BallVy *= .92;
                 BallX = BirdX + nx * min; BallY = BirdY + ny * min;
                 BirdHit = true;
+                birdSinceTouch = true;
+                spikeWatchBy = -1;
                 BirdVx = -nx * 240 * ScaleRatio + BirdVx * .3; // 맞은 반대쪽으로 휘청
                 BirdVy = -Math.Abs(ny) * 120 * ScaleRatio - 160 * ScaleRatio;
                 OnEvent?.Invoke("bird", null);
@@ -81,16 +108,16 @@ sealed class VolleySim
         if (BirdX < WallLeft - 3 * BirdR || BirdX > WallRight + 3 * BirdR || BirdY > FloorY + 4 * BirdR || BirdY < Court.Top - 30 * K) BirdOn = false;
     }
 
-    // 꼭지 헤딩 실수 (YELL 2026-11-16): 머리에 닿는 순간 꼭지가 머리 쪽 ±StemFumbleDeg 안을 향하면 공이 힘없이 툭 떨어지고 펫은 움찔
-    public const double StemFumbleDeg = 25;
+    // 꼭지 헤딩 실수 (YELL 2026-11-16): 머리에 닿는 순간 꼭지가 머리 쪽 ±T.StemFumbleDeg 안을 향하면 공이 힘없이 툭 떨어지고 펫은 움찔
     public const double FumbleSec = .6;
-    public double PlayerFumbleUntil { get; set; } = -1;
-    public double RivalFumbleUntil { get; set; } = -1;
+    public double PlayerFumbleUntil { get => P.FumbleUntil; set => P.FumbleUntil = value; }
+    public double RivalFumbleUntil { get => R.FumbleUntil; set => R.FumbleUntil = value; }
     double lastFumbleAt = -9;
 
     public readonly int K;
     public readonly double ScaleRatio;
     public readonly Random Rnd;
+    public VolleyTune T { get; }
 
     // 시합장 영역 (화면 좌표)
     public Rectangle Court { get; private set; }
@@ -112,7 +139,7 @@ sealed class VolleySim
     // 선수 크기 및 물리 상수
     public int PetR => 14 * K;
     public double WalkSpeed => 240 * ScaleRatio;
-    public double JumpVy => -400 * ScaleRatio; // YELL 2026-11-16: 5% 더 높이 (높이는 속도의 제곱 → -390 × √1.05)
+    public double JumpVy => -T.JumpV * ScaleRatio; // YELL 2026-11-17: 점프 높이 ×1.18 (높이는 속도의 제곱: 400 → 435)
     public double Gravity => 850 * ScaleRatio;
 
     // 공 크기 및 물리 상수
@@ -120,23 +147,23 @@ sealed class VolleySim
     public int BallR => BallCells * K;
     public double BallGravity => 680 * ScaleRatio;
     public double HitSpeed => 380 * ScaleRatio;
-    public double SpikeSpeed => 640 * ScaleRatio;
-    public double SpikeVy => 200 * ScaleRatio;
+    public double SpikeSpeed => T.SpikeSpeed * ScaleRatio;
+    public double SpikeVy => T.SpikeVy * ScaleRatio;
 
     // 선수 상태 (Feet Y = PlayerY, RivalY)
-    public double PlayerX { get; set; }
-    public double PlayerY { get; set; }
-    public double PlayerVx { get; set; }
-    public double PlayerVy { get; set; }
-    public bool PlayerOnGround { get; set; }
-    public string PlayerPose { get; set; } = "idle";
+    public double PlayerX { get => P.X; set => P.X = value; }
+    public double PlayerY { get => P.Y; set => P.Y = value; }
+    public double PlayerVx { get => P.Vx; set => P.Vx = value; }
+    public double PlayerVy { get => P.Vy; set => P.Vy = value; }
+    public bool PlayerOnGround { get => P.OnGround; set => P.OnGround = value; }
+    public string PlayerPose { get => P.Pose; set => P.Pose = value; }
 
-    public double RivalX { get; set; }
-    public double RivalY { get; set; }
-    public double RivalVx { get; set; }
-    public double RivalVy { get; set; }
-    public bool RivalOnGround { get; set; }
-    public string RivalPose { get; set; } = "idle";
+    public double RivalX { get => R.X; set => R.X = value; }
+    public double RivalY { get => R.Y; set => R.Y = value; }
+    public double RivalVx { get => R.Vx; set => R.Vx = value; }
+    public double RivalVy { get => R.Vy; set => R.Vy = value; }
+    public bool RivalOnGround { get => R.OnGround; set => R.OnGround = value; }
+    public string RivalPose { get => R.Pose; set => R.Pose = value; }
 
     // 공 상태
     public double BallX { get; set; }
@@ -153,8 +180,20 @@ sealed class VolleySim
     public Actor CurrentServer { get; set; } = Actor.Player;
     public Actor? LastScorer { get; set; }
     public Actor? LastHitActor { get; set; }
+    public Touch LastTouch { get; private set; }
     public int RallyHits { get; set; }
     public int TotalRallies { get; set; }
+
+    // 득점 표 (VolleyCheck.Table 이 읽는다): [득점한 쪽 * PointKinds + 종류], 생성자에서 한 번만 만든다
+    public PointKind LastPoint { get; private set; }
+    public readonly int[] Points = new int[2 * PointKinds];
+    public readonly int[] StoneCount = new int[2], TripCount = new int[2], BlockHit = new int[2], BlockMissCount = new int[2], SpikeCount = new int[2], SpikeOver = new int[2];
+    public int PointTotal, HitSum;       // 지금까지 난 점수 · 그 랠리들의 타구 수 합 (0.25초 안에 같은 선수가 몸에 계속 닿은 것은 한 번)
+    int RallyTouches;
+    double lastTouchAt = -9;
+    public double RallySecSum;           // 랠리 길이(초) 합: 첫 타구부터 바닥에 닿을 때까지
+    double rallyStart;
+    int spikeWatchBy = -1;               // 방금 친 스파이크가 네트를 넘었나 지켜보는 중 (치는 쪽, 아니면 -1)
 
     public double Clock { get; set; }
     public double PauseUntil { get; set; }
@@ -184,11 +223,20 @@ sealed class VolleySim
     // 이벤트 콜백 (소리·로그)
     public Action<string, object?>? OnEvent;
 
-    public VolleySim(Rectangle court, bool isDesktop, int scale, Random? rnd = null)
+    double curDt = 1 / 60.0;
+    public int ServeSerial { get; private set; }   // 서브 때마다 +1 (봇이 새 랠리를 알아본다)
+    BotState rivalBot;
+    internal bool BotsOff;               // 검사 전용: 라이벌 봇을 멈춘다 (공이 가는 길을 방해하지 않게). 그동안 라이벌은 아래 값을 누른 것처럼 움직인다
+    internal int ForceAxis;
+    internal bool ForceJump;
+    internal void SetLast(Actor? who, Touch how) { LastHitActor = who; LastTouch = how; } // 검사 전용: 마지막 닿음을 정한다
+
+    public VolleySim(Rectangle court, bool isDesktop, int scale, Random? rnd = null, VolleyTune? tune = null)
     {
         K = scale;
         ScaleRatio = scale / 3.0;
         Rnd = rnd ?? new Random();
+        T = tune ?? VolleyTune.Now;
         IsDesktop = isDesktop;
         TitleH = isDesktop ? 0 : Math.Max(28, 9 * K);
         SetCourt(court, isDesktop);
@@ -201,7 +249,7 @@ sealed class VolleySim
         Court = court;
         IsDesktop = isDesktop;
         TitleH = isDesktop ? 0 : Math.Max(28, 9 * K);
-        NetH = Math.Clamp((int)(Court.Height * 0.36), 24 * K, 50 * K);
+        NetH = Math.Clamp((int)(Court.Height * T.NetRatio), T.NetMinCells * K, T.NetMaxCells * K);
 
         ClampPlayersToCourt();
     }
@@ -213,6 +261,10 @@ sealed class VolleySim
         CurrentServer = firstServer;
         LastScorer = null;
         TotalRallies = 0;
+        lastStoneSide = -1;
+        Array.Clear(Points); Array.Clear(StoneCount); Array.Clear(TripCount); Array.Clear(BlockHit); Array.Clear(BlockMissCount); Array.Clear(SpikeCount); Array.Clear(SpikeOver);
+        PointTotal = HitSum = 0;
+        RallySecSum = 0;
 
         ResetPositionsForServe(firstServer);
     }
@@ -222,22 +274,22 @@ sealed class VolleySim
         Stage = Phase.Serving;
         CurrentServer = server;
         LastHitActor = null;
+        LastTouch = Touch.None;
+        birdSinceTouch = false;
+        spikeWatchBy = -1;
         RallyHits = 0;
+        RallyTouches = 0;
+        ServeSerial++;
 
         // 선수 기본 위치
+        ResetBody(P);
+        ResetBody(R);
         PlayerX = (WallLeft + NetX) / 2.0;
-        PlayerY = FloorY;
-        PlayerVx = 0;
-        PlayerVy = 0;
-        PlayerOnGround = true;
-        PlayerPose = "idle";
-
         RivalX = (NetX + WallRight) / 2.0;
-        RivalY = FloorY;
-        RivalVx = 0;
-        RivalVy = 0;
-        RivalOnGround = true;
-        RivalPose = "idle";
+        ClearStone();
+        BlockFlashUntil = -1;
+        rivalBot.BlockPlan = false;
+        rivalBot.Hop = false;
 
         // 서브하는 쪽 머리 위에서 공이 떨어짐
         if (server == Actor.Player)
@@ -257,6 +309,18 @@ sealed class VolleySim
         BallSpin = 0;
 
         OnEvent?.Invoke("serve", server);
+    }
+
+    void ResetBody(Body b)
+    {
+        b.Y = FloorY;
+        b.Vx = 0;
+        b.Vy = 0;
+        b.OnGround = true;
+        b.Pose = "idle";
+        b.BlockJump = false;
+        b.RunSec = 0; b.RunDir = 0; b.RunRolled = false;
+        b.TripUntil = -9; b.TripDustTimer = 0;
     }
 
     public void ForceEnd(bool win)
@@ -282,6 +346,7 @@ sealed class VolleySim
     public void Update(double dt, int inputAxisX = 0, bool inputJump = false, bool inputSpike = false)
     {
         Clock += dt;
+        curDt = dt;
 
         // 타이머 업데이트
         if (SpikeTimer > 0)
@@ -298,6 +363,8 @@ sealed class VolleySim
         {
             SparkleTimer -= dt;
         }
+        if (P.TripDustTimer > 0) P.TripDustTimer -= dt;
+        if (R.TripDustTimer > 0) R.TripDustTimer -= dt;
 
         // 득점 후 서브 대기 일시 정지
         if (Stage == Phase.PointScored)
@@ -315,16 +382,30 @@ sealed class VolleySim
             return;
         }
 
-        // 1. 플레이어 조작 & 물리
-        UpdatePlayer(dt, inputAxisX, inputJump, inputSpike);
+        // 1. 플레이어 조작 & 물리 (Ctrl 은 누른 순간부터 SpikeGraceSec 동안 유효)
+        if (inputSpike && !P.SpikeWas) P.SpikePressedAt = Clock;
+        P.SpikeWas = inputSpike;
+        P.SpikeReq = inputSpike || Clock - P.SpikePressedAt <= SpikeGraceSec;
+        MoveActor(Actor.Player, inputAxisX, inputJump, dt);
 
-        // 2. 라이벌 AI & 물리
-        UpdateRival(dt);
+        // 2. 라이벌 봇 & 물리: 플레이어와 같은 이동·점프 함수. 보조가 켜져 있으면 Ctrl 너그러움도 같다
+        int axis = 0; bool jump = false, spike = false;
+        if (!BotsOff) BotInput(Actor.Rival, T.Rival, ref rivalBot, Rnd, out axis, out jump, out spike);
+        else (axis, jump, spike) = (ForceAxis, ForceJump, false);
+        if (T.SpikeAssist)
+        {
+            if (spike && !R.SpikeWas) R.SpikePressedAt = Clock;
+            R.SpikeWas = spike;
+            R.SpikeReq = spike || Clock - R.SpikePressedAt <= SpikeGraceSec;
+        }
+        else R.SpikeReq = spike;
+        MoveActor(Actor.Rival, axis, jump, dt);
 
-        // 3. 공 물리 및 충돌 (Ctrl 은 누른 순간부터 SpikeGraceSec 동안 유효)
-        if (inputSpike && !spikeWas) spikePressedAt = Clock;
-        spikeWas = inputSpike;
-        UpdateBall(dt, inputSpike || Clock - spikePressedAt <= SpikeGraceSec);
+        // 2-1. 돌부리 (선수 이동 뒤·공 앞)
+        UpdateStone(dt);
+
+        // 3. 공 물리 및 충돌
+        UpdateBall(dt);
 
         // 3-1. 날아가는 새
         UpdateBird(dt);
@@ -333,120 +414,53 @@ sealed class VolleySim
         SyncPoses();
     }
 
-    void UpdatePlayer(double dt, int axisX, bool jump, bool spike)
+    // 점프를 시작한다 (바닥에서). 플레이어·라이벌·디버그가 같은 길
+    void StartJump(Actor who, Body b)
     {
-        // 좌우 이동
-        PlayerVx = axisX * WalkSpeed;
-        PlayerX += PlayerVx * dt;
-
-        // 점프
-        if (jump && PlayerOnGround)
-        {
-            PlayerVy = JumpVy;
-            PlayerOnGround = false;
-            OnEvent?.Invoke("jump", Actor.Player);
-        }
-
-        // 공중 중력
-        if (!PlayerOnGround)
-        {
-            PlayerVy += Gravity * dt;
-            PlayerY += PlayerVy * dt;
-
-            if (PlayerY >= FloorY)
-            {
-                PlayerY = FloorY;
-                PlayerVy = 0;
-                PlayerOnGround = true;
-            }
-        }
-
-        // 코트 경계 제한 (그물 왼쪽을 넘을 수 없음)
-        PlayerX = Math.Clamp(PlayerX, WallLeft + PetR, NetX - PetR - 2);
+        b.Vy = JumpVy;
+        b.OnGround = false;
+        b.BlockJump = T.Blocks && Math.Abs(b.X - NetX) <= T.BlockZoneBodies * 2 * PetR;
+        b.JumpSerial++;
+        OnEvent?.Invoke("jump", who);
     }
 
-    // AI 난이도 손잡이 상수
-    public const double AiReactionInterval = 0.06;
-    public const double AiSpikeProbability = 0.30;
-    public double AiErrorPx => 8 * ScaleRatio;
-
-    double aiReactionTimer;
-    double aiTargetX;
-    bool rivalSpikeRequested;
-
-    void UpdateRival(double dt)
+    // 좌우 이동·점프·중력·코트 제한: 양쪽이 같은 함수 (넘어져 있으면 입력을 버린다)
+    void MoveActor(Actor who, int axis, bool jump, double dt)
     {
-        aiReactionTimer -= dt;
-        bool wantJump = false;
-        rivalSpikeRequested = false;
+        var b = Of(who);
+        if (Clock < b.TripUntil) (axis, jump) = (0, false);
+        b.Axis = axis;
+        b.Vx = axis * WalkSpeed;
+        b.X += b.Vx * dt;
 
-        // 공이 라이벌 쪽으로 넘어오고 있거나 라이벌 쪽에 있을 때
-        if (BallX >= NetX - 30 * K || BallVx > 0)
+        // 달린 시간 (돌부리 뽑기용): 땅에서 같은 방향으로 움직이면 쌓이고, 멈춤·방향 바꿈·점프·넘어짐이면 0
+        if (b.OnGround && axis != 0 && !jump)
         {
-            if (aiReactionTimer <= 0)
-            {
-                aiReactionTimer = AiReactionInterval;
-                double predX = PredictBallLandingX(RivalY - PetR, isRightSide: true);
-                double error = (Rnd.NextDouble() - 0.5) * 2 * AiErrorPx;
-                aiTargetX = Math.Clamp(predX + error, NetX + PetR + 4, WallRight - PetR - 4);
-            }
-
-            double dx = BallX - RivalX;
-            double dy = BallY - (RivalY - PetR);
-
-            // 점프 조건: 공이 하강 중이고 적절한 높이이며 가까울 때
-            if (RivalOnGround && BallVy > 0 && Math.Abs(dx) < PetR * 1.2 && BallY < FloorY - PetR * 1.8 && BallY > NetTopY - 15 * K)
-            {
-                wantJump = true;
-            }
-
-            // 스파이크 조건: 공중에서 공과 닿을 수 있고 공이 네트 위쪽일 때
-            if (!RivalOnGround && Math.Sqrt(dx * dx + dy * dy) <= BallR + PetR + 8 * K && BallY < NetTopY + 10 * K)
-            {
-                if (Rnd.NextDouble() < AiSpikeProbability)
-                {
-                    rivalSpikeRequested = true;
-                }
-            }
+            if (axis == b.RunDir) b.RunSec += dt;
+            else (b.RunSec, b.RunDir, b.RunRolled) = (0, axis, false);
         }
-        else
-        {
-            aiTargetX = (NetX + WallRight) / 2.0;
-        }
+        else (b.RunSec, b.RunDir, b.RunRolled) = (0, 0, false);
 
-        // AI 수평 이동
-        double diff = aiTargetX - RivalX;
-        if (Math.Abs(diff) > 4 * ScaleRatio)
-            RivalVx = Math.Sign(diff) * WalkSpeed;
-        else
-            RivalVx = 0;
-
-        RivalX += RivalVx * dt;
-
-        // AI 점프
-        if (wantJump && RivalOnGround)
-        {
-            RivalVy = JumpVy;
-            RivalOnGround = false;
-            OnEvent?.Invoke("jump", Actor.Rival);
-        }
+        // 점프
+        if (jump && b.OnGround) StartJump(who, b);
 
         // 공중 중력
-        if (!RivalOnGround)
+        if (!b.OnGround)
         {
-            RivalVy += Gravity * dt;
-            RivalY += RivalVy * dt;
+            b.Vy += Gravity * dt;
+            b.Y += b.Vy * dt;
 
-            if (RivalY >= FloorY)
+            if (b.Y >= FloorY)
             {
-                RivalY = FloorY;
-                RivalVy = 0;
-                RivalOnGround = true;
+                b.Y = FloorY;
+                b.Vy = 0;
+                b.OnGround = true;
+                b.BlockJump = false;
             }
         }
 
-        // 코트 경계 제한 (그물 오른쪽을 넘을 수 없음)
-        RivalX = Math.Clamp(RivalX, NetX + PetR + 2, WallRight - PetR);
+        // 코트 경계 제한 (그물을 넘을 수 없음)
+        b.X = who == Actor.Player ? Math.Clamp(b.X, WallLeft + PetR, NetX - PetR - 2) : Math.Clamp(b.X, NetX + PetR + 2, WallRight - PetR);
     }
 
     public double PredictBallLandingX(double targetY, bool isRightSide)
@@ -499,7 +513,7 @@ sealed class VolleySim
         return isRightSide ? (NetX + WallRight) / 2.0 : (WallLeft + NetX) / 2.0;
     }
 
-    void UpdateBall(double dt, bool playerSpikeRequested)
+    void UpdateBall(double dt)
     {
         // 공 중력 적용
         BallVy += BallGravity * dt;
@@ -511,6 +525,14 @@ sealed class VolleySim
         if (Stage == Phase.Serving && LastHitActor != null)
         {
             Stage = Phase.InPlay;
+            rallyStart = Clock;
+        }
+
+        // 방금 친 스파이크가 네트 가운데를 지났나 (캡·기둥에 닿기 전에)
+        if (spikeWatchBy >= 0 && (BallX - NetX) * (spikeWatchBy == 0 ? 1 : -1) > 0)
+        {
+            SpikeOver[spikeWatchBy]++;
+            spikeWatchBy = -1;
         }
 
         // 1. 벽 충돌 (좌/우)
@@ -539,8 +561,12 @@ sealed class VolleySim
         CheckNetCollision();
 
         // 4. 선수 충돌 (플레이어 & 라이벌)
-        CheckPlayerCollision(playerSpikeRequested);
-        CheckRivalCollision();
+        // 공에 더 가까운 선수부터 (한 프레임에 둘이 다 닿을 때 어느 한쪽이 늘 먼저가 아니게). 같으면 프레임 짝·홀로
+        double dp = (BallX - P.X) * (BallX - P.X) + (BallY - (P.Y - PetR)) * (BallY - (P.Y - PetR));
+        double dr = (BallX - R.X) * (BallX - R.X) + (BallY - (R.Y - PetR)) * (BallY - (R.Y - PetR));
+        bool playerFirst = Math.Abs(dp - dr) < 1e-9 ? ((long)Math.Round(Clock / curDt) & 1) == 0 : dp < dr;
+        CheckBodyCollision(playerFirst ? Actor.Player : Actor.Rival);
+        CheckBodyCollision(playerFirst ? Actor.Rival : Actor.Player);
 
         // 5. 바닥 충돌 -> 득점 처리
         if (BallY + BallR >= FloorY)
@@ -578,6 +604,7 @@ sealed class VolleySim
             BallVy = (BallVy - 1.8 * dot * ny) * 0.88;
             if (BallVy > 0) BallVy = -Math.Max(100 * ScaleRatio, Math.Abs(BallVy)); // 캡에 맞으면 튀어오름
 
+            spikeWatchBy = -1;
             OnEvent?.Invoke("bounce", "net_cap");
             return;
         }
@@ -599,92 +626,78 @@ sealed class VolleySim
                     BallVx = Math.Abs(BallVx) * 0.85;
                 }
 
+                spikeWatchBy = -1;
                 OnEvent?.Invoke("bounce", "net_pole");
             }
         }
     }
 
-    void CheckPlayerCollision(bool spikeRequested)
+    // 공과 선수 몸이 닿았을 때: 플레이어·라이벌이 같은 규칙 (스파이크 > 블로킹 > 일반 타구)
+    void CheckBodyCollision(Actor who)
     {
-        double bodyCx = PlayerX;
-        double bodyCy = PlayerY - PetR;
+        var b = Of(who);
+        int d = Dir(who);
+        double bodyCx = b.X;
+        double bodyCy = b.Y - PetR;
         double dx = BallX - bodyCx;
         double dy = BallY - bodyCy;
         double distSq = dx * dx + dy * dy;
         double minDist = BallR + PetR;
 
-        if (distSq <= minDist * minDist)
+        if (distSq > minDist * minDist) return;
+
+        double dist = Math.Max(0.001, Math.Sqrt(distSq));
+        double nx = dx / dist;
+        double ny = dy / dist;
+
+        BallX = bodyCx + nx * minDist;
+        BallY = bodyCy + ny * minDist;
+
+        // 스파이크·블로킹 직후 0.15초는 같은 선수와 다시 겹쳐도 밀어내기만 (계산한 길이 깨지지 않게)
+        if (T.SpikeAssist && lastStrikeBy == who && Clock - lastStrikeAt < StrikeGuardSec) return;
+
+        if (StemHitsHead(nx, ny)) { Fumble(who); return; }
+
+        bool spikeReq = b.SpikeReq && !b.OnGround && !(T.SpikeAssist && nx * d < -0.35); // 공이 몸 뒤에 있으면 스파이크가 아니다
+        if (spikeReq && b.SmartSpike && !(BallY <= NetTopY && AimOver(BallX, BallY, d, SpikeSpeed, T.SpikeMinSpeed * ScaleRatio, SpikeVy, out _, out _))) spikeReq = false; // 봇은 못 넘길 공을 네트에 꽂지 않는다
+        if (spikeReq)
         {
-            double dist = Math.Max(0.001, Math.Sqrt(distSq));
-            double nx = dx / dist;
-            double ny = dy / dist;
-
-            BallX = bodyCx + nx * minDist;
-            BallY = bodyCy + ny * minDist;
-
-            if (StemHitsHead(nx, ny)) { Fumble(Actor.Player); return; }
-
-            // 공중 강스파이크 판정 (공중에 떠 있고 Ctrl 을 눌렀을 때)
-            if (!PlayerOnGround && spikeRequested)
-            {
-                ExecuteSpike(Actor.Player);
-            }
-            else
-            {
-                // 일반 몸통 반사 (오른쪽 상대로 넘어가도록 유도)
-                double speed = HitSpeed;
-                double targetVx = Math.Max(140 * ScaleRatio, nx * speed + PlayerVx * 0.5);
-                double targetVy = -Math.Max(280 * ScaleRatio, Math.Abs(ny) * speed - PlayerVy * 0.4);
-
-                BallVx = targetVx;
-                BallVy = targetVy;
-
-                LastHitActor = Actor.Player;
-                RallyHits++;
-                OnEvent?.Invoke("hit", Actor.Player);
-            }
+            ExecuteSpike(who);
+        }
+        else if (T.Blocks && IsBlocking(who) && !b.SpikeReq && LastHitActor is { } last && last != who && ny <= 0.3)
+        {
+            Block(who, b, d, nx, ny);
+        }
+        else
+        {
+            NormalHit(who, b, d, nx, ny);
         }
     }
 
-    void CheckRivalCollision()
+    // 일반 몸통 반사 (상대 쪽으로 넘어가도록 유도)
+    void NormalHit(Actor who, Body b, int d, double nx, double ny)
     {
-        double bodyCx = RivalX;
-        double bodyCy = RivalY - PetR;
-        double dx = BallX - bodyCx;
-        double dy = BallY - bodyCy;
-        double distSq = dx * dx + dy * dy;
-        double minDist = BallR + PetR;
+        double speed = HitSpeed;
+        double targetVx = d * Math.Max(140 * ScaleRatio, d * (nx * speed + b.Vx * 0.5));
+        double targetVy = -Math.Max(280 * ScaleRatio, Math.Abs(ny) * speed - b.Vy * 0.4);
 
-        if (distSq <= minDist * minDist)
-        {
-            double dist = Math.Max(0.001, Math.Sqrt(distSq));
-            double nx = dx / dist;
-            double ny = dy / dist;
+        BallVx = targetVx;
+        BallVy = targetVy;
 
-            BallX = bodyCx + nx * minDist;
-            BallY = bodyCy + ny * minDist;
+        Touched(who, Touch.Normal);
+        OnEvent?.Invoke("hit", who);
+    }
 
-            if (StemHitsHead(nx, ny)) { Fumble(Actor.Rival); return; }
-
-            if (!RivalOnGround && rivalSpikeRequested)
-            {
-                ExecuteSpike(Actor.Rival);
-            }
-            else
-            {
-                // 일반 몸통 반사 (왼쪽 플레이어로 넘어가도록 유도)
-                double speed = HitSpeed;
-                double targetVx = Math.Min(-140 * ScaleRatio, nx * speed + RivalVx * 0.5);
-                double targetVy = -Math.Max(280 * ScaleRatio, Math.Abs(ny) * speed - RivalVy * 0.4);
-
-                BallVx = targetVx;
-                BallVy = targetVy;
-
-                LastHitActor = Actor.Rival;
-                RallyHits++;
-                OnEvent?.Invoke("hit", Actor.Rival);
-            }
-        }
+    // 공에 닿았음을 적는다 (마지막 닿음·랠리 타구 수·새·스파이크 지켜보기)
+    void Touched(Actor who, Touch how)
+    {
+        if (LastHitActor != who || Clock - lastTouchAt > .25) RallyTouches++; // 한 번 닿은 것을 프레임마다 세지 않는다 (표의 타구 수)
+        lastTouchAt = Clock;
+        LastHitActor = who;
+        LastTouch = how;
+        RallyHits++;
+        birdSinceTouch = false;
+        spikeWatchBy = -1;
     }
 
     // 꼭지 방향: 돌기 전(0)은 위 (0, -1), 시계 방향으로 BallSpin 만큼. (nx, ny) 는 펫 몸 가운데에서 공으로 가는 방향
@@ -693,7 +706,7 @@ sealed class VolleySim
     {
         if (!HasStem(Ball) || Clock - lastFumbleAt < .35) return false; // 실수 직후 같은 닿음으로 또 실수하지 않게
         var (sx, sy) = StemDir;
-        return sx * -nx + sy * -ny >= Math.Cos(StemFumbleDeg * Math.PI / 180); // 꼭지가 펫 쪽을 향한다
+        return sx * -nx + sy * -ny >= Math.Cos(T.StemFumbleDeg * Math.PI / 180); // 꼭지가 펫 쪽을 향한다
     }
 
     // 실수: 공은 힘없이 위로 살짝 튀며 자기 쪽 뒤나 옆으로 툭, 펫은 FumbleSec 동안 움찔 (자세 shock)
@@ -707,19 +720,17 @@ sealed class VolleySim
         BallSpin += (Rnd.NextDouble() - .5) * 2; // 툭 맞아 빙글
         lastFumbleAt = Clock;
         if (isPlayer) PlayerFumbleUntil = Clock + FumbleSec; else RivalFumbleUntil = Clock + FumbleSec;
-        LastHitActor = actor;
-        RallyHits++;
+        Touched(actor, Touch.Fumble);
         OnEvent?.Invoke("fumble", actor);
     }
 
     public bool TryExecuteSpike(Actor actor)
     {
-        bool isPlayer = (actor == Actor.Player);
-        double bodyCx = isPlayer ? PlayerX : RivalX;
-        double bodyCy = isPlayer ? PlayerY - PetR : RivalY - PetR;
-        bool onGround = isPlayer ? PlayerOnGround : RivalOnGround;
+        var b = Of(actor);
+        double bodyCx = b.X;
+        double bodyCy = b.Y - PetR;
 
-        if (onGround) return false;
+        if (b.OnGround) return false;
 
         double dx = BallX - bodyCx;
         double dy = BallY - bodyCy;
@@ -736,22 +747,21 @@ sealed class VolleySim
 
     void ExecuteSpike(Actor actor)
     {
-        bool isPlayer = (actor == Actor.Player);
+        int d = Dir(actor);
 
-        if (isPlayer)
+        // 보조: 공이 네트 위쪽에 있으면 캡을 넘고 상대 코트 안에 떨어지는 속도를 계산한다 (낮은 공·계산 실패는 옛 값 그대로)
+        if (T.SpikeAssist && BallY <= NetTopY && AimOver(BallX, BallY, d, SpikeSpeed, T.SpikeMinSpeed * ScaleRatio, SpikeVy, out double avx, out double avy))
         {
-            BallVx = SpikeSpeed;
-            BallVy = SpikeVy;
-            SpikeDir = 1;
-            PlayerPose = "angry";
+            BallVx = avx;
+            BallVy = avy;
         }
         else
         {
-            BallVx = -SpikeSpeed;
+            BallVx = d * SpikeSpeed;
             BallVy = SpikeVy;
-            SpikeDir = -1;
-            RivalPose = "angry";
         }
+        SpikeDir = d;
+        Of(actor).Pose = "angry";
 
         // 스파이크 연출 발동 (0.35초 유지)
         SpikeEffectActive = true;
@@ -762,8 +772,11 @@ sealed class VolleySim
         // 화면 테두리 0.2초 흔들림 효과
         ShakeUntil = Clock + 0.2;
 
-        LastHitActor = actor;
-        RallyHits++;
+        Touched(actor, Touch.Spike);
+        spikeWatchBy = (int)actor;
+        SpikeCount[(int)actor]++;
+        lastStrikeAt = Clock;
+        lastStrikeBy = actor;
 
         OnEvent?.Invoke("spike", actor);
     }
@@ -773,6 +786,23 @@ sealed class VolleySim
         // 바닥 득점 판정: 중앙 네트(NetX) 기준으로 어느 쪽에 떨어졌는가?
         bool leftSide = BallX < NetX;
         Actor scorer = leftSide ? Actor.Rival : Actor.Player;
+        Actor loser = Other(scorer);
+
+        // 득점 종류: 위에서부터 먼저 맞는 것 (새 > 넘어짐 > 실수 > 스파이크·블로킹 > 자책 > 일반)
+        PointKind kind;
+        if (birdSinceTouch) kind = PointKind.Bird;
+        else if (Clock < Of(loser).TripUntil + TripGraceSec) kind = PointKind.Trip;
+        else if (LastHitActor == loser && LastTouch == Touch.Fumble) kind = PointKind.Fumble;
+        else if (LastHitActor == loser && LastTouch == Touch.BlockMiss) kind = PointKind.BlockMiss;
+        else if (LastHitActor == scorer && LastTouch == Touch.Spike) kind = PointKind.Spike;
+        else if (LastHitActor == scorer && LastTouch == Touch.Block) kind = PointKind.Block;
+        else if (LastHitActor == loser) kind = PointKind.Own;
+        else kind = PointKind.Normal;
+        LastPoint = kind;
+        Points[(int)scorer * PointKinds + (int)kind]++;
+        PointTotal++;
+        HitSum += RallyTouches;
+        if (Stage == Phase.InPlay) RallySecSum += Clock - rallyStart;
 
         LastScorer = scorer;
         CurrentServer = scorer;
@@ -798,6 +828,7 @@ sealed class VolleySim
         DustY = FloorY;
         DustTimer = 0.5;
 
+        if (StoneOn) stoneEndAt = Math.Min(stoneEndAt, Clock + StoneSinkAfterTripSec); // 득점 뒤에는 돌도 가라앉는다
         OnEvent?.Invoke("score", scorer);
 
         // 5점 선승 종료 판정
@@ -812,6 +843,20 @@ sealed class VolleySim
             Stage = Phase.PointScored;
             PauseUntil = Clock + 1.2; // 1.2초 후 다음 서브
         }
+    }
+
+    // 넘어진 자세 (YELL 2026-11-18: slide — 앞으로 엎어짐)
+    public const string TripPose = "slide";
+    public const string BlockPose = "block";
+
+    string PoseOf(Actor who, Body b)
+    {
+        if (Clock < b.TripUntil) return TripPose;
+        if (Clock < b.FumbleUntil) return "shock";
+        if (SpikeTimer > 0 && LastHitActor == who && LastTouch == Touch.Spike) return "angry";
+        if (T.Blocks && IsBlocking(who)) return BlockPose;
+        if (!b.OnGround) return "hop";
+        return Math.Abs(b.Vx) > 10 ? "walk" : "idle";
     }
 
     void SyncPoses()
@@ -838,28 +883,9 @@ sealed class VolleySim
             return;
         }
 
-        // 경기 중 포즈 (꼭지에 맞아 움찔은 shock, 공중 점프는 hop, 스파이크 직후는 강하게 내리치는 angry)
-        if (Clock < PlayerFumbleUntil)
-            PlayerPose = "shock";
-        else if (SpikeTimer > 0 && LastHitActor == Actor.Player)
-            PlayerPose = "angry";
-        else if (!PlayerOnGround)
-            PlayerPose = "hop";
-        else if (Math.Abs(PlayerVx) > 10)
-            PlayerPose = "walk";
-        else
-            PlayerPose = "idle";
-
-        if (Clock < RivalFumbleUntil)
-            RivalPose = "shock";
-        else if (SpikeTimer > 0 && LastHitActor == Actor.Rival)
-            RivalPose = "angry";
-        else if (!RivalOnGround)
-            RivalPose = "hop";
-        else if (Math.Abs(RivalVx) > 10)
-            RivalPose = "walk";
-        else
-            RivalPose = "idle";
+        // 경기 중 포즈: 넘어짐 > 꼭지 움찔(shock) > 스파이크 직후 angry > 블로킹 > 공중 hop > 걷기
+        P.Pose = PoseOf(Actor.Player, P);
+        R.Pose = PoseOf(Actor.Rival, R);
     }
 
     void ClampPlayersToCourt()

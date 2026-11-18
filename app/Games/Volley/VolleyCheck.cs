@@ -4,7 +4,7 @@ using System.Drawing;
 namespace Bolok;
 
 // 볼록이 배구: 자가 검사(--selfcheck), 장면 그리기(--mode-scene volley), 속도 재기(--mode-bench volley)
-static class VolleyCheck
+static partial class VolleyCheck
 {
     static void Expect(bool cond, string msg)
     {
@@ -115,7 +115,7 @@ static class VolleyCheck
         {
             var sim = new VolleySim(court, false, 3, new Random(4));
 
-            // A. 공중에서 Ctrl: 강스파이크 발동
+            // A. 공중에서 Ctrl: 강스파이크 발동 (높은 공 = 보조 없이도 넘으니 옛 값 그대로)
             sim.PlayerOnGround = false;
             sim.PlayerY = sim.FloorY - 50 * sim.K;
             sim.PlayerVy = -40;
@@ -127,7 +127,7 @@ static class VolleyCheck
             Expect(sim.SpikeEffectActive, "공중 Ctrl 시 강스파이크 연출이 발동해야 함");
             Expect(sim.PlayerPose == "angry", $"스파이크 시 포즈는 angry(앞으로 내리치는 자세)여야 함 (현재: {sim.PlayerPose})");
             Expect(sim.BallVx > 500, $"강스파이크 공은 상대 쪽으로 빨라야 함 (현재 Vx: {sim.BallVx})");
-            Expect(sim.BallVy > 0 && sim.BallVy < 300, $"강스파이크 공은 낮고 하향이어야 함 (현재 Vy: {sim.BallVy})");
+            Expect(sim.BallVy > 0 && sim.BallVy < 300, $"높은 공의 강스파이크는 낮고 하향이어야 함 (현재 Vy: {sim.BallVy})");
             Expect(sim.ShakeActive, "강스파이크 시 화면 흔들림 효과가 켜져야 함");
 
             // B. 땅에서 Ctrl: 스파이크 발동하지 않음
@@ -306,7 +306,7 @@ static class VolleyCheck
         // 점프·스파이크 너그러움·새·점수판 (YELL 2026-11-16)
         {
             var j = new VolleySim(court, false, 3, new Random(4));
-            Expect(Math.Abs(j.JumpVy - (-400 * j.ScaleRatio)) < 1e-9, "점프는 전보다 5% 높이");
+            Expect(Math.Abs(j.JumpVy - (-435 * j.ScaleRatio)) < 1e-9, "점프 속도는 435 (전 400 의 높이 ×1.18)");
 
             // Ctrl 을 닿기 0.1초 전에 눌렀다 떼도 스파이크
             var g1 = new VolleySim(court, false, 3, new Random(6));
@@ -349,7 +349,8 @@ static class VolleyCheck
             Expect(VolleyFruits.Bird.All(f => f.Length == 9 && f.All(r => r.Length == 12 && r.All(c => c == '.' || VolleyFruits.BirdPal.ContainsKey(c)))), "새 그림 12×9, 색이 팔레트 안");
         }
 
-        return "배구: 과일 공(무작위·가끔 배구공)·꼭지 헤딩 실수·공 튕김(벽·천장·그물 기둥·캡)·바닥 득점(랠리)·서브권 교대·5점 승리·공중 강스파이크·땅 Ctrl 무효·보스 키 즉시 종료·기록 저장/불러오기·창 추적 및 바탕화면 판·AI 타구·결정론·표정 자세 유효성 모두 통과";
+        string more = CheckRules();
+        return "배구: 과일 공(무작위·가끔 배구공)·꼭지 헤딩 실수·공 튕김(벽·천장·그물 기둥·캡)·바닥 득점(랠리)·서브권 교대·5점 승리·공중 강스파이크·땅 Ctrl 무효·보스 키 즉시 종료·기록 저장/불러오기·창 추적 및 바탕화면 판·AI 타구·결정론·표정 자세 유효성 모두 통과; 다듬기: " + more;
     }
 
     // ── 화면 없이 그려 보기 (--mode-scene volley <경로>) ──
@@ -360,6 +361,15 @@ static class VolleyCheck
             Console.WriteLine(Check());
             return;
         }
+
+        if (TryTableArg(GameModes.SceneArg, out int seeds, out bool steps)) // 봇 표: --mode-scene volley x table[:판 수[:steps]]
+        {
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
+            Console.WriteLine(Table(seeds, steps));
+            return;
+        }
+        if (GameModes.SceneArg == "stone") { StoneStrip(path, k); return; }   // 돌부리 그림 네 장
+        if (GameModes.SceneArg == "new") { NewScenes(path, k); return; }      // 다듬기 장면: 돌 예고 · 걸려 넘어짐 · 블로킹 · 캡을 넘는 보조 스파이크
 
         var host = new SceneHost(scale: k);
         var game = new VolleyGame(host) { showMe = true };
@@ -490,25 +500,19 @@ static class VolleyCheck
     }
 
     // ── 속도 재기 (--mode-bench volley) ──
-    public static string BenchRun()
+    // 옛 판 20판: VolleyTune.Old + 옛 왼쪽 봇 (고치기 전 BenchRun 그대로). 같은 씨의 옛 값과 같아야 한다 (자가 검사가 확인)
+    // 옛 왼쪽 봇은 닿는 프레임마다 30% 로 Ctrl, 사람 쪽에는 SpikeGraceSec 0.18초 — 사실상 거의 늘 스파이크라 라이벌보다 훨씬 유리했다 (그래서 이 판의 「승률」은 의미 없는 옛 숫자)
+    internal static (int Hits, int Rallies, int Wins, double Clock, int ScoreP, int ScoreR) LegacyBench()
     {
-        var host = new SceneHost();
-        var game = new VolleyGame(host);
-
-        // 1. AI 끼리 대결 (랠리 길이 및 승률 균형)
-        int totalMatches = 20;
-        int leftWins = 0;
-        int totalHits = 0;
-        int totalRallies = 0;
+        int totalMatches = 20, leftWins = 0, totalHits = 0, totalRallies = 0, sumP = 0, sumR = 0;
+        double sumClock = 0;
         var rnd = new Random(1234);
-
-        var benchField = new Rectangle(0, 0, 1920, 1080);
         var benchCourt = new Rectangle(400, 200, 800, 500);
 
         for (int m = 0; m < totalMatches; m++)
         {
             var firstServer = (m % 2 == 0) ? VolleySim.Actor.Player : VolleySim.Actor.Rival;
-            var w = new VolleySim(benchCourt, false, 3, rnd);
+            var w = new VolleySim(benchCourt, false, 3, rnd, VolleyTune.Old);
             w.ResetMatch(firstServer);
 
             double leftReactionTimer = 0;
@@ -526,9 +530,9 @@ static class VolleyCheck
                 {
                     if (leftReactionTimer <= 0)
                     {
-                        leftReactionTimer = VolleySim.AiReactionInterval;
+                        leftReactionTimer = .06;
                         double predX = w.PredictBallLandingX(w.PlayerY - w.PetR, isRightSide: false);
-                        double error = (rnd.NextDouble() - 0.5) * 2 * w.AiErrorPx;
+                        double error = (rnd.NextDouble() - 0.5) * 2 * 8 * w.ScaleRatio;
                         leftTargetX = Math.Clamp(predX + error, w.WallLeft + w.PetR + 4, w.NetX - w.PetR - 4);
                     }
 
@@ -543,7 +547,7 @@ static class VolleyCheck
 
                     if (!w.PlayerOnGround && Math.Abs(w.BallX - w.PlayerX) < w.PetR + 8 * w.K && w.BallY < w.NetTopY + 10 * w.K)
                     {
-                        if (rnd.NextDouble() < VolleySim.AiSpikeProbability) leftSpike = true;
+                        if (rnd.NextDouble() < .30) leftSpike = true;
                     }
                 }
                 else
@@ -556,11 +560,23 @@ static class VolleyCheck
 
             totalHits += w.RallyHits;
             totalRallies += Math.Max(1, w.TotalRallies);
+            sumClock += w.Clock; sumP += w.ScorePlayer; sumR += w.ScoreRival;
             if (w.Done ? w.Won : w.ScorePlayer > w.ScoreRival) leftWins++;
         }
+        return (totalHits, totalRallies, leftWins, sumClock, sumP, sumR);
+    }
 
-        double leftWinRate = (double)leftWins / totalMatches * 100.0;
-        double avgHitsPerRally = (double)totalHits / Math.Max(1, totalRallies);
+    public static string BenchRun()
+    {
+        var host = new SceneHost();
+        var game = new VolleyGame(host);
+        var benchField = new Rectangle(0, 0, 1920, 1080);
+
+        // 1. 옛 규칙·옛 봇 20판 (고치기 전 숫자 그대로) + 지금 규칙 20판 (왼쪽도 라이벌과 같은 공용 봇)
+        const int totalMatches = 20;
+        var (hits, rallies, wins, _, _, _) = LegacyBench();
+        double leftWinRate = (double)wins / totalMatches * 100.0;
+        double avgHitsPerRally = (double)hits / Math.Max(1, rallies);
 
         // 2. 대형 창(1400x900) 프레임 시간 벤치마크 (목표: 평균 2ms 안)
         var bigCourt = new Rectangle(200, 100, 1400, 900);
@@ -582,7 +598,12 @@ static class VolleyCheck
             game.Frame(1 / 60.0);
         }, maxFrames: 120);
 
-        return $"volley: {totalMatches}판 시뮬레이션 (평균 랠리 {avgHitsPerRally:0.0}회, 좌측 승률 {leftWinRate:0.0}%)\n" +
-               $"1400x900 대형 창 성능: {perf}";
+        // 3. 돌·넘어짐·블로킹이 나오는 판의 메모리: 규칙 한 프레임이 새로 잡는 바이트 (0 이어야 한다)
+        string mem = $"돌·넘어짐·블로킹 판 규칙 {RuleBytesPerFrame(out _, out _, out _)}B/프레임";
+
+        return $"volley: {totalMatches}판 시뮬레이션 (옛 규칙·옛 봇: 평균 랠리 {avgHitsPerRally:0.0}회, 좌측 승률 {leftWinRate:0.0}%)\n" +
+               $"1400x900 대형 창 성능: {perf}\n" +
+               $"{mem}\n" +
+               Table(DefaultSeeds, steps: false);
     }
 }
