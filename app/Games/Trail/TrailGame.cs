@@ -56,8 +56,8 @@ sealed partial class TrailGame : IGameMode
         Rectangle p = default;
         if (!desktopOnly)
         {
-            var screens = new List<Rectangle>();
-            foreach (var s in Screen.AllScreens) screens.Add(s.WorkingArea);
+            screens.Clear();
+            foreach (var s in Screen.AllScreens) screens.Add(s.WorkingArea);   // 판을 여는 때 한 번 (창을 따라갈 때 모니터 고르기에도 쓴다)
             var (field, win) = WindowPick.Arena(Native.Foreground(), Native.ListWindows(), b.Area, screens, b.CellPx, w + 24, h + 48);
             if (win is { } aw) { winH = aw.H; p = InWindow(Rectangle.Intersect(aw.R, field), w, h, f); }
         }
@@ -184,14 +184,25 @@ sealed partial class TrailGame : IGameMode
         if (r.Done && r.EndedFor > 2.5 || r.Done && r.EndedFor > .6 && (s.LeftHit || s.RightHit)) Stop(false);
     }
 
+    readonly List<Rectangle> screens = new();
+    Rectangle MostOn(Rectangle r)
+    {
+        Rectangle best = host.Pet.Area;
+        long most = -1;
+        foreach (var sc in screens) { var i = Rectangle.Intersect(sc, r); long a = (long)i.Width * i.Height; if (a > most) (most, best) = (a, sc); }
+        return best;
+    }
+
     // 창이 움직이면 판이 따라가고, 닫히거나 작아지면 그 자리에 두고 바탕화면 판처럼 (놓친 판을 갑자기 옮기지 않는다)
     void FollowWindow()
     {
         if (winH == IntPtr.Zero || ses?.Layer is not { IsDisposed: false } layer) return;
         var st = Native.Probe(winH);
         if (!st.Alive || st.Minimized || st.R.Width < panel.Width + 24 || st.R.Height < panel.Height + 48) { winH = IntPtr.Zero; Dbg.Log("trail-window-lost", ("reason", !st.Alive ? "closed" : st.Minimized ? "minimized" : "small")); return; }
-        var field = host.Pet.Area;
-        var now = InWindow(Rectangle.Intersect(st.R, field), panel.Width, panel.Height, f);
+        // 창이 가장 많이 걸친 모니터 안에서만 (펫이 있던 모니터와 다를 수 있다). 잘린 창이 판보다 작으면 따라가기를 그만둔다 (판이 화면 밖으로 나가지 않게)
+        var inter = Rectangle.Intersect(st.R, MostOn(st.R));
+        if (inter.Width < panel.Width + 24 || inter.Height < panel.Height + 48) { winH = IntPtr.Zero; Dbg.Log("trail-window-lost", ("reason", "offscreen")); return; }
+        var now = InWindow(inter, panel.Width, panel.Height, f);
         if (now == panel) return;
         panel = now;
         guidePic?.Dispose(); guidePic = null;

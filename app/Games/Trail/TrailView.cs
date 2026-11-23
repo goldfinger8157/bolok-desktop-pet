@@ -189,6 +189,7 @@ sealed class TrailView : IDisposable
     {
         foreach (var set in new[] { pile, hole, snowman, fallen, ice, berry, glass, star, post, ballShadow, glow, petShadow }) foreach (var p in set) p.Dispose();
         foreach (var set in ball.Concat(fire)) foreach (var p in set) p.Dispose();
+        foreach (var br in new[] { brField, brField2, brRoad, brRoad2, brEdge, brBank, brShade, brDash, brMark, brWhite, brRed, brCream, brLine, brGold, brWind }) br.Dispose();   // 판을 열 때마다 붓 핸들이 남지 않게
         foreach (var p in new[] { fireOn, fireOff, fireOnBig, fireOffBig, flag, flagBig, clock, arrow }) p.Dispose();
         band.Dispose();
         foreach (var fr in Friends) fr?.Dispose();

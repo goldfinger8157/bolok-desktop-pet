@@ -105,6 +105,15 @@ sealed class HomeForm : Form
         if (dragging) DragMoved?.Invoke(this, p);
     }
 
+    // 끄는 중에 창이 숨거나(게임 시작 등) 다른 창이 마우스를 가져가면 끌기를 끝낸 것으로 친다 (Moving 이 남아 펫이 물건에 못 가는 일이 없게)
+    protected override void OnMouseCaptureChanged(EventArgs e)
+    {
+        base.OnMouseCaptureChanged(e);
+        if (!pressing || Capture) return;
+        pressing = false;
+        if (dragging) { dragging = false; DragEnded?.Invoke(this); }
+    }
+
     protected override void OnMouseUp(MouseEventArgs e)
     {
         if (e.Button != MouseButtons.Left || !pressing) return;

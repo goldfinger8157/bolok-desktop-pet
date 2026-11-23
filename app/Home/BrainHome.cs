@@ -151,6 +151,7 @@ public sealed partial class Brain
     {
         ref var s = ref SpotOf(homeHouse);
         if (!s.On || P.Stage == "egg") { LeaveHome(); return; }
+        if (homeTop && !s.HasTop) { homeTop = false; homeClimbT = 0; if (homeStep == 1) homeStep = 2; }   // 캣타워 위에 있다가 위칸 없는 집으로 바뀌었다: 문 안 자리로 (TopX·TopY 가 0 이라 화면 밖으로 사라졌다)
         Dir = 1;
         bool sleepUse = homeUse is HomeUse.Sleep or HomeUse.Nap;
         double baseX = homeTop ? s.TopX : sleepUse && homeStep >= 1 ? s.SleepX : s.X;

@@ -275,7 +275,7 @@ sealed class HomeLife : IDisposable
             r.Run = true;
             if (b.Mode is Mode.Wander or Mode.Anim) b.GoHome(s.House, s.House ? HomeUse.Peek : HomeUse.Sit, fast: true, stay: s.House ? 2 : 3, cheer: true); // 달려가 기뻐하고, 방석이면 3초 앉기·집이면 2초 빼꼼
         }
-        if (t >= 2.6) { reveal = null; s.Form?.Set(artOf(), s.Item!, s.K, s.Origin, s.Covered); }
+        if (t >= 2.6) { reveal = null; if (s.Item is { } ri) s.Form?.Set(artOf(), ri, s.K, s.Origin, s.Covered); }   // 연출 중에 물건이 지워졌으면 건너뛴다
     }
 
     // ── Brain 에 자리 넘기기 ──
@@ -312,7 +312,7 @@ sealed class HomeLife : IDisposable
         if (kind == HomeClipKind.None || s.Item is not { } it || !s.Shown)
         {
             if (clip != null) { clip.Dispose(); clip = null; b.HomeClip = null; clipKey = default; }
-            foreach (var x in all) if (x.Covered) { x.Covered = false; x.Form?.Set(art, x.Item!, x.K, x.Origin, false); }
+            foreach (var x in all) if (x.Covered) { x.Covered = false; if (x.Item is { } xi) x.Form?.Set(art, xi, x.K, x.Origin, false); }   // 물건이 지워진 채면 그릴 것이 없다
             return;
         }
         bool sleeping = b.Pose == "sleep";

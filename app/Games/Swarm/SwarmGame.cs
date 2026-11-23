@@ -114,9 +114,9 @@ sealed partial class SwarmGame : IGameMode
             bool ctrl = io.Active && io.Ctrl;   // Ctrl 도 판이 앞 창일 때만 (다른 창에서 Ctrl+C 를 누를 때 아까운 수류탄이 나가면 안 된다)
             if (ctrl && !ctrlWas) s.Throw();    // 누르는 순간만: 꾹 눌러도 한 번 (시작 안내·깃발이 떠 있는 동안에도 던질 수 있다)
             ctrlWas = ctrl;
-            bool shift = io.Active && io.Shift;   // Shift 도 판이 앞 창일 때만 (한/영 전환·대문자로 누르는 일이 판 밖에서 먹지 않게). 시작 몇 초 안에만 의미가 있다
-            if (shift && !shiftWas && CanSwap(s)) Swap(s);
+            bool shift = io.Active && io.Shift, prevShift = shiftWas;   // Shift 도 판이 앞 창일 때만 (한/영 전환·대문자로 누르는 일이 판 밖에서 먹지 않게). 시작 몇 초 안에만 의미가 있다
             shiftWas = shift;
+            if (shift && !prevShift && CanSwap(s)) { Swap(s); return; }   // 새 판으로 바꿨으면 옛 판은 더 돌리지 않는다 (다음 프레임부터 새 판)
         }
         s.Update(dt);
         Track();
