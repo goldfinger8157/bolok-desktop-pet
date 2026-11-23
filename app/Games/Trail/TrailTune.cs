@@ -8,11 +8,11 @@ sealed record TrailTune
 
     // 한 판 (4-1)
     public int Legs { get; init; } = 5;                 // 쉼터 수 = 구간 수
-    public double LegLen { get; init; } = 1500;         // 구간 길이 (걸음)
-    public double Speed { get; init; } = 50;            // 기본 빠르기 (걸음/초)
-    public double Dash { get; init; } = 68;             // Shift 질주
-    public double Slow { get; init; } = 35;             // ↓ 천천히
-    public double Accel { get; init; } = 46;            // 빠르기 되찾기 (초당)
+    public double LegLen { get; init; } = 1920;         // 구간 길이 (걸음). 빠르기를 올리며 같은 비율로 늘려 한 판 길이는 그대로 (2026-11-24)
+    public double Speed { get; init; } = 64;            // 기본 빠르기 (걸음/초). YELL 2026-11-24 「조금 느리다, 답답해」 → 50 에서 64 (+28%). 구간도 같은 비율로 길게 해서 시간 값은 그대로
+    public double Dash { get; init; } = 87;             // Shift 질주
+    public double Slow { get; init; } = 45;             // ↓ 천천히
+    public double Accel { get; init; } = 59;            // 빠르기 되찾기 (초당)
     public double StartSec { get; init; } = 42;         // 시작 시간
     public double GateSec { get; init; } = 32;          // 1단계 쉼터 보너스 (남은 시간에 더한다)
     public double GateSecStep { get; init; }       // 단계마다 줄어드는 보너스
@@ -20,7 +20,7 @@ sealed record TrailTune
     public double GateSecPow { get; init; } = 1.8;
     public double GateSecMin { get; init; } = 20;
     public double TimeCap { get; init; } = 60;          // 시간은 이 이상 안 쌓인다
-    public double SeeDist { get; init; } = 420;         // 보이기 시작하는 거리 (기본 빠르기로 8초 앞, 12% 크기 점)
+    public double SeeDist { get; init; } = 520;         // 보이기 시작하는 거리 (기본 빠르기로 8초 앞, 12% 크기 점)
     public double CountSec { get; init; } = .8;         // 3·2·1 한 칸
 
     // 움직임 (4-2)
@@ -44,7 +44,7 @@ sealed record TrailTune
     public double IceGrip { get; init; } = .3;          // 빙판 위 좌우가 먹는 몫
     public double WindPush { get; init; } = .5;         // 옆바람 (초당 자리)
     public double WindSec { get; init; } = 3;
-    public double WindWarn { get; init; } = 100;        // 예고 눈발이 보이는 거리 (걸음, 2초 앞)
+    public double WindWarn { get; init; } = 128;        // 예고 눈발이 보이는 거리 (걸음, 2초 앞)
     public double BallRoll { get; init; } = .6;         // 굴러오는 눈덩이가 길 쪽으로 오는 빠르기 (기본 빠르기 몫)
 
     // 줍는 것 (4-4)

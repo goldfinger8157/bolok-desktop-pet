@@ -423,7 +423,18 @@ public sealed class PetForm : Form, IGameHost
     IReadOnlyList<string> IGameHost.Friends => released.Select(r => PetArt.Key(r.Species, r.Variant)).Distinct().ToList();
     void IGameHost.Repaint() { foreach (var o in overlays) o.Invalidate(); }
 
-    public void HomeCommand(string[] a) => home.Command(a);
+    public void HomeCommand(string[] a)
+    {
+        if (a.Length > 1 && a[1] == "menu") // 디버그: 펫 메뉴의 「집·방석」을 열 때처럼 다시 짜고 상태를 남긴다
+        {
+            homeMenu.Refresh(menu);
+            var root = homeMenu.Root;
+            Dbg.Log("home-menu", ("root", root.Available), ("text", root.Text), ("got", home.Book.Got.Count),
+                ("items", string.Join(" | ", root.DropDownItems.Cast<ToolStripItem>().Select(i => $"{i.Text}:{i.Available}:{(i as ToolStripMenuItem)?.DropDownItems.Count ?? -1}"))));
+            return;
+        }
+        home.Command(a);
+    }
 
     // 디버그 명령 중 게임 모듈 것 (<게임 id> ...)
     public bool ModeCommand(string[] a) => modes.Any(m => m.Command(a));
@@ -793,7 +804,7 @@ public sealed class PetForm : Form, IGameHost
             visitCounts[pick.Species] = visitCounts.GetValueOrDefault(pick.Species) + 1; // 우정 하트
             if (Random.Shared.NextDouble() < Memories.CardChance) (cardFrom, cardForm, cardDay, cardVariant) = (pick.Species, pick.Stage, DateTime.Now.AddDays(1).ToString("yyyy-MM-dd"), pick.Variant); // 내일 엽서
         }
-        v.Baby = visitCounts.GetValueOrDefault(pick.Species) >= 5; // 우정 하트 다섯: 아기를 데리고 온다
+        v.Baby = false; // 한 번에 한 마리만 (YELL 2026-11-24: 「한번에 2마리가 왔어」 — 예전엔 우정 하트 다섯이면 아기를 데리고 왔다)
         Dbg.Log("visit-start", ("friend", pick.Species), ("form", pick.Stage), ("counts", counts));
         Save();
         BookChanged();

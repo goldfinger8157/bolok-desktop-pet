@@ -199,9 +199,9 @@ static partial class TrailCheck
             Run(t, 3);
             Expect(t.Berries == 1 && t.Score == 10 && t.Glasses == 1 && t.Time > 20 - 3 + 2.9 - 1, $"열매·모래시계 (열매 {t.Berries}, 점수 {t.Score}, 시간 {t.Time:0.0})");
             var cap = With(Bare(), Th(TrailKind.Glass, 0, 40));
-            cap.Time = 59.5;
+            cap.Time = cap.T.TimeCap - .5;
             Run(cap, 2);
-            Expect(cap.Time <= cap.T.TimeCap + 1e-9, "시간은 60초에서 멈춘다");
+            Expect(cap.Time <= cap.T.TimeCap + 1e-9, "시간은 상한에서 멈춘다");
             var star = With(Bare(), Th(TrailKind.Star, 0, 40), Th(TrailKind.Snowman, 0, 200));
             Run(star, 2);
             Expect(star.StarLeft > 0 && star.Stars == 1, "별을 주웠다");
@@ -250,10 +250,12 @@ static partial class TrailCheck
     static string CheckTime()
     {
         var t = Bare();
-        t.Time = 50; t.Pos = t.Gates[0] - .5;
+        double cap = t.T.TimeCap, start = cap - 10;   // 시간 상한은 손잡이 값 (2026-11-24 빠르기를 올리며 60 → 47)
+        int s0 = (int)start;
+        t.Time = start; t.Pos = t.Gates[0] - .5;
         Run(t, .2);
-        Expect(t.Leg == 1 && Math.Abs(t.Time - Math.Min(60, 50 - .2 + t.GateBonus)) < .3 && t.Time <= 60 + 1e-9, $"쉼터에서 시간이 더해지고 60초에서 멈춘다 ({t.Time:0.0})");
-        Expect(t.Score == 100 + 49 * 10 || t.Score == 100 + 50 * 10 || t.Score == 100 + 49 * 10 + 10, $"쉼터 점수 = 100 + 남은 초 × 10 ({t.Score})");
+        Expect(t.Leg == 1 && Math.Abs(t.Time - Math.Min(cap, start - .2 + t.GateBonus)) < .3 && t.Time <= cap + 1e-9, $"쉼터에서 시간이 더해지고 상한({cap:0}초)에서 멈춘다 ({t.Time:0.0})");
+        Expect(t.Score == 100 + (s0 - 1) * 10 || t.Score == 100 + s0 * 10 || t.Score == 100 + (s0 - 1) * 10 + 10, $"쉼터 점수 = 100 + 남은 초 × 10 ({t.Score})");
         var zero = Bare(); zero.Time = .05;
         Run(zero, 1);
         Expect(zero.State == Trail.Phase.Over && zero.TimeOut, "시간이 0 이면 끝");
@@ -281,14 +283,14 @@ static partial class TrailCheck
         Expect(win.State == Trail.Phase.Win && win.Leg == 5, "다섯째 쉼터에서 완주");
         score = win.Score;
         Expect(Math.Abs(score - (expect + (int)win.Time * 20)) <= 60, $"완주 점수 = 쉼터마다 100 + 남은 초 × 10, 완주하면 남은 초 × 20 ({score} / {expect + (int)win.Time * 20})");
-        Expect(Trail.GateBonusOf(TrailTune.Now, 1) == 32 && Trail.GateBonusOf(TrailTune.Now, 5) < Trail.GateBonusOf(TrailTune.Now, 3) && Trail.GateBonusOf(TrailTune.Now, 20) == TrailTune.Now.GateSecMin, "쉼터 보너스는 단계가 오를수록 줄고 가장 적어도 멈춘다");
+        Expect(Trail.GateBonusOf(TrailTune.Now, 1) == TrailTune.Now.GateSec && Trail.GateBonusOf(TrailTune.Now, 5) < Trail.GateBonusOf(TrailTune.Now, 3) && Trail.GateBonusOf(TrailTune.Now, 20) == TrailTune.Now.GateSecMin, "쉼터 보너스는 단계가 오를수록 줄고 가장 적어도 멈춘다");
         // 굽이: 쉼터 가까이는 곧고, 어디서나 ±0.6 안
         var c = new Trail(3, 1, Rx);
         double maxCurve = 0;
         for (double p = 0; p < c.Gates[^1]; p += 7) maxCurve = Math.Max(maxCurve, Math.Abs(c.CurveAt(p)));
         Expect(maxCurve > .1 && maxCurve <= .6, $"굽이 값 ({maxCurve:0.00})");
         Expect(c.Gates.All(g => Math.Abs(c.CurveAt(g)) < .01), "쉼터는 곧은 길");
-        return "쉼터 시간 더하기·60초·0이면 끝·공중·넘어진 중·줄을 넘으면 통과·완주·굽이";
+        return "쉼터 시간 더하기·시간 상한·0이면 끝·공중·넘어진 중·줄을 넘으면 통과·완주·굽이";
     }
 
     // ── 모듈: 기록·Esc·조작 규칙·자리·메모리·다시 칠하기 ──

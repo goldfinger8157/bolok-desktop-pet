@@ -68,8 +68,9 @@ static class HomeMenu
         public void Refresh(Control owner)
         {
             Root.Text = L.T("menu.home");
-            Root.Visible = h.Book.Got.Count > 0;
-            if (!Root.Visible) return;
+            bool any = h.Book.Got.Count > 0;
+            Root.Visible = any;
+            if (!any) return;   // Root.Visible 을 다시 읽으면 안 된다: 메뉴가 아직 화면에 안 떠 있으면 늘 false 라 (예전엔 그래서 하위 메뉴가 비었다)
             int px = ThumbPx(owner);
             Fill(cushions, false, px);
             Fill(houses, true, px);

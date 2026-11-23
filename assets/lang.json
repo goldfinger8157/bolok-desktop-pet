@@ -252,16 +252,16 @@
   "ru": "Волейбол"
  },
  "menu.trail": {
-  "en": "Snow Trail",
-  "ko": "눈길 마중",
-  "ja": "雪みちラン",
-  "zh-Hans": "雪道奔跑",
-  "zh-Hant": "雪道奔跑",
-  "es": "Sendero nevado",
-  "de": "Schneepfad",
-  "fr": "Sentier enneigé",
-  "pt": "Trilha de neve",
-  "ru": "Снежная тропа"
+  "en": "Ice Run",
+  "ko": "아이스런",
+  "ja": "アイスラン",
+  "zh-Hans": "冰上奔跑",
+  "zh-Hant": "冰上奔跑",
+  "es": "Ice Run",
+  "de": "Ice Run",
+  "fr": "Ice Run",
+  "pt": "Ice Run",
+  "ru": "Айс-ран"
  },
  "menu.gun": {
   "en": "{0} (HP {1})",
@@ -2148,16 +2148,16 @@
   "ru": "Побед пока нет"
  },
  "game.trail": {
-  "en": "Snow Trail",
-  "ko": "눈길 마중",
-  "ja": "雪みちラン",
-  "zh-Hans": "雪道奔跑",
-  "zh-Hant": "雪道奔跑",
-  "es": "Sendero nevado",
-  "de": "Schneepfad",
-  "fr": "Sentier enneigé",
-  "pt": "Trilha de neve",
-  "ru": "Снежная тропа"
+  "en": "Ice Run",
+  "ko": "아이스런",
+  "ja": "アイスラン",
+  "zh-Hans": "冰上奔跑",
+  "zh-Hant": "冰上奔跑",
+  "es": "Ice Run",
+  "de": "Ice Run",
+  "fr": "Ice Run",
+  "pt": "Ice Run",
+  "ru": "Айс-ран"
  },
  "game.trail_val": {
   "en": "Stage {0} · Best {1}",
