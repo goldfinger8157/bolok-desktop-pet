@@ -571,6 +571,8 @@ public sealed class Brain
         fleeing = false;
         Foods.Clear();
         P.Asleep = false;
+        if (Pose == "sleep") Pose = "idle";                     // 자다가 게임을 시작해도 깬 얼굴로 (YELL 2026-11-17·23: 게임 중엔 깬 얼굴)
+        if (EmoteName == "zzz") EmoteUntil = Now;               // 머리 위 z 도 바로 지운다
         Mode = Mode.Puppet;
     }
 

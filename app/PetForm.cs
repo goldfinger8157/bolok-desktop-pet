@@ -1204,7 +1204,7 @@ public sealed class PetForm : Form, IGameHost
         g.ResetClip();
         g.ResetTransform();
         var (name, frame, flip, _) = drawn;
-        if (name != null)
+        if (name != null && Visible) // 게임이 본체 창을 숨겼으면 찍지 않는다 (예전엔 숨긴 펫도 덧그려서 게임 위에 앞모습이 있는 것처럼 찍혔다)
         {
             g.DrawImageUnscaled(sprites.Get(name, frame, b.Scale, flip), Left - v.X + 8, Top + HeadRoom - v.Y);
             var at = g.Transform;

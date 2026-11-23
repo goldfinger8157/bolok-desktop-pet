@@ -19,10 +19,11 @@ fi
 
 # 개발 폴더(run\bin-*)에서 뜬 볼록이만 다룬다. 받은 판(배포용 exe)은 저장도 따로라 절대 끄지 않는다
 pids() {
-  powershell.exe -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='Bolok.exe'\" | ForEach-Object { \$_.ProcessId.ToString() + ' ' + [int](\$_.ExecutablePath -like '*\\run\\bin-*') }" 2>/dev/null | tr -d '\r'
+  powershell.exe -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='Bolok.exe'\" | ForEach-Object { \$_.ProcessId.ToString() + ' ' + ([int](\$_.ExecutablePath -like '*\\run\\bin*') + 2*[int](\$_.CommandLine -like '*--selfcheck*' -or \$_.CommandLine -like '*--mode-*' -or \$_.CommandLine -like '*--art-*')) }" 2>/dev/null | tr -d '\r'
 }
-dev_pids() { pids | awk '$2 == 1 { print $1 }'; }
-other_pids() { pids | awk '$2 == 0 { print $1 }'; }
+dev_pids() { pids | awk '$2 == 1 { print $1 }'; }   # 개발 폴더(run\bin*)에서 디버그로 뜬 앱
+# 2 이상: 검사·장면·그림 도구로 잠깐 도는 것 (다른 작업 폴더의 에이전트 등) — 끄지도 막지도 않는다
+other_pids() { pids | awk '$2 == 0 { print $1 }'; }   # 받은 판(배포용 exe)
 if [ -n "$(other_pids)" ]; then
   echo '받은 판 볼록이가 떠 있어요 (한 번에 하나만 떠요). 그걸 종료한 뒤 다시 해 주세요'; exit 1
 fi

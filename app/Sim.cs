@@ -399,6 +399,11 @@ static class Sim
             g.EndPuppet(true, "test");
             for (int i = 0; i < 60; i++) g.Update(1 / 60.0, false);
             Expect(g.P.Asleep, "게임이 끝나면 기운 0 이라 잠든다");
+            // 자고 있던 펫으로 게임을 시작해도 자는 자세·z 가 따라오지 않는다
+            (g.P.Asleep, g.Pose) = (true, "sleep");
+            g.Emote("zzz", 5);
+            g.StartPuppet();
+            Expect(!g.P.Asleep && g.Pose != "sleep" && !g.Emoting, $"자다가 게임을 시작하면 깬 자세·z 없음: {g.Pose}, 표정 {g.EmoteName}");
         }
 
         Brain Sleeper(Func<Rectangle> rect, Func<bool>? alive = null)
