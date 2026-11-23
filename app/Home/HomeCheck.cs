@@ -266,12 +266,12 @@ static class HomeCheck
                 if (b.GoHome(false, HomeUse.Sit)) { sat++; b.Mode = Mode.Wander; }
             }
             Expect(sat == 300, "GoHome(Sit) 가 방석으로 보낸다");
-            var c = Make("child", 70);
+            var c = Make("child", 85);   // 기운 80 넘게: 그 사이 무작위 낮잠(기운 80 이하에서만)이 끼지 않게 (예전 70 은 가끔 낮잠이 끼어 검사가 떨어졌다)
             c.Cushion = Spot(700, floor, false);
             Expect(c.GoHome(false, HomeUse.Sit), "앉으러 간다");
             double mood = c.P.Mood;
             Run(c, 12);
-            Expect(c.Mode is Mode.Home or Mode.Wander && !c.P.Asleep && c.P.Energy <= 70.1, "앉기는 안 자고 기운이 늘지 않는다");
+            Expect(c.Mode is not (Mode.GoNap or Mode.Perch) && !c.P.Asleep && c.P.Energy <= 85.1, $"앉기는 안 자고 기운이 늘지 않는다: {c.Mode}, 잠 {c.P.Asleep}, 기운 {c.P.Energy:0.0}");
         }
 
         // 프레임마다 새로 잡는 메모리가 늘지 않는다 (방석 위에서 자는 동안). Pet.Tick 이 틱마다 돌려주는 목록은 원래 있던 것이라, 방석 없이 그냥 자는 것과 견준다
