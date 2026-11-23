@@ -251,6 +251,18 @@
   "pt": "Vôlei",
   "ru": "Волейбол"
  },
+ "menu.trail": {
+  "en": "Snow Trail",
+  "ko": "눈길 마중",
+  "ja": "雪みちラン",
+  "zh-Hans": "雪道奔跑",
+  "zh-Hant": "雪道奔跑",
+  "es": "Sendero nevado",
+  "de": "Schneepfad",
+  "fr": "Sentier enneigé",
+  "pt": "Trilha de neve",
+  "ru": "Снежная тропа"
+ },
  "menu.gun": {
   "en": "{0} (HP {1})",
   "ko": "{0} (HP {1})",
@@ -466,6 +478,42 @@
   "fr": "Esc : Quitter",
   "pt": "Esc: Sair",
   "ru": "Esc: выход"
+ },
+ "note.trail_steer": {
+  "en": "←→: Steer",
+  "ko": "←→: 좌우",
+  "ja": "←→: 左右",
+  "zh-Hans": "←→: 左右",
+  "zh-Hant": "←→: 左右",
+  "es": "←→: Girar",
+  "de": "←→: Lenken",
+  "fr": "←→ : Diriger",
+  "pt": "←→: Virar",
+  "ru": "←→: влево-вправо"
+ },
+ "note.trail_jump": {
+  "en": "Ctrl: Jump",
+  "ko": "Ctrl: 점프",
+  "ja": "Ctrl: ジャンプ",
+  "zh-Hans": "Ctrl:跳跃",
+  "zh-Hant": "Ctrl:跳躍",
+  "es": "Ctrl: Saltar",
+  "de": "Strg: Springen",
+  "fr": "Ctrl : Sauter",
+  "pt": "Ctrl: Pular",
+  "ru": "Ctrl: прыжок"
+ },
+ "note.trail_dash": {
+  "en": "Shift: Dash",
+  "ko": "Shift: 질주",
+  "ja": "Shift: ダッシュ",
+  "zh-Hans": "Shift:冲刺",
+  "zh-Hant": "Shift:衝刺",
+  "es": "Shift: Esprintar",
+  "de": "Umschalt: Sprint",
+  "fr": "Maj : Sprint",
+  "pt": "Shift: Correr",
+  "ru": "Shift: рывок"
  },
  "note.shoot_aim": {
   "en": "Mouse: Aim",
@@ -2074,6 +2122,42 @@
   "fr": "Pas encore de victoire",
   "pt": "Sem vitórias ainda",
   "ru": "Побед пока нет"
+ },
+ "game.trail": {
+  "en": "Snow Trail",
+  "ko": "눈길 마중",
+  "ja": "雪みちラン",
+  "zh-Hans": "雪道奔跑",
+  "zh-Hant": "雪道奔跑",
+  "es": "Sendero nevado",
+  "de": "Schneepfad",
+  "fr": "Sentier enneigé",
+  "pt": "Trilha de neve",
+  "ru": "Снежная тропа"
+ },
+ "game.trail_val": {
+  "en": "Stage {0} · Best {1}",
+  "ko": "{0}단계 · 최고 {1}점",
+  "ja": "ステージ{0}・ベスト{1}",
+  "zh-Hans": "第 {0} 关 · 最高 {1}",
+  "zh-Hant": "第 {0} 關 · 最高 {1}",
+  "es": "Nivel {0} · Récord {1}",
+  "de": "Stufe {0} · Rekord {1}",
+  "fr": "Niveau {0} · Record {1}",
+  "pt": "Fase {0} · Recorde {1}",
+  "ru": "Этап {0} · рекорд {1}"
+ },
+ "game.trail_none": {
+  "en": "Not played yet",
+  "ko": "아직 안 해 봤어요",
+  "ja": "まだ遊んでないよ",
+  "zh-Hans": "还没玩过",
+  "zh-Hant": "還沒玩過",
+  "es": "Aún sin jugar",
+  "de": "Noch nicht gespielt",
+  "fr": "Pas encore joué",
+  "pt": "Ainda não jogou",
+  "ru": "Ещё не играли"
  },
  "game.shoot": {
   "en": "Shooting",
