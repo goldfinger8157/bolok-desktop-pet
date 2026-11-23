@@ -17,6 +17,8 @@ public sealed class Overlay : Form
     static readonly (double Dx, double Dy)[] PileAt = { (-1.15, .1), (1.0, 0), (-.5, .35), (.55, .3), (.05, -.05) };
     public Func<IReadOnlyList<string>> Dreams = () => Array.Empty<string>();                     // 꿈 말풍선 그림들
     internal Func<IReadOnlyList<IGameMode>> Modes = () => Array.Empty<IGameMode>();               // 게임 모듈 (app/Games)
+    public Func<(double X, double Y, double T)?> Reveal = () => null;                           // 방석·집을 받는 순간: 놓일 자리 가운데와 흐른 초 (HomeLife)
+    public Func<double> RevealSize = () => 0;
     public Func<Weather?> Sky = () => null;                                                       // 눈·비와 우산 잎 (Weather.cs)
     public Sprites Art => sprites();
     readonly SolidBrush barLine = new(Color.FromArgb(92, 58, 40));
@@ -75,6 +77,22 @@ public sealed class Overlay : Form
         }
     }
 
+    // 받는 순간 (docs/home.md 7장): 놓일 자리 둘레에서 반짝이 여덟이 모였다가(0~0.5초) 물건이 톡 놓이면 밖으로 퍼지며 깜빡(0.5~1.2초). 자라는 순간(DrawGrow)과 같은 그림·같은 꼴
+    Rectangle RevealRect() => Reveal() is { } r ? Around(r.X, r.Y, RevealSize() * .75, RevealSize() * .75) : Rectangle.Empty;
+    void DrawReveal(Graphics g, Sprites sp)
+    {
+        if (Reveal() is not { } rv || rv.T > 1.2 || !sp.Has("game/spark")) return;
+        double t = rv.T, far = Math.Max(b.CellPx * .9, RevealSize() * .55), near = far * .22;
+        double r = t < .5 ? far + (near - far) * (t / .5) : near + (far * 1.1 - near) * Math.Min(1, (t - .5) / .7);
+        var spark = sp.Get("game/spark", 0, Math.Max(1, b.Scale - 1));
+        for (int i = 0; i < 8; i++)
+        {
+            if (t > .5 && (int)(t * 10 + i) % 3 == 0) continue; // 퍼질 땐 반짝반짝 깜빡
+            double a = i * Math.PI / 4 + t * 1.6;
+            Put(g, spark, (int)(rv.X + Math.Cos(a) * r), (int)(rv.Y + Math.Sin(a) * r * .8));
+        }
+    }
+
     Rectangle EmoteRect()
     {
         int size = sprites().Cell * b.Scale, half = 7 * b.Scale;
@@ -107,6 +125,7 @@ public sealed class Overlay : Form
         foreach (var h in b.Hearts) { var p = ToClient(h.X, h.Y); r.Add(new Rectangle(p.X - s, p.Y - s * 2, s * 2, s * 2)); }
         foreach (var seed in b.Foods) { var p = ToClient(seed.X, seed.Y); r.Add(new Rectangle(p.X - s, p.Y - s, s * 2, s * 2)); }
         if (b.Emoting) r.Add(EmoteRect());
+        if (Reveal() is { T: < 1.6 }) r.Add(Client(RevealRect())); // 받는 순간 반짝이 (연출 중에만 다시 그린다)
         if (b.Growing || b.GrowT is >= 2 and < 2.2) r.Add(Client(GrowRect())); // 자라는 순간 반짝이 (끝난 뒤 한 번 더 지운다)
         if (b.Saying) r.Add(Client(NoteRect(b.X, b.Y, b.Area, b.SayLines!)));
         for (var (ms, i) = (Modes(), 0); i < ms.Count; i++) if (ms[i].Running) ms[i].Dirty(this, r); // 번호로 돈다: 목록 약속(IReadOnlyList)을 foreach 로 돌면 프레임마다 메모리를 잡는다
@@ -205,6 +224,7 @@ public sealed class Overlay : Form
             g.DrawImageUnscaled(sp.Get("icon/heart", 0, 1), p.X - sp.Cell / 2, p.Y - sp.Cell);
         }
         DrawGrow(g, sp);
+        DrawReveal(g, sp);
         if (b.Emoting && sp.Has("emo/" + b.EmoteName)) // 없는 표정 이름이면 건너뛴다 — 예외가 나면 그 뒤(게임 그림까지) 한 프레임도 안 그려진다 (2026-11-13 모래성 「x」)
         {
             var r = EmoteRect();

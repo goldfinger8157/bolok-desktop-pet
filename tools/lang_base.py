@@ -227,6 +227,33 @@ t('mem.album_none', 'A photo is taken every time your pet grows', '자랄 때마
 t('mem.cards', 'Postcards', '엽서')
 t('mem.cards_none', 'Friends who visited sometimes send one the next day', '놀러 왔던 친구가 다음 날 가끔 보내요')
 
+# 방석·집 (docs/home.md 8장)
+t('menu.home', 'House & cushion', '집·방석')
+t('menu.home_cushion', 'Cushion', '방석')
+t('menu.home_house', 'House', '집')
+t('menu.home_reset', 'Reset position', '제자리로')
+t('menu.home_hide', 'Hide', '숨기기')
+t('home.round', 'Round cushion', '동그란 방석')
+t('home.tassel', 'Tasseled cushion', '술 달린 네모 방석')
+t('home.donut', 'Donut bed', '도넛 침대')
+t('home.basket', 'Wicker basket', '버들 바구니')
+t('home.futon', 'Futon set', '이불 요 세트')
+t('home.leaf', 'Leaf bed', '나뭇잎 침대')
+t('home.cloud', 'Cloud cushion', '구름 방석')
+t('home.heart', 'Heart cushion', '하트 방석')
+t('home.egg', 'Fried-egg cushion', '달걀프라이 방석')
+t('home.flower', 'Flower cushion', '꽃 방석')
+t('home.kennel', 'Wooden kennel', '나무 개집')
+t('home.box', 'Box house', '상자 집')
+t('home.mushroom', 'Mushroom house', '버섯 집')
+t('home.teepee', 'Teepee tent', '티피 텐트')
+t('home.igloo', 'Igloo', '이글루')
+t('home.rounddoor', 'Round-door house', '동그란 문 집')
+t('home.wicker', 'Wicker dome', '바구니 돔 집')
+t('home.cattree', 'Cat tree', '캣타워 집')
+t('home.strawberry', 'Strawberry house', '딸기 집')
+t('home.teapot', 'Teapot house', '찻주전자 집')
+
 def main():
     path = pathlib.Path(__file__).resolve().parent.parent / 'assets/lang.json'
     old = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}

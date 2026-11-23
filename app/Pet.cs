@@ -70,6 +70,24 @@ public sealed class Tuning
 
     public double NapAt { get; set; } = 45;           // 기운이 이 아래면 창 위로 자러 간다
     public double NapChance { get; set; } = .15;      // 혼자 놀다가 낮잠을 잘 확률 (기운 80 이하)
+
+    // 방석·집 (docs/home.md 6장)
+    public double SitChance { get; set; } = .12;        // 혼자 놀다가 방석에 그냥 앉을 확률 (기운 65 이하면 SitChanceTired)
+    public double SitChanceTired { get; set; } = .30;
+    public double SitReach { get; set; } = .6;          // 방석까지 화면 폭의 이만큼 안일 때만
+    public double SitMinSec { get; set; } = 6;          // 앉아 있는 시간
+    public double SitMaxSec { get; set; } = 14;
+    public double NapCushion { get; set; } = 3;         // 낮잠 고르기 무게: 방석 3 : 창 위 1 : 집 1 (밤 21~06시엔 집 6)
+    public double NapPerch { get; set; } = 1;
+    public double NapHouse { get; set; } = 1;
+    public double NightHouse { get; set; } = 6;
+    public double NapOtherDiv { get; set; } = 3;        // 다른 모니터에 있는 것은 무게를 이만큼 나눈다
+    public double HomeSpeed { get; set; } = 150;        // 방석·집으로 가는 걸음 (낮잠 가기 190 보다 느긋하게), 졸린 걸음은 HomeSleepySpeed
+    public double HomeSleepySpeed { get; set; } = 90;
+    public double PeekMinSec { get; set; } = 1.2;       // 집에 들어가 자기 전에 내다보는 시간
+    public double PeekMaxSec { get; set; } = 2.0;
+    public double HomeSleepDownSec { get; set; } = .25; // 잘 때 문 안에서 더 내려가는 시간
+    public double HouseExitPeekSec { get; set; } = .8;  // 깨서 나오기 전에 내다보는 시간
     public double GameLayerOpacity { get; set; } = .01; // 게임판 진하기. 클릭만 받고 눈에는 안 보이게
     public double TossSec { get; set; } = .42;        // 씨앗이 날아오는 시간
     public double ClickHoldSec { get; set; } = 3;     // 누른 뒤 이만큼은 제자리에 있는다 — 움직이면 뒤 창을 누르게 된다

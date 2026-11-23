@@ -62,6 +62,7 @@ public static class L
     public static string Name => T("app.name");
     public static string Species(string id) => T("sp." + id);
     public static string Stage(string stage) => T("stage." + stage);
+    public static string Home(string id) => T("home." + id);   // 방석·집 이름 (HomeBook.Cushions·Houses)
 
     // 한국어에만 조사를 붙인다 (받침이 있으면 b): With("여우", "를", "을") → "여우를"
     public static string With(string word, string a, string b) => Code == "ko" ? word + Names.Josa(word, a, b) : word;

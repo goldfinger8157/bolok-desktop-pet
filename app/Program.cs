@@ -64,6 +64,21 @@ static class Program
             return 0;
         }
 
+        if (args.Length == 1 && args[0] == "--home-bench") // 방석·집 속도 재기 (화면을 띄우지 않는다)
+        {
+            ApplicationConfiguration.Initialize();
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
+            Console.WriteLine(HomeCheck.Bench());
+            return 0;
+        }
+
+        if (args.Length == 3 && args[0] == "--home-scene") // 방석·집 장면 그려 보기 (화면을 띄우지 않는다): --home-scene 그림.png desk|nap|night|reveal|menu
+        {
+            ApplicationConfiguration.Initialize();
+            L.Use("ko");
+            return HomeScene.Run(args);
+        }
+
         if (args.Length >= 3 && args[0] == "--home-look") // 방석·집 그려 보기 (화면을 띄우지 않는다): --home-look 그림.png cushions|houses [배율]
         {
             ApplicationConfiguration.Initialize();

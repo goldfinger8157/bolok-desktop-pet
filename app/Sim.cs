@@ -812,6 +812,7 @@ static class Sim
         o.WriteLine(Clover.Check());
         o.WriteLine(Gestures.Check());
         o.WriteLine(Weather.Check());
+        o.WriteLine(HomeCheck.Check(k)); // 방석·집
         LangChecks();
         MemoryChecks();
         ClickChecks(k);

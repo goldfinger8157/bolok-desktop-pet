@@ -136,6 +136,7 @@ public sealed class DevLink
             case "say": b.Say(3.5, string.Join(' ', a.Skip(1)).Split('|')); break; // 예: say 첫 줄|둘째 줄
             case "nap": if (!b.TryNap()) Dbg.Log("nap-none"); break;
             case "visit": form.VisitCommand(a); break;
+            case "home": form.HomeCommand(a); break; // 방석·집: home give/set/clear/spot/sleep/nap/sit/out/reveal/pick/hide/show/state
             case "gesture": b.Gesture(a[1]); break; // 마우스 손짓 반응만: gesture stroke|pat|poke
             case "clover": form.CloverCommand(a); break; // clover (지금 돋기) / clover wear / clover drop / clover off
             case "weather": form.WeatherCommand(a); break; // weather snow [pile] / weather rain [umbrella|wet|shelter] / weather off
@@ -184,7 +185,7 @@ public sealed class DevLink
 
     void WatchSprites()
     {
-        var t = new[] { "sprites.png", "pets/art.json" }.Max(f => File.GetLastWriteTimeUtc(Path.Combine(assets, f))); // 그림 데이터를 고쳐도 다시 그린다
+        var t = new[] { "sprites.png", "pets/art.json", "home.json" }.Where(f => File.Exists(Path.Combine(assets, f))).Max(f => File.GetLastWriteTimeUtc(Path.Combine(assets, f))); // 그림 데이터를 고쳐도 다시 그린다
         if (t == spriteTime) return;
         Sprites fresh;
         try { fresh = Sprites.FromDir(assets, form.SpriteKey); }

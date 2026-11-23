@@ -200,7 +200,7 @@ META = {
     'tassel': {'seat': (26, 16), 'front_cols': [11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 10, 10, 10, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 10, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11]},
     'donut': {'seat': (26, 25), 'front_cols': [14, 14, 14, 14, 14, 14, 14, 14, 14, 13, 13, 15, 16, 17, 18, 18, 19, 19, 19, 19, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 19, 19, 19, 19, 19, 18, 17, 16, 15, 13, 13, 14, 14, 14, 14, 14, 14, 14, 14, 14]},
     'basket': {'seat': (23, 22), 'front_cols': [12, 12, 12, 12, 12, 12, 12, 11, 12, 12, 12, 12, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 12, 12, 12, 12, 11, 12, 12, 12, 12, 12, 12, 12]},
-    'futon': {'seat': (25, 17), 'front_cols': [13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13]},
+    'futon': {'seat': (25, 17)},
     'leaf': {'seat': (27, 17), 'front_cols': [14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 12, 12, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13]},
     'cloud': {'seat': (27, 18), 'front_cols': [12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 11, 11, 12, 12, 12, 12, 12, 12, 12, 13, 13, 13, 13, 13, 13, 13, 13, 12, 12, 12, 12, 12, 12, 12, 11, 11, 11, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12]},
     'heart': {'seat': (23, 26), 'front_cols': [20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 19, 19, 19, 19, 19, 19, 19, 20, 20, 21, 21, 21, 22, 22, 21, 21, 21, 20, 20, 19, 19, 19, 19, 19, 19, 19, 19, 20, 20, 20, 20, 20, 20, 20, 20, 20]},
@@ -216,6 +216,32 @@ META = {
     'cattree': {'seat': (18, 58), 'sleep': 3, 'top': (18, 31), 'door_mirror': 47, 'front_cols': [24, 24, 24, 24, 24, 23, 23, 24, 25, 25, 25, 25, 25, 25, 26, 26, 26, 26, 26, 26, 26, 26, 25, 25, 25, 25, 25, 25, 25, 23, 23, 23, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24]},
     'strawberry': {'seat': (28, 61), 'sleep': 3, 'door_to': 60},
     'teapot': {'seat': (29, 52), 'sleep': 3, 'door_to': 51},
+}
+
+
+# 앞 겹 그림: 펫이 있을 때만 물건 위에 덧그리는 그림 (이불 요 세트 — 시안이 펫 줄에서 이불을 턱까지 끌어올려 다시 그렸다).
+# 시안 세 줄(어린이·고양이·시바)에서 셋이 같은 색인 칸 중 펫 그림이 아닌 칸을 뽑은 것 (2026-11-23). x, y: 물건 칸 좌표의 왼쪽 위, pal: 이 그림만의 글자 → 색, rows: 글자 그림 (. 은 덧그리지 않는다)
+# 이 칸들이 앞 겹이다 (펫을 가린다) — front_cols 는 쓰지 않는다
+COVER = {
+    'futon': {'x': 0, 'y': 6, 'pal': {"a": "#8CC8AE", "b": "#5C3A28", "c": "#FFF6E4", "d": "#FFE08A", "e": "#B8E4D0", "f": "#FFFFFF", "g": "#E4E8EE", "h": "#D8F2E6", "i": "#FFD8DE", "j": "#EDAFBC"},
+      'rows': [
+        '..............bbbbbbb.b.b..bbbbbbbbbb.............',
+        '............bffffffffffffffffffffffff.b...........',
+        '...........ffggggggggggggggggggggggggff...........',
+        '.....ii...fggeeecccccdddddeeeeecccccdggf...ii.....',
+        '....ibb...gcccccdddddeeeeecccccdddddeeeg...bbi....',
+        '...ibff...ecccccdddddeeeeecccccdddddeeee...ffbi...',
+        '....fgg.........dddddeeeeecccccd...........ggf....',
+        '.bibgdeeeeecccccdddddeeeeecccccdddddeeeeeccccgbib.',
+        '.bbfeecccccdddddeeeeecccccdddddeeeeecccccdddddfbb.',
+        'bibgeecccccdddddeeeeecccccdddddeeeeecccccdddddgbib',
+        'bjbeeecccccdddddeeeeecccccdddddeeeeecccccdddddebjb',
+        'bbaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabb',
+        'bbaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabb',
+        '.baahaahaahaahaahaahaahaahaahaahaahaahaahaahaahab.',
+        '.baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab.',
+        '..bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb..'
+      ]},
 }
 
 
@@ -265,6 +291,10 @@ def front_cells(cut, m):
     return {(x, y) for x in range(cut.cw) for y in range(cols[x], cut.ch) if cut.cells[y][x]}
 
 
+def cover_cells(cover):
+    return {(cover['x'] + x, cover['y'] + y) for y, row in enumerate(cover['rows']) for x, ch in enumerate(row) if ch != '.'}
+
+
 def runs(cells):
     """칸 모음 → [[y, x0, x1], ...] (줄마다 이어진 구간)"""
     out = []
@@ -304,13 +334,21 @@ def build(cuts):
         door = door_cells(c, m) if c.kind == 'house' else set()
         if door:
             it['door'] = runs(door)
-        fr = front_cells(c, m) - door  # 문 안은 앞 겹이 아니다 (캣타워: 구멍 안 펫은 보이고, 상자 위 방석 앞 겹만 가린다)
+        cover = COVER.get(c.id)
+        fr = (cover_cells(cover) if cover else front_cells(c, m)) - door  # 문 안은 앞 겹이 아니다 (캣타워: 구멍 안 펫은 보이고, 상자 위 방석 앞 겹만 가린다)
         if fr:
             it['front'] = runs(fr)
         if c.kind == 'house':
             it['sleep'] = m['sleep']
         if 'top' in m:
             it['top'] = list(m['top'])
+        if cover:  # 앞 겹 그림: 색은 물건 색표에 합친다 (없는 색은 새 글자)
+            back2 = dict(back)
+            for ch, col in cover['pal'].items():
+                if col not in back2:
+                    back2[col] = next(letters)
+                    pal[back2[col]] = col
+            it['cover'] = {'x': cover['x'], 'y': cover['y'], 'rows': [''.join(back2[cover['pal'][ch]] if ch != '.' else '.' for ch in row) for row in cover['rows']]}
         items[c.id] = it
     return items
 
@@ -332,6 +370,10 @@ def fmt(items):
         for key in ('door', 'front'):
             if key in it:
                 out.append(f'   "{key}": ' + json.dumps(it[key], separators=(',', ':')) + ',')
+        if 'cover' in it:
+            out.append('   "cover": {"x": %d, "y": %d, "rows": [' % (it['cover']['x'], it['cover']['y']))
+            out.append(',\n'.join('    "%s"' % r for r in it['cover']['rows']))
+            out.append('   ]},')
         out.append('   "rows": [')
         for i, r in enumerate(it['rows']):
             out.append(f'    "{r}"' + (',' if i < len(it['rows']) - 1 else ''))

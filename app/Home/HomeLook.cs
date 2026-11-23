@@ -37,7 +37,7 @@ static class HomeLook
         {
             var it = list[i];
             int ix = i * tw * k + (tw - it.W) / 2 * k, iy0 = (th - bottom - it.H) * k; // 물건 왼쪽 위 (줄 안)
-            for (int row = 0; row < 5; row++) g.DrawImageUnscaled(art.Body(it, k), ix, row * th * k + iy0);
+            for (int row = 0; row < 5; row++) g.DrawImageUnscaled(art.Body(it, k, row is 1 or 2 or 4), ix, row * th * k + iy0); // 펫이 있는 줄은 앞 겹 그림이 덮인 그림
             foreach (var p in pets)
             {
                 var sp = Sprites.Drawn(petArt, p.Species, null);
