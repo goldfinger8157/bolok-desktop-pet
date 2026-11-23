@@ -44,6 +44,7 @@ public sealed class SaveData
     public string MorningDay { get; set; } = "";      // 아침·밤 인사를 한 날
     public string NightDay { get; set; } = "";
     public List<RunRecord> RunScores { get; set; } = new();   // 최근 50판
+    public HomeSave? Home { get; set; }               // 방석·집 수집과 놓인 것·자리 (칸이 없는 옛 저장은 null → 줄 것이 있나 규칙이 알아서 준다)
     public DateTime SavedAt { get; set; } = DateTime.UtcNow;
 }
 
@@ -67,6 +68,12 @@ public sealed class PetForm : Form, IGameHost
     readonly bool debug;
     readonly List<Overlay> overlays = new();
     readonly ClickPad pad = new();
+    readonly HomeLife home;                // 방석·집 (app/Home)
+    HomeMenu.PetItem homeMenu = null!;
+    HomeArt? homeArtCache;
+    double homeArtAt;
+    bool enterHome;                        // 오래 꺼져 있다 켜서 잠든 채 시작했다: 집·방석 안에서 시작
+    Region? homeClipShown;
     readonly List<GameLayer> layers = new();
     Region? clipShown;
     bool flashShown;
@@ -93,6 +100,16 @@ public sealed class PetForm : Form, IGameHost
     (string, int, bool, int) drawn;
     IntPtr returnFocus;
 
+    // 방석·집 그림 데이터: 디버그는 저장소 assets/home.json (고치면 바로 다시 읽는다 — 1초에 한 번만 본다), 일반 실행은 exe 안
+    HomeArt HomeArtNow
+    {
+        get
+        {
+            if (homeArtCache == null || b.Now >= homeArtAt) { homeArtAt = b.Now + 1; homeArtCache = assetsDir != null ? HomeArt.FromDir(assetsDir) : HomeArt.Embedded; }
+            return homeArtCache;
+        }
+    }
+
     public PetForm(Sprites sprites, Tuning k, string dataDir, string? runDir, string? assetsDir)
     {
         this.sprites = sprites;
@@ -106,6 +123,7 @@ public sealed class PetForm : Form, IGameHost
         b.SpeciesKey = () => species; // 창 위 빼꼼 높이를 그 종의 눈 높이로
         modes = GameModes.Create(this); // 게임 모듈 (app/Games): 기록을 읽기 전에 만든다
         if (debug) modes.Add(showcase = new Showcase(this, PoseMs)); // 디버그 앱: 캐릭터 확인 (모든 종의 아기·어린이·어른)
+        home = new HomeLife(b, () => HomeArtNow, () => sprites, () => species, area => ScaleFor(b.K, Native.DpiAt(new Point(area.X + 10, area.Y + 10))), () => Playing, () => Afk(), Save);
         b.Windows = Native.ListWindows;
         b.Foreground = () => Native.OwnForeground() ? b.Active : Native.Foreground(); // 메뉴를 열어도 활성 창이 바뀐 걸로 치지 않는다
         Restore();
@@ -194,7 +212,7 @@ public sealed class PetForm : Form, IGameHost
     {
         foreach (var sc in Screen.AllScreens)
         {
-            var o = new Overlay(b, () => sprites, sc.Bounds) { Sky = () => weather };
+            var o = new Overlay(b, () => sprites, sc.Bounds) { Sky = () => weather, Reveal = () => home.RevealNow, RevealSize = () => home.RevealSize };
             o.Guest = () => visitor; o.GuestSprites = () => visitorSprites; o.Present = () => present; o.Clover = CloverShown; o.LeafPile = LeafPileShown; o.Snowman = SnowmanShown; o.Dreams = Dreams; o.Modes = () => modes;
             overlays.Add(o);
         }
@@ -213,6 +231,7 @@ public sealed class PetForm : Form, IGameHost
     {
         b.World = new World(Screen.AllScreens.Select(s => s.WorkingArea));
         b.Settle();
+        home.Settle(); // 자리가 어느 모니터에도 안 들면 가장 가까운 모니터 바닥으로, 겹치면 방석을 옆으로
         scaledFor = default;
         foreach (var o in overlays) o.Dispose();
         overlays.Clear();
@@ -320,6 +339,8 @@ public sealed class PetForm : Form, IGameHost
         (cardFrom, cardForm, cardDay, morningDay, nightDay, cardVariant) = (pendingSave.CardFrom, pendingSave.CardForm ?? "child", pendingSave.CardDay ?? "", pendingSave.MorningDay ?? "", pendingSave.NightDay ?? "", pendingSave.CardVariant);
         if (pendingSave.X != 0) { b.X = pendingSave.X; b.Y = pendingSave.Y; b.Settle(); }
         foreach (var h in pendingSave.Holes) b.AddHole(h[0], h[1], false);
+        home.Load(pendingSave.Home);
+        enterHome = b.P.Asleep && b.P.Stage is not ("egg" or "baby"); // 오래 꺼져 있었으면 걷지 않고 바로 집 안에서 시작
         pendingSave = null;
     }
 
@@ -327,7 +348,7 @@ public sealed class PetForm : Form, IGameHost
     {
         var data = new SaveData { Pet = b.P, X = b.X, Y = b.Y, Holes = b.Holes.Select(h => new[] { h.Cx, h.Cy }).ToList(), GameSound = Sfx.On, AutoUpdate = autoUpdate, Species = species, Met = met.ToList(), Released = released, VisitDay = visitDay, VisitMin = visitMin, LastVisitDay = lastVisitDay, Visits = visits, Language = language, Clover = clover.Snapshot(), Variant = variant, CardVariant = cardVariant,
             GameData = modes.Select(m => (m.Id, Json: m.SaveState())).Where(x => x.Json != null).ToDictionary(x => x.Id, x => x.Json!),
-            Gifts = gifts, Album = album, Cards = cards, VisitCounts = visitCounts, CardFrom = cardFrom, CardForm = cardForm, CardDay = cardDay, MorningDay = morningDay, NightDay = nightDay };
+            Gifts = gifts, Album = album, Cards = cards, VisitCounts = visitCounts, CardFrom = cardFrom, CardForm = cardForm, CardDay = cardDay, MorningDay = morningDay, NightDay = nightDay, Home = home.Snapshot() };
         var tmp = savePath + ".tmp";
         File.WriteAllText(tmp, JsonSerializer.Serialize(data));
         File.Move(tmp, savePath, true);
@@ -343,6 +364,8 @@ public sealed class PetForm : Form, IGameHost
         sleepItem.Click += (_, _) => b.Care(b.P.Asleep ? "wake" : "sleep");
         menu.Items.Add(sleepItem);
         menuTexts.Add((sleepItem, () => L.T(b.P.Asleep ? "menu.wake" : "menu.sleep")));
+        homeMenu = new HomeMenu.PetItem(home, () => HomeArtNow);
+        menu.Items.Add(homeMenu.Root); // 「집·방석」: 재우기 아래, 첫 분리선 위. 받은 게 없으면 숨는다
         menu.Items.Add(new ToolStripSeparator());
         foreach (var m in modes) // 게임 모듈. 그 게임을 하는 중에 또 고르면 게임에 알린다 (한 발 더 쏘기 같은 것)
         {
@@ -364,7 +387,7 @@ public sealed class PetForm : Form, IGameHost
         menu.Items.Add(new ToolStripSeparator());
         Add("menu.quit", Application.Exit);
         Localize();
-        menu.Opening += (_, _) => { sleepItem.Text = L.T(b.P.Asleep ? "menu.wake" : "menu.sleep"); Localize(); }; // 바구니 수도 새로
+        menu.Opening += (_, _) => { sleepItem.Text = L.T(b.P.Asleep ? "menu.wake" : "menu.sleep"); Localize(); homeMenu.Refresh(menu); }; // 바구니 수도, 받은 방석·집도 새로
         menu.Closed += (_, _) =>
         {
             if (returnFocus != IntPtr.Zero) Native.SetForegroundWindow(returnFocus);
@@ -392,10 +415,13 @@ public sealed class PetForm : Form, IGameHost
     {
         Native.HideFromCapture(Handle, on);
         foreach (var o in overlays) Native.HideFromCapture(o.Handle, on);
+        home.HideFromCapture(on);
         foreach (var l in layers) Native.HideFromCapture(l.Handle, on);
     }
     IReadOnlyList<string> IGameHost.Friends => released.Select(r => PetArt.Key(r.Species, r.Variant)).Distinct().ToList();
     void IGameHost.Repaint() { foreach (var o in overlays) o.Invalidate(); }
+
+    public void HomeCommand(string[] a) => home.Command(a);
 
     // 디버그 명령 중 게임 모듈 것 (<게임 id> ...)
     public bool ModeCommand(string[] a) => modes.Any(m => m.Command(a));
@@ -450,6 +476,8 @@ public sealed class PetForm : Form, IGameHost
         BossKeyTick();
         b.Update(dt, !InGame && Afk());
         foreach (var m in modes) if (m.Running) m.Frame(dt);
+        home.Tick();
+        if (enterHome) { enterHome = false; EnterHomeAtStart(); }
         if (leaving) LeaveFrame(dt);
         WatchHatch();
         CloverTick();
@@ -469,7 +497,7 @@ public sealed class PetForm : Form, IGameHost
         int shake = b.Now < b.ShakeUntil ? (int)(Math.Sin(b.Now * 40) * 5) : 0;
         var now = (name, frame, b.Dir < 0, shake);
         bool flash = b.Now < b.FlashUntil || b.Blink || b.GrowWhite;
-        if (now != drawn || b.PuppetClip != clipShown || flash != flashShown) { drawn = now; clipShown = b.PuppetClip; flashShown = flash; Invalidate(); }
+        if (now != drawn || b.PuppetClip != clipShown || b.HomeClip != homeClipShown || flash != flashShown) { drawn = now; clipShown = b.PuppetClip; homeClipShown = b.HomeClip; flashShown = flash; Invalidate(); }
         WeatherLayout();
 
         int want = b.Mode is Mode.Thrown or Mode.Held or Mode.Puppet ? 15 : 30; // 빠르게 움직일 때만 자주 그린다
@@ -514,13 +542,29 @@ public sealed class PetForm : Form, IGameHost
         {
             below = false;
             nextTop = b.Now + 5;
-            Native.Topmost(Handle);
+            RaiseAll();
         }
         else if (b.Now > nextTop)
         {
             nextTop = b.Now + 5;
-            Native.Topmost(Handle);
+            RaiseAll();
         }
+    }
+
+    // 창 순서 (위 → 아래): 펫 → Overlay(말풍선·zzz·꿈·반짝이) → 집·방석 → 다른 창. 5초마다 아래부터 차례로 올린다
+    // (Overlay 를 같이 안 올리면 zzz·꿈 구름이 지붕 뒤로 숨는다)
+    void RaiseAll()
+    {
+        home.Raise();
+        foreach (var o in overlays) Native.Topmost(o.Handle);
+        Native.Topmost(Handle);
+    }
+
+    // 오래 꺼져 있다 켜서 잠든 채 시작했다: 집(없으면 방석) 안에서 바로 시작. 기운 0 으로 쓰러진 잠은 그 자리 그대로
+    void EnterHomeAtStart()
+    {
+        if (!b.P.Asleep || b.P.Energy <= 0 || b.Mode != Mode.Wander) return;
+        if (!(b.House.On && Pet.Grown(b.P.Stage) && b.EnterHome(true, HomeUse.Sleep))) b.EnterHome(false, HomeUse.Nap);
     }
 
     // 본체 창 위쪽 빈자리: 머리 장식(해바라기·클로버·낙엽·수면 모자)이 창 밖으로 잘리지 않게 그림을 이만큼 내려 그린다
@@ -538,6 +582,12 @@ public sealed class PetForm : Form, IGameHost
             using var mask = c.Clone();
             mask.Translate(-Left, -Top - HeadRoom);
             e.Graphics.SetClip(mask, CombineMode.Exclude);
+        }
+        if (b.HomeClip is { } hc) // 집 안·방석 위: 문 안·앞 겹 말고는 안 그린다 (뺀 자리는 아래 창이 그대로 비친다)
+        {
+            using var hm = hc.Clone();
+            hm.Translate(-Left, -Top - HeadRoom);
+            e.Graphics.SetClip(hm, CombineMode.Exclude);
         }
         var bmp = sprites.Get(name, frame, b.Scale, flip);
         if (b.Blink) return; // 다친 뒤 깜빡
@@ -656,6 +706,7 @@ public sealed class PetForm : Form, IGameHost
         leaving = false;
         string next = RandomSpecies();
         b.Reset();
+        home.NewPet(); // 수집·놓인 것·자리는 그대로, 그 아이가 받을 때 다시 나온다
         var area = b.Area;
         (b.X, b.Y) = (area.Left + area.Width / 2.0, area.Bottom - b.K.FloorGap);
         NewEgg(next);
@@ -830,7 +881,12 @@ public sealed class PetForm : Form, IGameHost
         if (InGame || b.P.Stage == "egg" || Afk() || b.Mode != Mode.Wander || b.P.Asleep) return;
         int h = DateTime.Now.Hour;
         if (h is >= 5 and < 12 && morningDay != Today) { morningDay = Today; b.Emote("sun", 2.5); b.Greet("stretch", 1.6); Dbg.Log("greet", ("when", "morning")); Save(); }
-        else if (Night && nightDay != NightKey) { nightDay = NightKey; b.Emote("moon", 2.5); b.Greet("stretch", 1.6); Dbg.Log("greet", ("when", "night")); Save(); }
+        else if (Night && nightDay != NightKey)
+        {
+            nightDay = NightKey; b.Emote("moon", 2.5); b.Greet("stretch", 1.6); Dbg.Log("greet", ("when", "night"));
+            if (b.P.Energy <= 70) b.GoHome(true, HomeUse.Sleep); // 밤 인사 뒤 기운 70 이하면 집으로 (집이 없으면 그대로)
+            Save();
+        }
     }
 
     // 꿈 말풍선: 잘 때 가끔 한 번씩 (YELL: 계속 보이면 걸리적거린다). 잠든 지 8초 뒤 처음, 그 뒤 25~45초마다 4초 동안 그림 하나
@@ -944,6 +1000,14 @@ public sealed class PetForm : Form, IGameHost
             Item(h, text, () => { Wake(); CloverCommand(new[] { "clover", kind }); });
         Item(h, "낙엽 더미 (땅에 떨구기)", () => CloverCommand(new[] { "clover", "drop", new[] { "fallen", "ginkgo", "maple", "redmaple" }[Random.Shared.Next(4)] }));
         Item(h, "벗기", () => CloverCommand(new[] { "clover", "off" }));
+        var hm = Group("집·방석");
+        Item(hm, "방석 받기 (연출)", () => { Wake(); home.Command(new[] { "home", "give", "cushion" }); });
+        Item(hm, "집 받기 (연출)", () => { Wake(); home.Command(new[] { "home", "give", "house" }); });
+        Item(hm, "20개 다 받기", () => home.Command(new[] { "home", "give", "all" }));
+        Item(hm, "집에 가서 자기", () => { Wake(); home.Command(new[] { "home", "sleep" }); });
+        Item(hm, "방석에 앉기", () => { Wake(); home.Command(new[] { "home", "sit" }); });
+        Item(hm, "나오기", () => home.Command(new[] { "home", "out" }));
+        Item(hm, "지우기 (수집·자리)", () => home.Command(new[] { "home", "clear" }));
         var etc = Group("그 밖");
         Item(etc, "밤 수면 모자 켜기/끄기", () => { ForceNight = !ForceNight; heads.Clear(); Invalidate(); });
         Item(etc, "자리 비움: 안 함 (계속 깨어 있기)", () => { if (dev != null) dev.ForceAfk = false; });
@@ -1164,6 +1228,7 @@ public sealed class PetForm : Form, IGameHost
         var h = Native.RootAt(new Point(x, y));
         if (h == Handle) return "pet";
         if (h == pad.Handle) return "pad";
+        if (home.Owns(h)) return "home";
         if (layers.Any(l => l.Handle == h)) return "game-layer";
         if (overlays.Any(o => o.Handle == h)) return "overlay";
         return "other";
@@ -1203,9 +1268,11 @@ public sealed class PetForm : Form, IGameHost
         }
         g.ResetClip();
         g.ResetTransform();
+        home.DrawShot(g, v.X, v.Y);
         var (name, frame, flip, _) = drawn;
         if (name != null && Visible) // 게임이 본체 창을 숨겼으면 찍지 않는다 (예전엔 숨긴 펫도 덧그려서 게임 위에 앞모습이 있는 것처럼 찍혔다)
         {
+            if (b.HomeClip is { } hcs) { using var hm = hcs.Clone(); hm.Translate(-v.X, -v.Y); g.SetClip(hm, CombineMode.Exclude); }
             g.DrawImageUnscaled(sprites.Get(name, frame, b.Scale, flip), Left - v.X + 8, Top + HeadRoom - v.Y);
             var at = g.Transform;
             g.TranslateTransform(Left - v.X, Top + HeadRoom - v.Y);

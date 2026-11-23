@@ -1,6 +1,6 @@
 namespace Bolok;
 
-public enum Mode { Wander, Anim, GoBite, Chase, Held, Thrown, GoHide, SlipIn, Hiding, Emerge, GoNap, Perch, Puppet }
+public enum Mode { Wander, Anim, GoBite, Chase, Held, Thrown, GoHide, SlipIn, Hiding, Emerge, GoNap, Perch, Puppet, GoHome, Home }
 
 public sealed class Hole { public int Cx, Cy; public readonly List<Point> Cells = new(); }
 public sealed class Bit { public double X, Y, Vx, Vy, G, Life; public Color C; }
@@ -8,7 +8,7 @@ public sealed class Heart { public double X, Y, T; }
 public sealed class Seed { public double X, Y, Sx, Sy, T; public bool Reject; } // S 는 던진 자리, T 는 날아간 비율
 
 // 행동: 모델을 돌리고, 그 결과를 화면 위의 움직임으로 바꾼다. 그리기는 PetForm·Overlay 가 맡는다
-public sealed class Brain
+public sealed partial class Brain
 {
     public Pet P;
     public Tuning K;
@@ -160,7 +160,7 @@ public sealed class Brain
                 break;
             case "sleep":
                 if (P.Energy > 80) { Refuse("no"); return; }
-                if (TryNap()) break; // 올라갈 창이 없으면 그 자리에서 잔다
+                if (TryRest()) break; // 방석·집·창 위 어디든 없으면 그 자리에서 잔다
                 P.Act(K, "sleep");
                 Mode = Mode.Wander;
                 Emote("zzz");
@@ -180,13 +180,15 @@ public sealed class Brain
         lastPoke = Now;
         if (Mode is Mode.Hiding or Mode.SlipIn or Mode.Emerge) { React("poked"); return; }
         if (P.Stage == "egg") { Refuse("dots"); return; }
+        if (Mode == Mode.Home) { HomePet(); return; } // 제 방석·집 안에서는 튀어 나가지 않고 하트만
         Poke(x, y);
     }
 
     // 마우스 손짓 (PetForm 이 커서 움직임에서 알아낸다, Gestures.cs): 쓰다듬기·툭툭은 쓰다듬기로 쳐 주고, 찌르기는 깜짝
     public void Gesture(string kind)
     {
-        if (P.Stage == "egg" || Mode is Mode.Thrown or Mode.Held or Mode.Puppet or Mode.Hiding or Mode.SlipIn or Mode.Emerge) return;
+        if (P.Stage == "egg" || Mode is Mode.Thrown or Mode.Held or Mode.Puppet or Mode.Hiding or Mode.SlipIn or Mode.Emerge or Mode.GoHome) return;
+        if (Mode == Mode.Home && !P.Asleep) { HomePet(); return; }
         Dbg.Log("gesture", ("kind", kind), ("asleep", P.Asleep));
         if (kind != "poke" && Now >= nextPet) { P.Act(K, "pet"); nextPet = Now + K.PetCooldownSec; }
         if (kind == "poke") P.Act(K, "annoy");
@@ -208,6 +210,7 @@ public sealed class Brain
     // 클릭: x·y 는 칸(40×40) 안에서 누른 자리. 누른 곳과 연타 횟수에 따라 반응이 달라진다
     public void Poke(double x, double y)
     {
+        if (Mode == Mode.Home) { HomePet(); return; }
         combo = Now - comboAt < 1.4 ? combo + 1 : 1;
         comboAt = lastPoke = Now;
         string kind = Clicks.Pick(Clicks.Zone(P.Stage, x, y), combo, P.Stage, P.Mood, lastKind, rng);
@@ -502,7 +505,7 @@ public sealed class Brain
 
     void OnActivated(Win w)
     {
-        if (P.Stage == "egg" || Mode is Mode.Held or Mode.Thrown or Mode.Chase or Mode.GoBite or Mode.Puppet) return;
+        if (P.Stage == "egg" || Mode is Mode.Held or Mode.Thrown or Mode.Chase or Mode.GoBite or Mode.Puppet or Mode.GoHome or Mode.Home) return; // 제 집·방석은 활성 창이 덮쳐도 안 달아난다
         if (Mode == Mode.Anim && !solo) return;
         if (Mode == Mode.Perch && w.H == perch.H) return; // 누워 있는 창을 누른 것뿐이다
         bool hiding = Mode is Mode.GoHide or Mode.SlipIn or Mode.Hiding or Mode.Emerge;
@@ -532,7 +535,7 @@ public sealed class Brain
         Active = Foreground();
         if (Active is not { } w) return;
         if (was is not { } old || old.H != w.H) { OnActivated(w); return; }
-        if (old.R == w.R || Mode is Mode.Held or Mode.Thrown or Mode.Puppet) return;
+        if (old.R == w.R || Mode is Mode.Held or Mode.Thrown or Mode.Puppet or Mode.GoHome or Mode.Home) return;
         if (HideSpots.HitBy(old.R, w.R, Body(X, Y)) is { } hit) Knock(hit.Dx, hit.Dy, hit.Moved / Math.Max(gap, .01));
     }
 
@@ -636,7 +639,8 @@ public sealed class Brain
     // 혼자 놀기: 주인이 안 봐도 스스로 논다. 수치는 바뀌지 않는다
     void Solo()
     {
-        if (P.Energy <= 80 && rng.NextDouble() < K.NapChance && TryNap()) return;
+        if (P.Energy <= 80 && rng.NextDouble() < K.NapChance && TryRest()) return;
+        if (TrySit()) return; // 방석에 그냥 앉아 있기
         string kind = new[] { "groom", "stretch", "hop", "roll", "dig", "think", "eat", "spin" }[rng.Next(8)];
         Dbg.Log("solo", ("kind", kind));
         switch (kind)
@@ -691,7 +695,7 @@ public sealed class Brain
                 case "hatch": Emote("star"); Play("happy", 1.6); break;
                 case "grow": PlayGrow(Pet.GrewFrom(P.Stage)); break; // 자라는 순간 (YELL 2026-11-16 시안): 반짝이가 모이고 → 하얗게 빛나며 → 새 모습 + 별·하트
                 case "miss": Emote("tear"); break;
-                case "sleep": Emote("zzz"); break;
+                case "sleep": Emote("zzz"); SleepAtHome(); break;
                 case "wake": Emote("spark"); break;
             }
         }
@@ -909,7 +913,7 @@ public sealed class Brain
                     if (P.Energy <= K.NapAt && Now > nextNap)
                     {
                         nextNap = Now + 60;
-                        if (TryNap()) break;
+                        if (TryRest()) break;
                     }
                     if (Calm) { (tx, ty) = CalmRoam(); next = -1; } // 눈·비: 짧게 옆·아래로만 (숨기·혼자 놀기도 쉰다)
                     else
@@ -1050,6 +1054,9 @@ public sealed class Brain
             case Mode.Puppet: // 자리와 자세는 게임이 정한다
                 P.Asleep = false;
                 break;
+
+            case Mode.GoHome: UpdateGoHome(dt); break;
+            case Mode.Home: UpdateHome(dt); break;
 
             case Mode.GoNap:
             {
