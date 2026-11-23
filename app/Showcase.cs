@@ -224,12 +224,22 @@ sealed class Showcase : IGameMode
     // 한 장으로 보기 (디버그 도구: Bolok.exe --art-all 그림.png [자세]): 모든 종의 아기·어린이·어른 3종을 2배로, 칸마다 종 이름
     public static void Overview(PetArt art, string path, string pose = "idle")
     {
-        // pose 가 "colors" 면 색 세 벌을 (어린이·통통이) 나란히
+        // pose 가 "colors" 면 색 세 벌을 (어린이·통통이) 나란히. "자세@배율:모습,모습" 이면 그 배율로 그 모습들만 (예: away@3:child,adult_sweet)
+        int k = 2;
+        string[] forms = Forms;
+        if (pose.Split('@') is { Length: 2 } at)
+        {
+            pose = at[0];
+            var rest = at[1].Split(':');
+            k = int.Parse(rest[0]);
+            if (rest.Length > 1) forms = rest[1].Split(',');
+        }
         bool colors = pose == "colors";
         var cells = colors ? new[] { ("child", 0), ("child", 1), ("child", 2), ("adult_chubby", 0), ("adult_chubby", 1), ("adult_chubby", 2) }
-                           : Forms.Select(f => (f, 0)).ToArray();
+                           : forms.Select(f => (f, 0)).ToArray();
         if (colors) pose = "idle";
-        const int k = 2, cols = 4, pad = 10, gap = 2;
+        int cols = k > 2 ? 3 : 4;
+        const int pad = 10, gap = 2;
         int cell = PetArt.Cell * k, bw = cells.Length * cell + (cells.Length - 1) * gap + pad * 2, bh = 26 + cell + 8, top = 40;
         int rows = (art.Species.Count + cols - 1) / cols;
         using var bmp = new Bitmap(cols * (bw + 10) + 10, top + rows * (bh + 10) + 6);
@@ -240,7 +250,7 @@ sealed class Showcase : IGameMode
         using var name = new Font(L.Font, 10, FontStyle.Bold);
         using var ink = new SolidBrush(Color.FromArgb(50, 56, 70));
         using var line = new Pen(Color.FromArgb(200, 206, 216));
-        g.DrawString(colors ? $"{art.Species.Count} · {L.Stage("child")} 0·1·2 | {L.Stage("adult_chubby")} 0·1·2" : $"{art.Species.Count} · {string.Join(" → ", Forms.Select(L.Stage))} · {pose}", title, ink, 10, 8);
+        g.DrawString(colors ? $"{art.Species.Count} · {L.Stage("child")} 0·1·2 | {L.Stage("adult_chubby")} 0·1·2" : $"{art.Species.Count} · {string.Join(" → ", forms.Select(L.Stage))} · {pose}", title, ink, 10, 8);
         for (int i = 0; i < art.Species.Count; i++)
         {
             string id = art.Species[i];

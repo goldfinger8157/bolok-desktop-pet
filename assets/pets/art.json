@@ -79,6 +79,7 @@
     "carry": [{"up": 1, "mouth": "w"}, {"up": 1, "mouth": "w"}, {"up": 1, "mouth": "w"}, {"up": 1, "mouth": "w", "eye": "blink"}],
     "fix": [{"turn": 2, "hammer": 0}, {"turn": 2, "hammer": 1, "sq": 1}],
     "think": [{"turn": -1, "mark": "dots"}, {"turn": -1, "mark": "dots"}, {"turn": -1, "eye": "blink", "mark": "dots"}, {"turn": -1, "mark": "dots"}],
+    "away": [{"back": 1, "step": 1}, {"back": 1, "step": 2, "dy": -1}],
     "block": [{"sq": -3, "eye": "wide", "mouth": "o", "dy": -1}]
   },
   "species": {
