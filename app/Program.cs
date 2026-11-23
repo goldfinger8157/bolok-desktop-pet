@@ -64,6 +64,15 @@ static class Program
             return 0;
         }
 
+        if (args.Length == 1 && args[0] == "--home-check") // 방석·집 자가 검사만 (--selfcheck 의 일부, 빠르게 돌려 볼 때)
+        {
+            ApplicationConfiguration.Initialize();
+            L.Use("ko");
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
+            Console.WriteLine(HomeCheck.Check(new Tuning()));
+            return 0;
+        }
+
         if (args.Length == 1 && args[0] == "--home-bench") // 방석·집 속도 재기 (화면을 띄우지 않는다)
         {
             ApplicationConfiguration.Initialize();

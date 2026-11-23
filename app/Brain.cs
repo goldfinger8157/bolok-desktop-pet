@@ -180,7 +180,7 @@ public sealed partial class Brain
         lastPoke = Now;
         if (Mode is Mode.Hiding or Mode.SlipIn or Mode.Emerge) { React("poked"); return; }
         if (P.Stage == "egg") { Refuse("dots"); return; }
-        if (Mode == Mode.Home) { HomePet(); return; } // 제 방석·집 안에서는 튀어 나가지 않고 하트만
+        if (Mode == Mode.Home) { if (!HomeVisitClick()) HomePet(); return; } // 제 방석·집 안에서는 튀어 나가지 않고 하트만 (들었다 놓아 잠깐 머무는 중이면 나온다)
         Poke(x, y);
     }
 
@@ -305,6 +305,7 @@ public sealed partial class Brain
         if (Math.Sqrt(fx * fx + fy * fy) >= K.ThrowMinSpeed * S) { Throw(fx, fy); return; }
         if (dizzyNext && P.Stage != "egg") { dizzyNext = false; Feel(true); Play("dizzy", 2.4); return; }
         dizzyNext = false;
+        if (TryDropIn()) return; // 방석·집 위에 놓았다: 잠깐 들어가 있는다
         Mode = Mode.Wander;
         next = Now + 1.5;
     }

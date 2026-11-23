@@ -17,6 +17,7 @@ sealed class HomeLife : IDisposable
         public Point Origin;                // 그림 왼쪽 위 (화면 좌표). 끄는 동안은 마우스를 따른다
         public Rectangle Area;
         public bool Shown, Moving, Covered;
+        public HomeRoost Roost = null!;     // 창 위에 놓였나 (창을 따라가고, 창이 사라지면 떨어진다) — 아니면 바닥
         public string? Id => Item?.Id;
     }
 
@@ -65,6 +66,7 @@ sealed class HomeLife : IDisposable
     {
         (this.b, this.artOf, this.spritesOf, this.speciesOf, this.scaleOf, this.playing, this.afk, this.save) = (b, artOf, spritesOf, speciesOf, scaleOf, playing, afk, save);
         all = new[] { Cushion, House };
+        foreach (var s in all) s.Roost = new HomeRoost(b);
     }
 
     public IReadOnlyList<Slot> Slots => all;
@@ -72,8 +74,20 @@ sealed class HomeLife : IDisposable
     public bool Owns(IntPtr h) => all.Any(s => s.Form != null && s.Form.IsHandleCreated && s.Form.Handle == h);
 
     // ── 저장 ──
-    public void Load(HomeSave? s) { Book.Load(s); dirty = true; }
-    public HomeSave Snapshot() => Book.Snapshot();
+    // 불러오면 늘 바닥에 (창은 껐다 켜면 사라진다): 저장 칸에는 창 위였어도 그 x 의 바닥 자리만 있다
+    public void Load(HomeSave? s) { Book.Load(s); foreach (var x in all) x.Roost.Clear(); dirty = true; }
+
+    // 창 위에 있는 물건은 지금 x 의 바닥 자리를 저장 칸에 적는다 (창을 따라 움직인 x 가 그대로 남는다)
+    public HomeSave Snapshot()
+    {
+        foreach (var s in all)
+            if (s.Roost.Active && s.Item != null)
+            {
+                var at = new[] { s.CenterX, FloorOf(s.Roost.Area) };
+                if (s.House) Book.HouseAt = at; else Book.CushionAt = at;
+            }
+        return Book.Snapshot();
+    }
     public void NewPet() { Book.NewPet(); reveal = null; dirty = true; }
 
     // ── 자리 ──
@@ -109,13 +123,14 @@ sealed class HomeLife : IDisposable
         var at = s.House ? Book.HouseAt : Book.CushionAt;
         if (item != null && at == null) { ApplyDefault(s.House); at = s.House ? Book.HouseAt : Book.CushionAt; }
         s.Item = item;
-        if (item == null || at == null) { s.Shown = false; s.Form?.Hide(); return; }
+        if (item == null || at == null) { s.Shown = false; s.Roost.Clear(); s.Form?.Hide(); return; }
         if (!s.Moving)
         {
             var area = b.World.At(at[0], at[1] - 1);
             (s.Area, s.K) = (area, scaleOf(area));
             s.CenterX = Math.Clamp(at[0], area.Left + item.W * s.K / 2.0, area.Right - item.W * s.K / 2.0);
             s.FloorY = FloorOf(area);
+            if (s.Roost.Active) (s.Area, s.K, s.CenterX, s.FloorY) = (s.Roost.Area, scaleOf(s.Roost.Area), s.Roost.CenterX, s.Roost.FloorY); // 창 위·떨어지는 중이면 그 자리
             s.Origin = HomeGeom.Origin(item, s.K, s.CenterX, s.FloorY);
         }
         s.Form ??= MakeForm(s);
@@ -131,7 +146,7 @@ sealed class HomeLife : IDisposable
         var f = new HomeForm(s.House) { Now = () => b.Now };
         f.Clicked = _ => Clicked(s);
         f.RightClicked = _ => HomeMenu.ForItem(this, s, f);
-        f.DragStarted = _ => { s.Moving = true; dirty = true; };
+        f.DragStarted = _ => { s.Moving = true; s.Roost.Clear(); dirty = true; }; // 끄는 동안은 창에서 떨어져 공중에
         f.DragMoved = (_, p) => Dragged(s, f, p);
         f.DragEnded = _ => Dropped(s);
         return f;
@@ -154,18 +169,26 @@ sealed class HomeLife : IDisposable
         Spots();
     }
 
+    // 놓았다: 아래가 창 윗변 가까이면 그 창 위에 붙고 (창을 따라 움직인다), 아니면 놓은 모니터의 바닥으로 톡
     void Dropped(Slot s)
     {
         if (s.Item is not { } item) { s.Moving = false; return; }
         s.Moving = false;
-        s.FloorY = FloorOf(s.Area);
-        s.Origin = HomeGeom.Origin(item, s.K, s.CenterX, s.FloorY); // 놓은 모니터의 바닥으로 톡
-        var at = new[] { s.CenterX, s.FloorY };
+        PlaceAt(s, item, s.CenterX, s.Origin.Y + item.Seat.Y * s.K);
+        var at = new[] { s.CenterX, FloorOf(s.Area) }; // 저장은 늘 바닥 x
         if (s.House) Book.HouseAt = at; else Book.CushionAt = at;
         s.Form?.Set(artOf(), item, s.K, s.Origin, s.Covered);
-        Dbg.Log("home-move", ("kind", s.House ? "house" : "cushion"), ("id", item.Id), ("x", (int)s.CenterX), ("y", (int)s.FloorY));
+        Dbg.Log("home-move", ("kind", s.House ? "house" : "cushion"), ("id", item.Id), ("x", (int)s.CenterX), ("y", (int)s.FloorY), ("window", s.Roost.OnWindow));
         dirty = true;
         save();
+    }
+
+    // 놓을 자리를 정한다 (창 위 아니면 바닥). 자리·배율·그림 자리를 슬롯에 적는다
+    void PlaceAt(Slot s, HomeItem item, double centerX, double bottomY)
+    {
+        if (s.Roost.Snap(item, s.K, centerX, bottomY)) (s.Area, s.CenterX, s.FloorY) = (s.Roost.Area, s.Roost.CenterX, s.Roost.FloorY);
+        else s.FloorY = FloorOf(s.Area);
+        s.Origin = HomeGeom.Origin(item, s.K, s.CenterX, s.FloorY);
     }
 
     // 왼쪽 클릭 (6장): 펫이 그 안·위에서 자면 깨우기, 다른 데 있고 한가하면 부르기 (와서 방석엔 4~6초 앉고 집엔 2초 빼꼼하고 나온다 — 수치 안 바뀜)
@@ -187,6 +210,7 @@ sealed class HomeLife : IDisposable
 
         bool want = !Book.Hidden && stage is not ("egg" or "baby") && !playing();
         Refresh(want); // 바뀐 게 있을 때만 다시 잡는다
+        FollowRoost();
 
         if (b.Now >= nextSlow)
         {
@@ -199,6 +223,34 @@ sealed class HomeLife : IDisposable
     }
 
     bool wantSeen;
+    double lastRoost;
+
+    // 창 위 물건: 창을 따라가고, 못 앉게 되면 떨어뜨리고, 떨어지는 중이면 내려보낸다. 바뀐 게 있을 때만 창을 옮기고 Brain 에 자리를 다시 넘긴다
+    void FollowRoost()
+    {
+        double dt = Math.Clamp(b.Now - lastRoost, 0, .1);
+        lastRoost = b.Now;
+        bool moved = false;
+        foreach (var s in all)
+        {
+            if (!s.Roost.Active || s.Item is not { } it || s.Moving) continue;
+            var c = s.Roost.Tick(b.Now, dt, it, s.K);
+            if (c == RoostChange.None) continue;
+            var r = s.Roost;
+            if (r.Area != s.Area) { s.K = scaleOf(r.Area); dirty = true; } // 다른 모니터의 창으로 옮겨졌다: 배율을 다시
+            (s.Area, s.CenterX, s.FloorY) = (r.Area, r.CenterX, r.FloorY);
+            s.Origin = HomeGeom.Origin(it, s.K, s.CenterX, s.FloorY);
+            if (s.Shown) s.Form?.Set(artOf(), it, s.K, s.Origin, s.Covered);
+            if ((c & RoostChange.Fell) != 0) // 떨어지기 시작: 같은 x 의 바닥을 저장 칸에 (창은 저장 안 한다)
+            {
+                var at = new[] { s.CenterX, FloorOf(s.Area) };
+                if (s.House) Book.HouseAt = at; else Book.CushionAt = at;
+                save();
+            }
+            moved = true;
+        }
+        if (moved) Spots();
+    }
 
     void Refresh(bool want)
     {
@@ -293,7 +345,7 @@ sealed class HomeLife : IDisposable
         {
             var spot = new HomeSpot();
             if (s.Item is { } it && s.Shown && stage is not ("egg" or "baby"))
-                spot = HomeGeom.Spot(it, s.K, s.Origin, s.FloorY, bcIdle, bcSleep, s.Moving);
+                spot = HomeGeom.Spot(it, s.K, s.Origin, s.FloorY, bcIdle, bcSleep, s.Moving || s.Roost.Falling, FloorOf(s.Area));
             if (s.House) b.House = spot; else b.Cushion = spot;
         }
     }
@@ -356,6 +408,7 @@ sealed class HomeLife : IDisposable
         foreach (var s in all)
         {
             if (house != null && s.House != house) continue;
+            s.Roost.Clear();
             ApplyDefault(s.House);
         }
         dirty = true;
@@ -428,6 +481,7 @@ sealed class HomeLife : IDisposable
                 break;
             case "clear":
                 Book.Clear();
+                foreach (var o in all) o.Roost.Clear();
                 reveal = null;
                 dirty = true; clipKey = default;
                 save();
@@ -435,6 +489,7 @@ sealed class HomeLife : IDisposable
                 break;
             case "spot":
                 if (a.Length > 2 && a[2] == "reset") { ResetSpot(null); break; }
+                if (a.Length > 2 && a[2] is "cushion" or "house" && a.Length > 3 && a[3] is "win" or "fall") { RoostCommand(a[2] == "house", a[3] == "fall"); break; }
                 if (a.Length > 3 && a[2] is "cushion" or "house" && double.TryParse(a[3], out double x))
                 {
                     bool h = a[2] == "house";
@@ -442,6 +497,7 @@ sealed class HomeLife : IDisposable
                     var at = h ? Book.HouseAt : Book.CushionAt;
                     var area = b.World.At(x, at?[1] - 1 ?? b.Area.Bottom - 60);
                     var arr = new[] { x, FloorOf(area) };
+                    s.Roost.Clear();
                     if (h) Book.HouseAt = arr; else Book.CushionAt = arr;
                     dirty = true; clipKey = default; save();
                     Dbg.Log("home-move", ("kind", a[2]), ("x", (int)x));
@@ -489,6 +545,32 @@ sealed class HomeLife : IDisposable
         }
     }
 
+    // 디버그: home spot <cushion|house> win — 지금 열린 창 중 윗변이 되는 첫 창 위로 올린다 / home spot <cushion|house> fall — 창 위에서 바닥으로 떨어뜨린다
+    void RoostCommand(bool house, bool fall)
+    {
+        var s = SlotOf(house);
+        if (s.Item is not { } it) { Dbg.Log("home-none"); return; }
+        if (fall)
+        {
+            var at = new[] { s.CenterX, FloorOf(s.Area) };
+            if (house) Book.HouseAt = at; else Book.CushionAt = at;
+            s.Roost.StartFall(); dirty = true;
+            return;
+        }
+        s.Moving = false;
+        foreach (var w in b.Windows())
+        {
+            if (s.Roost.Snap(it, s.K, w.R.Left + w.R.Width / 2.0, w.R.Top + HomeRoost.Perch(s.K)))
+            {
+                (s.Area, s.CenterX, s.FloorY) = (s.Roost.Area, s.Roost.CenterX, s.Roost.FloorY);
+                s.Origin = HomeGeom.Origin(it, s.K, s.CenterX, s.FloorY);
+                dirty = true; clipKey = default;
+                return;
+            }
+        }
+        Dbg.Log("home-none", ("why", "no window"));
+    }
+
     public void Dispose()
     {
         clip?.Dispose();
@@ -518,12 +600,14 @@ static class HomeGeom
         return r;
     }
 
-    public static HomeSpot Spot(HomeItem it, int k, Point origin, double floorY, double bcIdle, double bcSleep, bool moving)
+    // ground: 그 모니터의 바닥 y (창 위에 놓였으면 floorY 보다 크다). 안 주면 바닥에 있는 것
+    public static HomeSpot Spot(HomeItem it, int k, Point origin, double floorY, double bcIdle, double bcSleep, bool moving, double ground = double.NaN)
     {
         double PetX(double seatX, double bc) => origin.X + (HomeArt.PetCell(seatX, it.Seat.Y, bc).X + HomeArt.PetCellPx / 2.0) * k;
         var s = new HomeSpot
         {
             On = true, Moving = moving, X = PetX(it.Seat.X, bcIdle), SleepX = PetX(it.Seat.X, bcSleep),
+            Ground = double.IsNaN(ground) ? floorY : ground, Bounds = new Rectangle(origin.X, origin.Y, it.W * k, it.H * k),
             Y = origin.Y + it.Seat.Y * k,
             SleepDy = it.House ? it.Sleep * k : 0,
             SitDy = it.House ? 0 : -2 * k,

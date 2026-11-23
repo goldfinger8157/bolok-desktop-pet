@@ -10,6 +10,9 @@ public struct HomeSpot
     public double SitDy;            // 방석에 앉아 있을 때(idle 계열) 위로 올리는 픽셀 (음수): 서 있는 그림이 누운 그림보다 두 칸 낮아서
     public bool HasTop;             // 캣타워처럼 위에 올라가 자는 자리가 있다 (어른만)
     public double TopX, TopY;
+    public double Ground;           // 그 모니터의 바닥(펫 MaxY). 창 위에 놓였으면 Y 보다 크다 — 펫은 바닥에서 밑까지 걸어가 곧게 올라간다
+    public Rectangle Bounds;        // 그림이 차지한 자리 (화면 좌표). 마우스로 들었다 놓은 펫이 이 위에 놓였는지 보는 데 쓴다 (비어 있으면 안 본다)
+    public bool Elevated => Ground > Y + 1;   // 창 위에 있다 (떨어지는 중 포함)
 }
 
 public enum HomeUse { None, Sit, Nap, Peek, Sleep }
@@ -23,9 +26,9 @@ public sealed partial class Brain
     public Func<bool> NightNow = () => DateTime.Now.Hour is >= 21 or < 6;  // 밤 21~06시 (집을 더 고른다). 자가 검사는 바꿔 쓴다
 
     HomeUse homeUse;
-    bool homeHouse, homeTop, homeWalkAsleep, homeFast, homeCheer;
+    bool homeHouse, homeTop, homeWalkAsleep, homeFast, homeCheer, homeClimb, homeVisit;
     int homeStep;                      // 0 빼꼼·앉기, 1 캣타워 오르기, 2 자는 중, 3 깨서 내다보기·기지개
-    double homeUntil, homeStay, homeYoff, homeClimbT, homePoseAt, homeCheerUntil;
+    double homeUntil, homeStay, homeYoff, homeClimbT, homePoseAt, homeCheerUntil, homeLimit;
     string homePose = "idle";
 
     public HomeUse AtHome => Mode == Mode.Home ? homeUse : HomeUse.None;
@@ -46,6 +49,7 @@ public sealed partial class Brain
         if (house && !Pet.Grown(P.Stage) && use == HomeUse.Sleep) return false; // 집에서 자는 것은 다 자란 뒤
         (homeHouse, homeUse, homeFast, homeStay, homeCheer) = (house, use, fast, stay, cheer);
         homeWalkAsleep = P.Asleep;
+        (homeClimb, homeVisit, homeLimit) = (false, false, 0);
         homeStep = 0;
         homeTop = false;
         homeYoff = 0;
@@ -56,14 +60,45 @@ public sealed partial class Brain
         return true;
     }
 
-    // 걷지 않고 바로 거기서 (오래 꺼져 있다 켰을 때 집 안에서 시작)
-    public bool EnterHome(bool house, HomeUse use)
+    // 걷지 않고 바로 거기서 (오래 꺼져 있다 켰을 때 집 안에서 시작). visit > 0: 마우스로 들었다 놓은 펫의 짧은 머묾 (그 초 뒤에 나온다, 눌러도 나온다)
+    public bool EnterHome(bool house, HomeUse use, double visit = 0)
     {
         ref var s = ref SpotOf(house);
         if (!s.On) return false;
-        (homeHouse, homeUse, homeFast, homeStay, homeCheer, homeWalkAsleep) = (house, use, false, 0, false, false);
+        (homeHouse, homeUse, homeFast, homeStay, homeCheer, homeWalkAsleep) = (house, use, false, visit, false, false);
+        (homeClimb, homeVisit, homeLimit) = (false, visit > 0, visit > 0 ? Now + visit : 0);
+        then = null;
+        (solo, tailSpin, fleeing) = (false, false, false);
         Mode = Mode.GoHome;
         ArriveHome(true);
+        return true;
+    }
+
+    // 마우스로 들었다 놓은 자리가 방석·집 위면 그 안에 들어가 K.HomeVisitMin~Max초 머문다 (집이면 빼꼼, 방석이면 앉기 — 기운이 낮으면 낮잠).
+    // 억지로 재우거나 수치를 바꾸지 않는다 (낮잠이면 평소 쉬는 만큼만). 눌러도 끌어도 바로 나온다
+    bool TryDropIn()
+    {
+        if (P.Stage is "egg" or "baby" || P.Asleep) return false;
+        var c = new Point((int)X, (int)(Y - CellPx * .45));
+        foreach (bool house in new[] { true, false })
+        {
+            ref var s = ref SpotOf(house);
+            if (!s.On || s.Moving || s.Bounds.IsEmpty) continue;
+            var box = s.Bounds;
+            box.Inflate((int)(CellPx * .25), (int)(CellPx * .25));
+            if (!box.Contains(c)) continue;
+            var use = house ? HomeUse.Peek : P.Energy <= K.NapAt ? HomeUse.Nap : HomeUse.Sit;
+            Dbg.Log("home-drop", ("house", house), ("use", use.ToString()));
+            return EnterHome(house, use, Rand(K.HomeVisitMinSec, K.HomeVisitMaxSec));
+        }
+        return false;
+    }
+
+    // 머무는 중에 눌렀다: 바로 나온다 (자는 중이면 깨서 기지개 뒤)
+    bool HomeVisitClick()
+    {
+        if (!homeVisit) return false;
+        HomeOut();
         return true;
     }
 
@@ -87,6 +122,7 @@ public sealed partial class Brain
     void ExitHome()
     {
         ref var s = ref SpotOf(homeHouse);
+        if (s.Elevated && !homeTop) { Y = s.Y; LeaveHome(); JumpDown(); return; } // 창 위: 폴짝 뛰어 내려간다 (창 위 낮잠을 깰 때와 같다)
         if (homeHouse && !homeTop)
         {
             double dir = X < Area.Left + Area.Width / 2.0 ? 1 : -1; // 화면 가운데 쪽으로 0.9칸 걸어 나온다
@@ -134,23 +170,45 @@ public sealed partial class Brain
         if (instant) homeYoff = homeTop ? 0 : s.SleepDy;
     }
 
+    // 가다가 그만둔다: 창 위로 올라가던 중이면 공중에 멈추지 않게 떨어뜨린다 (agy 검토 2026-11-23: 잠든 채 공중에 멈췄다)
+    void GiveUpGoHome()
+    {
+        Mode = Mode.Wander;
+        next = Now + 1;
+        homeClimb = false;
+        if (Y < MaxY - CellPx * .15 && P.Stage != "egg") Throw(0, 0);
+    }
+
     void UpdateGoHome(double dt)
     {
         ref var s = ref SpotOf(homeHouse);
-        if (!s.On || P.Stage == "egg" || (homeWalkAsleep && !P.Asleep)) { Mode = Mode.Wander; next = Now + 1; return; } // 없어졌다·걷다가 깼다
+        if (!s.On || P.Stage == "egg" || (homeWalkAsleep && !P.Asleep)) { GiveUpGoHome(); return; } // 없어졌다·걷다가 깼다
         bool top = homeUse is HomeUse.Sleep or HomeUse.Nap && s.HasTop && Pet.Grown(P.Stage);
         bool sleepy = homeUse is HomeUse.Sleep or HomeUse.Nap;
         Pose = "walk";
         double speed = homeFast ? K.HomeSpeed * 1.3 : P.Asleep ? K.HomeSleepySpeed : K.HomeSpeed;
         double gx = top ? s.TopX : sleepy ? s.SleepX : s.X;
-        if (World.NextArea(Area, World.At(gx, s.Y), CellPx) == null && World.At(gx, s.Y) != Area) { Mode = Mode.Wander; next = Now + 1; return; } // 이어지지 않은 모니터
+        if (World.NextArea(Area, World.At(gx, s.Y), CellPx) == null && World.At(gx, s.Y) != Area) { GiveUpGoHome(); return; } // 이어지지 않은 모니터
+        if (s.Elevated)
+        {
+            // 창 위: 바닥에서 물건 밑까지 걸어간 뒤 (창 윗변에 올라갈 때처럼) 곧게 올라간다. 올라가는 동안 창이 움직이면 따라간다
+            if (!homeClimb) { if (Go(gx, s.Ground, speed, dt)) homeClimb = true; return; }
+            Pose = "hop";
+            if (Go(gx, s.Y, speed, dt)) ArriveHome(false);
+            return;
+        }
         if (Go(gx, s.Y, speed, dt)) ArriveHome(false);
     }
 
     void UpdateHome(double dt)
     {
         ref var s = ref SpotOf(homeHouse);
-        if (!s.On || P.Stage == "egg") { LeaveHome(); return; }
+        if (!s.On || P.Stage == "egg")
+        {
+            LeaveHome();
+            if (Y < MaxY - CellPx * .15 && P.Stage != "egg") Throw(0, 0); // 창 위에서 물건이 없어졌다: 공중에 떠 있지 않고 떨어진다
+            return;
+        }
         if (homeTop && !s.HasTop) { homeTop = false; homeClimbT = 0; if (homeStep == 1) homeStep = 2; }   // 캣타워 위에 있다가 위칸 없는 집으로 바뀌었다: 문 안 자리로 (TopX·TopY 가 0 이라 화면 밖으로 사라졌다)
         Dir = 1;
         bool sleepUse = homeUse is HomeUse.Sleep or HomeUse.Nap;
@@ -177,6 +235,7 @@ public sealed partial class Brain
                 return;
             case 2: // 자는 중: 문 안에서 0.25초에 걸쳐 더 내려간다
                 Pose = "sleep";
+                if (homeLimit > 0 && Now >= homeLimit && P.Asleep) P.Asleep = false; // 들었다 놓은 낮잠은 8~12초만
                 if (!P.Asleep) { homeStep = 3; homeUntil = Now + (homeHouse && !homeTop ? K.HouseExitPeekSec : 1.2); break; }
                 break;
             case 3: // 깼다: 집은 빼꼼 0.8초, 방석은 기지개 1.2초

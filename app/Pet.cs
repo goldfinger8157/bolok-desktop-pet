@@ -88,6 +88,9 @@ public sealed class Tuning
     public double PeekMaxSec { get; set; } = 2.0;
     public double HomeSleepDownSec { get; set; } = .25; // 잘 때 문 안에서 더 내려가는 시간
     public double HouseExitPeekSec { get; set; } = .8;  // 깨서 나오기 전에 내다보는 시간
+    public double HomeVisitMinSec { get; set; } = 8;    // 마우스로 들었다 방석·집에 놓으면 이만큼 머문다 (8~12초)
+    public double HomeVisitMaxSec { get; set; } = 12;
+    public double RoostSnapCells { get; set; } = 6;     // 방석·집을 놓을 때 아래가 창 윗변에서 이 칸 안이면 창 위에 붙는다 (그림 칸 × 배율)
     public double GameLayerOpacity { get; set; } = .01; // 게임판 진하기. 클릭만 받고 눈에는 안 보이게
     public double TossSec { get; set; } = .42;        // 씨앗이 날아오는 시간
     public double ClickHoldSec { get; set; } = 3;     // 누른 뒤 이만큼은 제자리에 있는다 — 움직이면 뒤 창을 누르게 된다
