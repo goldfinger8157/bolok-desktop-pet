@@ -61,6 +61,9 @@ sealed class Arm
         // 2단계부터(높은 단계)는 이 무기만 박자를 당기고(0 = 그대로) 특수기 피해에 배율을 더 곱한다 (Arm.Id 순서: 쌍검·장검·쌍권총·산탄총·소총·바주카·화염). 1단계 표를 안 건드리고 높은 단계에서만 세진다
         public static readonly int[] HiEvery = { 0, 0, 6, 0, 0, 0, 40 };
         public static readonly double[] HiDmg = { 1, 1, 3, 1, 1, 1, 1.5 };
+        // 5단계부터는 약한 무기를 한 칸 더 푼다 (2차 표 맞춤): 박자(0 = 2단계 칸 그대로)·피해 배율(1 이하 = 2단계 칸 그대로)·특수기 밀침 배율 (Arm.Id 순서)
+        public static readonly int[] Hi5Every = { 0, 0, 5, 4, 0, 4, 0 };
+        public static readonly double[] Hi5Dmg = { 1, 1, 5.5, 2, 1, 1.5, 2.5 }, Hi5Knock = { 1, 1, 1, 4, 1, 1, 1 };
         public const int EveryTwin = 10, EveryPistols = 8, EveryShotgun = 6, EveryBazooka = 5, EveryFlame = 40;
         public const double FlashSec = .25, SparkSec = .12;                                               // 그림: 번쩍 신호가 보이는 시간, 그 앞의 반짝이
     }

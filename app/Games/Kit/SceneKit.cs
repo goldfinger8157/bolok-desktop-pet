@@ -81,9 +81,18 @@ static class SceneKit
             ov.Render(gf);
             if (Same(screen, fresh, view)) continue;
             bad++;
-            if (first < 0) first = i;
+            if (first < 0) { first = i; if (Environment.GetEnvironmentVariable("BOLOK_REPAINT_DEBUG") != null) Console.Error.WriteLine("REPAINT-DIFF " + Diff(screen, fresh, view)); }
         }
         return (bad, first);
+    }
+
+    static string Diff(Bitmap a, Bitmap b, Rectangle view)
+    {
+        int x0 = int.MaxValue, y0 = int.MaxValue, x1 = -1, y1 = -1;
+        for (int y = view.Top; y < view.Bottom; y++)
+            for (int x = view.Left; x < view.Right; x++)
+                if (a.GetPixel(x, y) != b.GetPixel(x, y)) (x0, y0, x1, y1) = (Math.Min(x0, x), Math.Min(y0, y), Math.Max(x1, x), Math.Max(y1, y));
+        return $"x {x0}..{x1} y {y0}..{y1}";
     }
 
     static bool Same(Bitmap a, Bitmap b, Rectangle view)
@@ -105,10 +114,11 @@ static class SceneKit
     }
 
     // 장면 여러 장을 옆으로 이어 한 그림으로: ready(n) 이 규칙을 한 프레임 돌리고 n 번째 장면을 찍을 때가 됐는지 알려 준다.
-    // view: 모니터에서 잘라 볼 자리 (화면 좌표)
-    public static void Shots(string path, Overlay ov, Rectangle view, int count, Func<int, bool> ready, int maxFrames = 60 * 600)
+    // view: 모니터에서 잘라 볼 자리 (화면 좌표). columns: 한 줄에 놓을 장 수 (0 이면 모두 한 줄)
+    public static void Shots(string path, Overlay ov, Rectangle view, int count, Func<int, bool> ready, int maxFrames = 60 * 600, int columns = 0)
     {
-        using var bmp = new Bitmap((view.Width + 20) * count, view.Height + 20);
+        int cols = columns > 0 ? Math.Min(columns, count) : count, rows = (count + cols - 1) / cols;
+        using var bmp = new Bitmap((view.Width + 20) * cols, (view.Height + 20) * rows);
         using var g = Graphics.FromImage(bmp);
         using var frame = new Bitmap(ov.Width, ov.Height);
         using var fg = Graphics.FromImage(frame);
@@ -118,7 +128,7 @@ static class SceneKit
             if (!ready(shot)) continue;
             fg.Clear(Color.FromArgb(150, 160, 170));
             ov.Render(fg);
-            g.DrawImage(frame, new Rectangle(shot * (view.Width + 20) + 10, 10, view.Width, view.Height), view, GraphicsUnit.Pixel);
+            g.DrawImage(frame, new Rectangle(shot % cols * (view.Width + 20) + 10, shot / cols * (view.Height + 20) + 10, view.Width, view.Height), view, GraphicsUnit.Pixel);
             shot++;
         }
         bmp.Save(path);

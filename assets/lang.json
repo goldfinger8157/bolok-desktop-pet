@@ -659,6 +659,30 @@
   "pt": "Ctrl: Granada",
   "ru": "Ctrl: граната"
  },
+ "note.swarm_reroll": {
+  "en": "Shift: New weapon",
+  "ko": "Shift: 무기 다시 뽑기",
+  "ja": "Shift: 武器を引き直す",
+  "zh-Hans": "Shift:重抽武器",
+  "zh-Hant": "Shift:重抽武器",
+  "es": "Shift: Otra arma",
+  "de": "Shift: Neue Waffe",
+  "fr": "Shift : Autre arme",
+  "pt": "Shift: Outra arma",
+  "ru": "Shift: другое оружие"
+ },
+ "note.swarm_choose": {
+  "en": "Shift: Next weapon",
+  "ko": "Shift: 다음 무기",
+  "ja": "Shift: 次の武器",
+  "zh-Hans": "Shift:下一把武器",
+  "zh-Hant": "Shift:下一把武器",
+  "es": "Shift: Arma siguiente",
+  "de": "Shift: Nächste Waffe",
+  "fr": "Shift : Arme suivante",
+  "pt": "Shift: Próxima arma",
+  "ru": "Shift: следующее оружие"
+ },
  "stage.egg": {
   "en": "Egg",
   "ko": "알",

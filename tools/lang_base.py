@@ -67,6 +67,8 @@ t('note.raid_fire', 'Fires automatically', '쏘는 건 자동이에요')
 t('note.swarm_move', '←↑↓→: Move', '←↑↓→: 움직이기')
 t('note.swarm_auto', 'Your weapon is automatic', '무기는 자동이에요')
 t('note.swarm_grenade', 'Ctrl: Grenade', 'Ctrl: 수류탄')
+t('note.swarm_reroll', 'Shift: New weapon', 'Shift: 무기 다시 뽑기')
+t('note.swarm_choose', 'Shift: Next weapon', 'Shift: 다음 무기')
 # 단계
 t('stage.egg', 'Egg', '알')
 t('stage.baby', 'Baby', '아기')

@@ -29,6 +29,11 @@ sealed class Swarm
         public bool Winding, Dead;
         public int Cut;                             // 마지막으로 맞은 칼(쌍검 특수기)의 번호: 같은 길에서 두 번 안 맞게 (새 벌레는 0)
         public bool Elite;                          // 엘리트 (2단계부터): 체력 ×2.5, 닿는 피해 ×1.5, 걸음 ×0.9. 금색 테두리
+        public bool Heavy;                          // 강철 딱정벌레 (5단계부터): 체력 ×1.5, 밀침 ×¼, 멈칫 없음, 보석 5. 은회색
+        public bool Dart;                           // 돌진 말벌 (3단계부터): 줄지어 떨다가 GoAt 에 곧게 내달려 판을 가로지른다 (밀리지도 멈칫하지도 않는다)
+        public bool Extra;                          // 둘째 보스 (7단계부터): 1번 보스 그림, 체력 ×0.6. 잡아도 보스 수에 안 든다
+        public sbyte Vx, Vy;                        // 돌진 말벌: 가는 쪽 (-1·0·1, 한 칸이라 벌레 하나가 커지지 않는다)
+        public double GoAt { get => DashAt; set => DashAt = value; }   // 돌진 말벌이 떠나는 때 (보스 돌진 칸 DashAt 을 같이 쓴다: 말벌은 보스 돌진을 안 탄다)
     }
 
     public struct Shot
@@ -66,6 +71,12 @@ sealed class Swarm
         CalmWasp = .28, CalmBeetle1 = .16, CalmBeetle2 = .24, RushWasp = .30, RushBeetle = .10,   // 구성: 말벌은 20초부터, 딱정벌레는 60·180초부터
         RingHole = .25, FinaleHole = .33, WallGap = 26, WallRow = 18, KeepOut = 150;       // 대열: 구멍 25%(마무리 33%), 한쪽 줄 간격·줄 사이, 볼록이 둘레 비우는 거리
     public const int Waves = 5;
+    // 2차 기믹 (docs/swarm-levels.md 2-1). 배율 3 기준 px·초 (규칙에서 × sf)
+    public const double DartBand = 180, DartWind = 1.0, DartSpeed = 300, DartOut = 40, DartLaneTail = 54,   // 돌진 띠 너비, 떠는 시간, 빠르기, 판 밖에서 사라지는 거리, 띠가 사라지기까지 더하는 길이
+        SteelHp = 1.5, SteelKnock = .25, DashEveryLow = 7, ExtraHp = .6, MixP = .5;                          // 강철 체력·밀침 배율, 1·2번 보스의 돌진 간격, 둘째 보스 체력, 겹친 대열 확률
+    public const int DartTouch = 12, SteelGems = 5, MaxLanes = 2;
+    public static int DartN(int stage) => Math.Clamp(4 + stage / 2, 5, 10);                // 돌진 말벌 마릿수 (한 마리 = 물결 마릿수 2)
+    public static double SteelP(int stage) => Math.Min(.50, .25 + .03 * (stage - 5));      // 딱정벌레 중 강철 비율
     public const double RushHp = .5, RushWalk = 1.3;   // 러시 벌레 체력·걸음 배율 (YELL 검토 2026-11-16: 러시가 잔잔보다 2.5배 넘게 몰려와야 「러시」로 느껴진다)
     // 엘리트 (2단계부터, 30초 뒤부터): 체력·피해·걸음 배율, 보석, 하트, 동시에 나올 수 있는 수
     public const double EliteFrom = 30, EliteHp = 2.5, EliteTouch = 1.5, EliteWalk = .9, GemBoost = 1;
@@ -95,8 +106,8 @@ sealed class Swarm
 
     // 1분 안의 때: 잔잔 · 예고 · 러시 · 숨 고르기
     public enum Beat { Calm, Warn, Rush, Rest }
-    // 러시 대열 (2차에 말벌 돌진 Dart·양쪽 줄 Pincer·겹침이 더해진다 — ShapesOpen 이 고를 수 있는 가짓수)
-    public enum Shape { Wall, Ring }
+    // 러시 대열: 한쪽 줄 · 둘러싸기 · 말벌 돌진(3단계) · 양쪽 줄(4단계). 10단계부터 둘을 겹친 물결도
+    public enum Shape { Wall, Ring, Dart, Pincer }   // 차례가 곧 풀리는 차례 (ShapesOpen 이 앞에서부터 센다)
 
     // 보스 네 차례 (1:00 · 2:00 · 3:00 · 4:00 여왕): 체력(1단계), 빠르기, 남기는 보석
     static readonly int[] BossHp = { 400, 800, 1250, 1900 }, BossGems = { 15, 20, 25, 30 };
@@ -143,6 +154,11 @@ sealed class Swarm
     public Shape RushShape;                        // 예고 중인(또는 방금 들어온) 러시 물결의 모양과 한쪽 줄이 들어올 변, 구멍 자리(둘레 0~1)
     public int RushSide;
     public double RushHole;
+    public Shape? RushShape2;                      // 겹친 물결(10단계)의 둘째 모양 (검사용: 이번 물결이 겹쳤나)
+    // 돌진 말벌 띠 (예고선): 들어오는 변, 그 변을 따라 두 가장자리(변 시작에서 px), 놓인 때, 사라질 때. 고정 배열 (프레임마다 만들지 않는다)
+    public struct Lane { public int Side; public double A, B, At, Until; }
+    public readonly Lane[] Lanes = new Lane[MaxLanes];
+    public int LaneCount, DartsBorn;               // 지금 있는 띠 수, 지금까지 나온 돌진 말벌 수
     public double EliteHeartChance = .2;           // 엘리트를 잡을 때 하트가 나올 확률
     public Item LastItem;                          // 마지막으로 주운 자석·신발과 그때 (머리 위에 잠깐 뜬다)
     public double ItemAt = -9;
@@ -162,7 +178,14 @@ sealed class Swarm
 
     // 2차에 풀리는 것의 열쇠 (단계 n 부터): 엘리트 2, 말벌 돌진 3, 양쪽 줄 4, 강철 딱정벌레 5, 모든 보스 돌진 6, 보스 둘 7, 겹친 대열 10
     public bool Elites => Stage >= 2;
-    public int ShapesOpen => 2;                    // 고를 수 있는 대열 가짓수 (지금 Wall·Ring)
+    public bool Darts => Stage >= 3;
+    public bool Pincers => Stage >= 4;
+    public bool Steel => Stage >= 5;
+    public bool AllDash => Stage >= 6;
+    public bool TwoBoss => Stage >= 7;
+    public bool Mixed => Stage >= 10;
+    public int ShapesOpen => Stage >= 4 ? 4 : Stage >= 3 ? 3 : 2;   // 고를 수 있는 대열 가짓수 (Shape 차례대로)
+    public bool BossTwin => BossWarning && TwoBoss && (BossTier == 3 || BossTier == 2 && Stage >= 9);   // 예고 중인 차례에 보스가 둘 들어온다
     public bool Rushing => Rhythm == Beat.Rush;
     public bool Warning => State == Phase.Play && (Rhythm == Beat.Warn || forceAt < 1e8);   // 예고 5초 (디버그로 부른 러시는 1초)
 
@@ -194,6 +217,7 @@ sealed class Swarm
     double shoeFrom = ShoeFirst, grenadeFrom = GrenadeFirst, forceAt = 1e9, faceX, faceY;   // faceX·faceY: 마지막으로 움직인 쪽 (길이 1, 한 번도 안 움직였으면 0)
     int rushMin = -1, previewMin = -1, waveNext, rushTotal, carry, rushes, shapeRun, called;   // 러시: 그 분·미리 정한 분, 다음 물결, 마릿수, 상한에 막혀 넘어온 수, 지금까지 시작한 러시, 같은 모양이 이어진 수
     Shape lastShape, forced;
+    int dartRush;                                  // 이 러시에서 지금까지 정한 돌진 물결 수 (많아야 둘)
 
     // weapon 이 null 이면 rng 로 뽑는다. 뽑는 rng.Next 는 맨 처음 한 번, 무기를 정해 줘도 똑같이 쓴다 (씨가 같으면 같은 판)
     // stage 는 rng 를 쓰지 않는다 (씨가 같으면 단계가 달라도 같은 무기)
@@ -213,10 +237,10 @@ sealed class Swarm
     public double FoeR(Foe f) => f.R;
     public static int TouchDmg(Foe f)
     {
-        int dmg = f.Kind switch { Kind.Boss => f.Tier >= Bosses ? 40 : 30, Kind.Beetle => 18, Kind.Wasp => 8, _ => 10 };
+        int dmg = f.Kind switch { Kind.Boss => f.Tier >= Bosses ? 40 : 30, Kind.Beetle => 18, Kind.Wasp => f.Dart ? DartTouch : 8, _ => 10 };
         return f.Elite ? (int)Math.Round(dmg * EliteTouch, MidpointRounding.AwayFromZero) : dmg;
     }
-    public bool Shaking(Foe f) => f.Winding && Clock - f.DashAt < DashWind;   // 돌진 예고: 멈춰서 떤다
+    public bool Shaking(Foe f) => f.Winding && Clock - f.DashAt < DashWind || f.Dart && Clock < f.GoAt;   // 돌진 예고: 멈춰서 떤다 (보스·돌진 말벌)
     double Dist(Foe f) => Dist(f.X, f.Y, X, Y);
     static double Dist(double ax, double ay, double bx, double by) => Math.Sqrt((ax - bx) * (ax - bx) + (ay - by) * (ay - by));
 
@@ -242,6 +266,8 @@ sealed class Swarm
             if (Math.Abs(steerX) > .01) Dir = steerX > 0 ? 1 : -1;
             (faceX, faceY) = (steerX / len, steerY / len);
         }
+        for (int i = LaneCount - 1; i >= 0; i--)   // 다 지나간 띠는 지운다
+            if (Clock >= Lanes[i].Until) Lanes[i] = Lanes[--LaneCount];
         Spawn(dt);
         MoveFoes(dt);
         Attack(dt);
@@ -265,7 +291,7 @@ sealed class Swarm
         }
     }
 
-    void Go(Phase p, string ev) { (State, endAt, Moving, FlameOn) = (p, Math.Min(Clock, WinSec), false, false); Nades.Trim(0); ClearSpecials(); OnEvent?.Invoke(ev); }   // 판이 끝나면 공중 수류탄도 사라진다
+    void Go(Phase p, string ev) { (State, endAt, Moving, FlameOn, LaneCount) = (p, Math.Min(Clock, WinSec), false, false, 0); Nades.Trim(0); ClearSpecials(); OnEvent?.Invoke(ev); }   // 판이 끝나면 공중 수류탄도 사라진다
 
     // 판이 끝나면 새끼 폭탄·불 자리·공중 칼·미뤄 둔 둘째 발·난사 물결도 사라진다
     void ClearSpecials()
@@ -298,7 +324,7 @@ sealed class Swarm
             if (Foes.Count < cap)
             {
                 double pick = rng.NextDouble(), beetle = Clock >= 180 ? CalmBeetle2 : Clock >= 60 ? CalmBeetle1 : 0;
-                Elitify(Add(pick < beetle ? Kind.Beetle : Clock >= 20 && pick < beetle + CalmWasp ? Kind.Wasp : Kind.Bug));
+                Elitify(Steelify(Add(pick < beetle ? Kind.Beetle : Clock >= 20 && pick < beetle + CalmWasp ? Kind.Wasp : Kind.Bug)));
             }
         Rush(m, s, cap);
         // 보스: 2초 전에 들어올 자리를 정해 알리고(가장자리에 빨간 세모), 제때 그 자리로 들어온다. 판을 중간부터 시작하면 이미 지난 차례는 건너뛴다
@@ -313,6 +339,7 @@ sealed class Swarm
         {
             bossSeen = bossWarned;
             AddBoss(bossSeen, BossSide, BossU);
+            if (TwoBoss && (bossSeen == 3 || bossSeen == 2 && Stage >= 9)) AddExtra(BossSide ^ 1, 1 - BossU);   // 7단계 3:00 · 9단계부터 2:00 도 둘째 보스가 마주 보는 변에서 (rng 안 씀)
         }
     }
 
@@ -333,6 +360,7 @@ sealed class Swarm
         if (m != rushMin) // 새 분: 물결 차례를 처음(판을 중간부터 시작하면 이미 지난 물결은 건너뛴다)으로
         {
             rushMin = m;
+            dartRush = 0;
             (waveNext, rushTotal, carry) = (s >= RushFrom ? Math.Clamp((int)Math.Ceiling((s - .1 - RushFrom) / gap), 0, Waves) : 0, -1, 0);   // 0.1초 안에 닿은 물결은 건너뛰지 않는다
         }
         if (forceAt < 1e8 && Clock >= forceAt) // 디버그: 불러 둔 러시
@@ -357,7 +385,9 @@ sealed class Swarm
             int share = rushTotal * (waveNext + 1) / Waves - rushTotal * waveNext / Waves;
             double hole = m == 4 ? FinaleHole : RingHole, at = RushHole;
             if (m == 4 && QueenAlive()) at = OppositeQueen(at);   // 여왕과 벌레 떼 사이에 끼지 않게 구멍은 여왕 반대쪽
-            carry = Wave(RushShape, share + carry, RushSide, at, hole, cap);
+            RushShape2 = null;
+            if (Mixed && waveNext > 0 && m < 4 && rng.NextDouble() < MixP) carry = MixWave(share + carry, at, hole, cap);   // 10단계: 둘째 물결부터 (마지막 분 빼고) 절반은 두 모양을 겹친다
+            else carry = Wave(RushShape, share + carry, RushSide, at, hole, cap);
             waveNext++;
             OnEvent?.Invoke("wave");
         }
@@ -381,8 +411,10 @@ sealed class Swarm
         {
             int n = ShapesOpen, at = rng.Next(n);
             if (at == (int)lastShape && (n >= 3 || shapeRun >= 2)) at = (at + 1 + rng.Next(n - 1)) % n;
+            if ((Shape)at == Shape.Dart && (dartRush >= 2 || lastShape == Shape.Dart || waveNext >= Waves - 1)) at = (at + 1) % n;   // 돌진은 한 러시에 둘까지·잇따라 안 됨·마지막 물결은 안 됨 (새 rng 없이 다음 모양)
             pick = (Shape)at;
         }
+        if (pick == Shape.Dart) dartRush++;
         shapeRun = pick == lastShape ? shapeRun + 1 : 1;
         lastShape = pick;
         return pick;
@@ -391,18 +423,90 @@ sealed class Swarm
     // ── 대열: 자리만 셈해 벌레를 바깥에서 들인다. 볼록이 150px 안쪽 자리는 건너뛴다. 돌려주는 값 = 상한에 막혀 못 들인 수 (다음 물결로 넘긴다) ──
     public int Wave(Shape shape, int n, int side, double holeAt, double holeLen, int cap = MaxFoes)
     {
+        if (shape == Shape.Dart) return DartWave(n, side, cap);
         int blocked = 0, minute = MinuteOf(Clock);
         for (int i = 0; i < n; i++)
         {
             double pick = rng.NextDouble(), beetle = minute >= 1 ? RushBeetle : 0;
             var kind = pick < beetle ? Kind.Beetle : pick < beetle + RushWasp ? Kind.Wasp : Kind.Bug;
-            var (x, y) = shape == Shape.Wall ? WallSpot(side, i, n) : RingSpot(i, n, holeAt, holeLen);
+            var (x, y) = shape switch
+            {
+                Shape.Wall => WallSpot(side, i, n),
+                Shape.Pincer => (i & 1) == 0 ? WallSpot(side, i / 2, (n + 1) / 2) : WallSpot(side ^ 1, i / 2, n / 2),   // 양쪽 줄: 마주 보는 두 변에 번갈아
+                _ => RingSpot(i, n, holeAt, holeLen),
+            };
             if (Dist(x, y, X, Y) < KeepOut * sf) continue;
             if (Foes.Count >= cap) { blocked++; continue; }
             FromSide[SideOf(x, y)]++;
-            Elitify(Rusher(Add(kind, x, y)));
+            Elitify(Rusher(Steelify(Add(kind, x, y))));
         }
         return blocked;
+    }
+
+    // 말벌 돌진: 띠(너비 DartBand, 가운데 = 지금 볼록이 자리를 변 안으로 민 것)에 말벌 n 마리가 변 밖 14px 에 줄지어 DartWind 초 떨다가 곧게 내달린다.
+    // 한 마리가 물결 마릿수 2: 돌려주는 값 = 쓰고 남은 몫 (다음 물결로 넘긴다). rng 를 안 쓴다
+    int DartWave(int n, int side, int cap)
+    {
+        int dn = Math.Min(DartN(Stage), Math.Max(1, n / 2));
+        double len = side < 2 ? Field.Height : Field.Width, half = DartBand * sf / 2, center = Math.Clamp(side < 2 ? Y - Field.Top : X - Field.Left, half, len - half);
+        double a = center - half, b = center + half, vx = side == 0 ? 1 : side == 1 ? -1 : 0, vy = side == 2 ? 1 : side == 3 ? -1 : 0;
+        for (int i = 0; i < dn; i++)
+        {
+            if (Foes.Count >= cap) continue;
+            var (x, y) = Edge(side, (a + (i + .5) * (b - a) / dn) / len);
+            FromSide[side]++;
+            var f = Rusher(Add(Kind.Wasp, x, y));
+            (f.Dart, f.GoAt, f.Vx, f.Vy) = (true, Clock + DartWind, (sbyte)vx, (sbyte)vy);
+            DartsBorn++;
+        }
+        if (LaneCount < MaxLanes)
+            Lanes[LaneCount++] = new Lane { Side = side, A = a, B = b, At = Clock, Until = Clock + DartWind + ((side < 2 ? Field.Width : Field.Height) / sf + DartLaneTail) / DartSpeed };
+        return Math.Max(0, n - 2 * dn);
+    }
+
+    static readonly Shape[] Plain = { Shape.Wall, Shape.Ring, Shape.Pincer };   // 겹침의 둘째 모양이 될 수 있는 것 (돌진은 안 겹친다)
+
+    // 겹친 물결 (10단계): 지금 모양 a 와 둘째 모양 b(a·돌진이 아닌 것 중 rng 로 하나)에 몫을 반씩. 빈 변이 꼭 하나 남게 놓는다:
+    // 한쪽 줄 + 양쪽 줄은 양쪽 줄을 수직 축에 (세 변이 막히고 하나가 빈다) · 둘러싸기는 구멍 가운데를 다른 모양이 안 쓰는 변의 가운데로 · 돌진은 아무 변
+    int MixWave(int total, double at, double hole, int cap)
+    {
+        var a = RushShape;
+        int pick = rng.Next(a == Shape.Dart ? Plain.Length : Plain.Length - 1), idx = 0;
+        Shape b = Shape.Wall;
+        foreach (var c in Plain) { if (c == a) continue; if (idx++ == pick) { b = c; break; } }
+        RushShape2 = b;
+        int sa = RushSide, sb = RushSide;
+        double atA = at, atB = at;
+        if (a != Shape.Dart)
+        {
+            bool aWall = a == Shape.Wall || b == Shape.Wall, aPinch = a == Shape.Pincer || b == Shape.Pincer;
+            if (aWall && aPinch) { if (a == Shape.Pincer) sa = (RushSide + 2) % 4; else sb = (RushSide + 2) % 4; }   // 한쪽 줄은 RushSide, 양쪽 줄은 그 수직 축
+            else if (a == Shape.Ring || b == Shape.Ring)
+            {
+                var other = a == Shape.Ring ? b : a;   // 둘러싸기와 겹치는 모양: 한쪽 줄이면 RushSide, 양쪽 줄이면 RushSide·RushSide^1
+                int free = other == Shape.Wall ? RushSide ^ 1 : (RushSide + 2) % 4;
+                var (fx, fy) = Edge(free, .5, 0);
+                double ringAt = RingAt(fx, fy);
+                if (a == Shape.Ring) atA = ringAt; else atB = ringAt;
+            }
+        }
+        int half = total / 2, left = Wave(a, half, sa, atA, hole, cap);
+        return Wave(b, total - half + left, sb, atB, hole, cap);
+    }
+
+    // 강철 딱정벌레 (5단계부터): 딱정벌레의 SteelP 가 몸이 1.5배 단단하고 밀리지 않는다 (rng 는 Steel 일 때만 쓴다: 4단계까지 판이 그대로)
+    Foe Steelify(Foe f)
+    {
+        if (!Steel || f.Kind != Kind.Beetle || rng.NextDouble() >= SteelP(Stage)) return f;
+        return MakeSteel(f);
+    }
+
+    public Foe MakeSteel(Foe f)
+    {
+        if (f.Heavy) return f;
+        f.Heavy = true;
+        f.Hp = f.MaxHp = (int)Math.Round(f.Hp * SteelHp, MidpointRounding.AwayFromZero);
+        return f;
     }
 
     int SideOf(double x, double y) => x < Field.Left ? 0 : x > Field.Right ? 1 : y < Field.Top ? 2 : 3;
@@ -491,6 +595,14 @@ sealed class Swarm
         return MakeElite(Add(kind == Kind.Boss ? Kind.Bug : kind, x, y));
     }
 
+    // 디버그: 볼록이 옆 120px 에 강철 딱정벌레 (엘리트면 엘리트 강철)
+    public Foe CallSteel(bool elite)
+    {
+        var (x, y) = Inside(X + 120 * sf * (Dir >= 0 ? 1 : -1), Y);
+        var f = MakeSteel(Add(Kind.Beetle, x, y));
+        return elite ? MakeElite(f) : f;
+    }
+
     // 디버그: 지금 예고를 띄우고 1초 뒤 그 모양으로 한 물결 (모양을 안 주면 차례대로)
     public void CallRush(Shape? shape)
     {
@@ -533,11 +645,31 @@ sealed class Swarm
         return boss;
     }
 
+    // 둘째 보스 (7단계부터): 1번 보스 그림·빠르기, 체력 ×ExtraHp. 잡아도 보스 수·첫 보스 초·보석 끌어오기·자석에 안 든다
+    public Foe AddExtra(int side, double u)
+    {
+        var (x, y) = Edge(side, u);
+        var b = Add(Kind.Boss, x, y, 1);
+        (b.Hp, b.Extra) = ((int)Math.Round(b.Hp * ExtraHp, MidpointRounding.AwayFromZero), true);
+        b.MaxHp = b.Hp;
+        return b;
+    }
+
+    // 디버그: 3번 보스와 마주 보는 변의 둘째 보스를 예고 없이 바로
+    public Foe CallTwin()
+    {
+        int side = rng.Next(4);
+        double u = .2 + .6 * rng.NextDouble();
+        var boss = AddBoss(3, side, u);
+        AddExtra(side ^ 1, 1 - u);
+        return boss;
+    }
+
     // 디버그: 그 보스를 예고 없이 바로 부른다
     public Foe CallBoss(int tier) => AddBoss(Math.Clamp(tier, 1, Bosses), rng.Next(4), .2 + .6 * rng.NextDouble());
 
     // 디버그: 시계를 그 초로 (이미 지난 보스는 건너뛴다)
-    public void SetClock(double sec) { (Clock, bossSeen, bossWarned, rushMin, previewMin, forceAt) = (Math.Clamp(sec, 0, WinSec - .5), -1, -1, -1, -1, 1e9); }   // 물결 차례도 다시 맞춘다 (Rush 가 새 분으로 본다)
+    public void SetClock(double sec) { (Clock, bossSeen, bossWarned, rushMin, previewMin, forceAt, LaneCount) = (Math.Clamp(sec, 0, WinSec - .5), -1, -1, -1, -1, 1e9, 0); }   // 물결 차례도 다시 맞춘다 (Rush 가 새 분으로 본다)
 
     // 디버그·장면: 볼록이 옆에 아이템을 떨어뜨린다
     public void Drop(Item item, double dx = 40)
@@ -562,6 +694,7 @@ sealed class Swarm
         };
         f.MaxHp = f.Hp;
         if (tier >= 3) f.DashAt = Clock + DashEvery;
+        else if (AllDash && kind == Kind.Boss) f.DashAt = Clock + DashEveryLow;   // 6단계부터 1·2번 보스도 (더 드물게) 돌진
         if (tier >= Bosses) f.SpawnDue = Clock + QueenEvery;
         Foes.Add(f);
         Born++;
@@ -572,12 +705,20 @@ sealed class Swarm
     {
         foreach (var f in Foes)
         {
+            if (f.Dart) // 돌진 말벌: 떠나기 전엔 제자리, 떠나면 곧게 (밀침·멈칫·서로 밀기가 없다). 판 밖 DartOut 을 벗어나면 조용히 사라진다 (Kill 을 안 탄다)
+            {
+                if (Clock < f.GoAt) continue;
+                f.X += f.Vx * DartSpeed * sf * dt;
+                f.Y += f.Vy * DartSpeed * sf * dt;
+                if (f.X < Field.Left - DartOut * sf || f.X > Field.Right + DartOut * sf || f.Y < Field.Top - DartOut * sf || f.Y > Field.Bottom + DartOut * sf) f.Dead = true;
+                continue;
+            }
             double sinceDash = Clock - f.DashAt;
             if (sinceDash >= 0) // 돌진: 멈춰서 떨다가(예고) 그때 볼록이가 있던 쪽으로 내달린다
             {
                 double d0 = Dist(f);
                 if (!f.Winding) (f.Winding, f.DashX, f.DashY) = (true, d0 > 1 ? (X - f.X) / d0 : 1, d0 > 1 ? (Y - f.Y) / d0 : 0);
-                if (sinceDash >= DashWind + DashSec) (f.Winding, f.DashAt) = (false, f.DashAt + DashEvery);
+                if (sinceDash >= DashWind + DashSec) (f.Winding, f.DashAt) = (false, f.DashAt + (f.Tier >= 3 ? DashEvery : DashEveryLow));
                 else if (sinceDash >= DashWind)
                 {
                     f.X = Math.Clamp(f.X + f.DashX * DashSpeed * sf * dt, Field.Left - 30 * sf, Field.Right + 30 * sf);
@@ -598,6 +739,7 @@ sealed class Swarm
             for (int j = i + 1; j < Foes.Count; j++)
             {
                 Foe b = Foes[j];
+                if (a.Dart || b.Dart) continue;
                 double want = (a.R + b.R) * .8, dx = a.X - b.X, dy = a.Y - b.Y, d2 = dx * dx + dy * dy;
                 if (d2 >= want * want || d2 < .0001) continue;
                 double d = Math.Sqrt(d2), push = (want - d) / 2, ux = dx / d, uy = dy / d;
@@ -706,7 +848,7 @@ sealed class Swarm
         s = new Shot
         {
             Ammo = ammo, X = X, Y = Y, Vx = Math.Cos(a) * w.Speed * sf, Vy = Math.Sin(a) * w.Speed * sf, Until = Clock + life,
-            Dmg = dmg >= 0 ? dmg : w.Dmg, Pierce = pierce >= 0 ? pierce : w.Pierce, Knock = special ? w.Knock * Arm.Spec.SpecKnock : w.Knock, Stun = special ? 0 : w.Stun, Blast = w.Blast, Special = special,
+            Dmg = dmg >= 0 ? dmg : w.Dmg, Pierce = pierce >= 0 ? pierce : w.Pierce, Knock = special ? w.Knock * KnockNow : w.Knock, Stun = special ? 0 : w.Stun, Blast = w.Blast, Special = special,
         };
         if (special) SpecShots++;
     }
@@ -868,8 +1010,10 @@ sealed class Swarm
     public void ChargeNow() => charge = Math.Max(0, EveryNow - 1);   // 디버그: 다음 공격에 발동
 
     // 특수기 피해: 무기 피해 × 배율 × 벌레 체력 배율 (수류탄과 같은 생각: 단계가 올라도 특수기가 무뎌지지 않는다). 엘리트(2단계부터)에게는 더 세다. 보스는 배율 없음
-    public int SpecDmg(double x) => Math.Max(1, (int)Math.Round(Weapon.Dmg * x * T.HpX * (Stage >= 2 ? Arm.Spec.HiDmg[(int)Weapon.Which] : 1), MidpointRounding.AwayFromZero));
-    public int EveryNow => Stage >= 2 && Arm.Spec.HiEvery[(int)Weapon.Which] > 0 ? Arm.Spec.HiEvery[(int)Weapon.Which] : Weapon.Every;   // 2단계부터 박자를 당기는 무기가 있다
+    public int SpecDmg(double x) => Math.Max(1, (int)Math.Round(Weapon.Dmg * x * T.HpX * HiDmgNow, MidpointRounding.AwayFromZero));
+    double HiDmgNow => Stage >= 5 && Arm.Spec.Hi5Dmg[(int)Weapon.Which] > 1 ? Arm.Spec.Hi5Dmg[(int)Weapon.Which] : Stage >= 2 ? Arm.Spec.HiDmg[(int)Weapon.Which] : 1;   // 5단계부터는 5단계 칸 (1 이하면 2단계 칸 그대로)
+    double KnockNow => Arm.Spec.SpecKnock * (Stage >= 5 ? Arm.Spec.Hi5Knock[(int)Weapon.Which] : 1);   // 특수기 알·칼의 밀침 배율
+    public int EveryNow => Stage >= 5 && Arm.Spec.Hi5Every[(int)Weapon.Which] > 0 ? Arm.Spec.Hi5Every[(int)Weapon.Which] : Stage >= 2 && Arm.Spec.HiEvery[(int)Weapon.Which] > 0 ? Arm.Spec.HiEvery[(int)Weapon.Which] : Weapon.Every;   // 2단계부터(5단계부터는 더) 박자를 당기는 무기가 있다
     public static int Versus(Foe f, int dmg) => f.Elite ? (int)Math.Round(dmg * Arm.Spec.Elite, MidpointRounding.AwayFromZero) : dmg;
 
     // 미뤄 둔 둘째 발·난사 물결 → 칼 → 새끼 폭탄 → 불 바닥 (rng 를 안 쓴다)
@@ -955,7 +1099,7 @@ sealed class Swarm
             double dx = f.X - BladeX, dy = f.Y - BladeY, r = r0 + f.R;
             if (dx * dx + dy * dy >= r * r) continue;
             f.Cut = bladePass;
-            if (Damage(f, Versus(f, bladeDmg), outward ? w.Knock * Arm.Spec.SpecKnock : 0, 0, f.X - bladeVx, f.Y - bladeVy)) SpecKills++;
+            if (Damage(f, Versus(f, bladeDmg), outward ? w.Knock * KnockNow : 0, 0, f.X - bladeVx, f.Y - bladeVy)) SpecKills++;
         }
     }
 
@@ -1084,10 +1228,10 @@ sealed class Swarm
         if (f.Dead) return false;
         bool boss = f.Kind == Kind.Boss;
         if (flash) f.Hit = Clock;
-        if (stun > 0 && !boss) f.StunUntil = Math.Max(f.StunUntil, Clock + stun);
-        if (knock > 0)
+        if (stun > 0 && !boss && !f.Heavy && !f.Dart) f.StunUntil = Math.Max(f.StunUntil, Clock + stun);   // 보스·강철은 멈칫 없음, 돌진 말벌은 안 멈춘다
+        if (knock > 0 && !f.Dart)
         {
-            double d = Dist(f.X, f.Y, fromX, fromY), push = knock * sf * (boss ? .25 : 1);
+            double d = Dist(f.X, f.Y, fromX, fromY), push = knock * sf * (boss ? .25 : f.Heavy ? SteelKnock : 1);
             if (d > .01) (f.X, f.Y) = (f.X + (f.X - fromX) / d * push, f.Y + (f.Y - fromY) / d * push);
         }
         if ((f.Hp -= n) > 0) { if (flash) OnEvent?.Invoke("hit"); return false; }
@@ -1101,8 +1245,9 @@ sealed class Swarm
         Kills++;
         bool boss = f.Kind == Kind.Boss;
         Pops.Add(new Pop { X = f.X, Y = f.Y, At = Clock, R = f.R * 1.5 });
-        Gems.Add(new Gem { X = f.X, Y = f.Y, Xp = boss ? BossGems[f.Tier - 1] : f.Kind == Kind.Beetle ? f.Elite ? EliteBeetleGems : 3 : f.Elite ? EliteGems : GemValue() });
-        if (boss)
+        Gems.Add(new Gem { X = f.X, Y = f.Y, Xp = f.Extra ? BossGems[0] / 2 : boss ? BossGems[f.Tier - 1] : f.Kind == Kind.Beetle ? f.Heavy ? (f.Elite ? 2 * SteelGems : SteelGems) : f.Elite ? EliteBeetleGems : 3 : f.Elite ? EliteGems : GemValue() });
+        if (f.Extra) Gems.Add(new Gem { X = f.X + 14 * sf, Y = f.Y, Item = Item.Heart });   // 둘째 보스: 보석 7 + 하트만 (보스 수·첫 보스 초·보석 끌어오기·자석 없음)
+        else if (boss)
         {
             foreach (var g in Gems) if (g.Item == Item.Gem) g.Pull = true;   // 보스를 잡으면 판 위 보석이 모두 날아온다
             BossesKilled++;
@@ -1187,7 +1332,7 @@ sealed class Swarm
         foreach (var f in Foes)
         {
             double d = Dist(f), away = HurtPush * sf + f.R;
-            if (d < away && d > .01) (f.X, f.Y) = (X + (f.X - X) / d * away, Y + (f.Y - Y) / d * away);
+            if (!f.Dart && d < away && d > .01) (f.X, f.Y) = (X + (f.X - X) / d * away, Y + (f.Y - Y) / d * away);
         }
         if (Hp <= 0) Go(Phase.Over, "over");
         else OnEvent?.Invoke("hurt");
@@ -1295,6 +1440,7 @@ sealed class Swarm
             foreach (var f in Foes)
             {
                 double d = Dist(f), step = Math.Min(d, f.Speed * reach), px = d > .01 ? f.X + (X - f.X) / d * step : f.X, py = d > .01 ? f.Y + (Y - f.Y) / d * step : f.Y;
+                if (f.Dart) { double go = Math.Max(0, ThrowSec - Math.Max(0, f.GoAt - Clock)) * DartSpeed * sf; (px, py) = (f.X + f.Vx * go, f.Y + f.Vy * go); }
                 double r = blast + f.R, dx = px - lx, dy = py - ly;
                 if (dx * dx + dy * dy < r * r) n += f.Kind == Kind.Boss ? 3 : 1;
             }
@@ -1322,7 +1468,15 @@ sealed class Swarm
                 (px, py) = Inside(px + dx * Speed * sf * .1, py + dy * Speed * sf * .1);
                 if (step == 3) (nearX, nearY) = (px, py);
                 if (Clock + step * .1 < SafeUntil) continue; // 안 맞는 동안은 뚫고 지나가도 된다
-                foreach (var f in Foes) gap = Math.Min(gap, Dist(f.X, f.Y, px, py) - f.Speed * sf * .1 * step - f.R - BodyR);
+                foreach (var f in Foes)
+                {
+                    if (f.Dart) // 돌진 말벌은 곧게 가니 그 자리로 센다 (떠나기 전엔 제자리)
+                    {
+                        double go = Math.Max(0, step * .1 - Math.Max(0, f.GoAt - Clock)) * DartSpeed * sf;
+                        gap = Math.Min(gap, Dist(f.X + f.Vx * go, f.Y + f.Vy * go, px, py) - f.R - BodyR);
+                    }
+                    else gap = Math.Min(gap, Dist(f.X, f.Y, px, py) - f.Speed * sf * .1 * step - f.R - BodyR);
+                }
             }
             double cx = (px - Field.Left - hx) / hx, cy = (py - Field.Top - hy) / hy;
             double score = gap / (30 * sf) + Math.Min(0, gap - tight) / (3 * sf) - (cx * cx * cx * cx + cy * cy * cy * cy) * 5 + ((dx, dy) == old ? .15 : 0);

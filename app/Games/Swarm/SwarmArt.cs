@@ -223,6 +223,29 @@ static class SwarmArt
         return turned;
     }
 
+    // 다시 뽑기 표시: 오른쪽 위가 화살촉인 고리 (첫 장) 와 90° 돌린 것 (0.25초마다 번갈아). 9×9
+    static readonly string[] SwapRows =
+    {
+        "..ooooo.o",
+        ".oyyyyyoo",
+        "oyyoooyyo",
+        "oyo..oyyo",
+        "oyo..oooo",
+        "oyo...oyo",
+        "oyyoooyyo",
+        ".oyyyyyo.",
+        "..ooooo..",
+    };
+    static readonly string[][] SwapFrames = { SwapRows, Rot(SwapRows) };
+    public static Stamp Swap(int frame, int scale) => Peek(41 + (frame & 1), scale) ?? Store(41 + (frame & 1), scale, Make(SwapFrames[frame & 1], scale));
+
+    // 강철 딱정벌레 (5단계부터): 딱정벌레 그림(game/beetle)의 초록 넷을 쇠 색으로. 밝은 등 무늬(#B0E296)가 광택 노릇. 눈은 그대로
+    static uint SteelMap(uint p) => p switch
+    {
+        0xFF224A2C => 0xFF3A3F4A, 0xFF40864A => 0xFF5E6470, 0xFF68B860 => 0xFF9AA0AC, 0xFFB0E296 => 0xFFD6DAE2, _ => p,
+    };
+    public static Stamp Steel(Stamp src, int frame, int scale) => Peek(70 + frame, scale) ?? Store(70 + frame, scale, Remake(src, 0, SteelMap, 0));
+
     static readonly string[][] BladeFlyRows = BuildBlade();
     static string[][] BuildBlade()
     {
@@ -301,7 +324,7 @@ static class SwarmArt
         return new Stamp(bmp);
     }
 
-    static readonly Dictionary<(int Kind, int Scale), Stamp> made = new();   // Kind: 0~6 손(오른쪽) · 10~16 손(왼쪽) · 20~26 머리 위 · 30~32 갈래 · 40 위 화살표 · 50~59 깃발 · 60~69 왕관 · 80~ 엘리트 · 90 러시 느낌표 · 100 수류탄 · 101 밝은 판 · 102 회색 판 · 110~113 날아가는 네 장 · 120·121 그림자 · 130~136 밝은 손(오른쪽)·140~146 밝은 손(왼쪽)·150~156 밝은 머리 그림 · 160~163 날아가는 칼 · 170 새끼 폭탄 · 180·181 불 자리
+    static readonly Dictionary<(int Kind, int Scale), Stamp> made = new();   // Kind: 0~6 손(오른쪽) · 10~16 손(왼쪽) · 20~26 머리 위 · 30~32 갈래 · 40 위 화살표 · 41~42 다시 뽑기 · 70~71 강철 · 50~59 깃발 · 60~69 왕관 · 190~196 못 깬 무기 · 200~299 등급 숫자 · 80~ 엘리트 · 90 러시 느낌표 · 100 수류탄 · 101 밝은 판 · 102 회색 판 · 110~113 날아가는 네 장 · 120·121 그림자 · 130~136 밝은 손(오른쪽)·140~146 밝은 손(왼쪽)·150~156 밝은 머리 그림 · 160~163 날아가는 칼 · 170 새끼 폭탄 · 180·181 불 자리
     // 이미 만든 그림은 바로 (프레임마다 부르는 곳에서 람다·새 객체를 안 만든다: 만드는 쪽은 따로 둔 메서드)
     static Stamp? Peek(int kind, int scale) { lock (made) return made.TryGetValue((kind, scale), out var hit) ? hit : null; }
     static Stamp Store(int kind, int scale, Stamp stamp) { lock (made) return made.TryGetValue((kind, scale), out var hit) ? hit : made[(kind, scale)] = stamp; }
@@ -363,6 +386,30 @@ static class SwarmArt
     public static Stamp Bang(int scale) => Peek(90, scale) ?? Store(90, scale, BuildBang(scale));
     static Stamp BuildBang(int scale) => Make(BangRows, scale, _ => BangColor);
 
+    // 결과 화면 무기 줄 (docs/swarm-levels.md 2-3): 같은 주황 붓 하나 (이번 판 무기 밑줄)
+    public static readonly SolidBrush Amber = new(BangColor);
+    const uint DigitWhite = 0xFFFFFFFF;
+    static readonly SolidBrush[] KeyBrushes = Enumerable.Range(0, TierMain.Length + 6).Select(i => new SolidBrush(KeyColor(i))).ToArray();
+    public static SolidBrush TierBrush(int tier, int phase) => KeyBrushes[ColorKey(tier, phase)];   // 등급 색 붓 (점 같은 네모용)
+    public static readonly Color DimFill = Color.FromArgb(0x8C, 0x7B, 0x6E);   // 못 깬 무기: 테두리만 남기고 속을 이 한 색으로
+    public static readonly SolidBrush DimBrush = new(DimFill);
+
+    // 등급 색 숫자: 도트 숫자(num/N, 흰 속 + 갈색 테두리)의 흰색만 등급 색으로. src 는 그 배율의 숫자 그림 (한 번만 만든다)
+    public static Stamp Digit(Stamp src, int d, int tier, int phase, int scale)
+    {
+        int key = ColorKey(tier, phase);
+        return Peek(200 + key * 10 + d, scale) ?? Store(200 + key * 10 + d, scale, BuildDigit(src, key));
+    }
+
+    static Stamp BuildDigit(Stamp src, int key)
+    {
+        uint to = (uint)KeyColor(key).ToArgb();
+        return Remake(src, 0, p => p == DigitWhite ? to : p, 0);
+    }
+
+    // 못 깬 무기 그림: 테두리(o)만 그대로, 속은 한 색
+    public static Stamp IconDim(Arm.Id id, int scale) => Peek(190 + (int)id, scale) ?? Store(190 + (int)id, scale, Make(IconRows(id), scale, ch => ch == 'o' ? Colors['o'] : DimFill));
+
     // 왕관 색 바꿈: 왕관 그림(금색 한 가지 + 갈색 선)의 금색을 등급 색으로
     const uint CrownGold = 0xFFFAB928;
     public static Stamp Crown(Stamp src, int tier, int phase, int scale)
@@ -416,7 +463,7 @@ static class SwarmArt
     // 자가 검사: 줄 길이가 같고 색 글자가 팔레트 안인지
     public static string? Broken()
     {
-        foreach (var (rows, i) in Hands.Concat(Ups).Concat(new[] { FlagRows, ArrowRows, NadeRows, FlyRows, ShadeBig, ShadeSmall, BladeRows, BombRows, FireRows }).Select((r, i) => (r, i)))
+        foreach (var (rows, i) in Hands.Concat(Ups).Concat(new[] { FlagRows, ArrowRows, SwapRows, NadeRows, FlyRows, ShadeBig, ShadeSmall, BladeRows, BombRows, FireRows }).Select((r, i) => (r, i)))
             if (rows.Any(r => r.Length != rows[0].Length || r.Any(ch => ch != '.' && !Colors.ContainsKey(ch) && !(rows == FlagRows && ch is 'a' or 'h' or 'k')))) return $"그림 {i}";
         if (FlyRows.Length != FlyRows[0].Length || Fly.Any(f => f.Length != FlyRows.Length || f.Any(r => r.Length != FlyRows.Length))) return "날아가는 수류탄은 정사각형";
         if (BladeRows.Length != BladeRows[0].Length || BladeFlyRows.Any(f => f.Length != BladeRows.Length || f.Any(r => r.Length != BladeRows.Length))) return "날아가는 칼은 정사각형";

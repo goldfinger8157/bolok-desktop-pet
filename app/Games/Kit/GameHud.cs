@@ -100,6 +100,16 @@ static class GameHud
         return Rectangle.Intersect(f, Overlay.Around(cx, cy, 50 * k, 32 * k));
     }
 
+    // 말풍선처럼 모서리를 한 칸 깎은 상자: 크림 테두리, 갈색 속 (box 는 창 좌표, 테두리는 box 바깥으로 k 만큼 나온다)
+    public static void Box(Graphics g, Rectangle box, int k)
+    {
+        g.FillRectangle(Pal.Cream, box.X + k, box.Y - k, box.Width - 2 * k, box.Height + 2 * k);
+        g.FillRectangle(Pal.Cream, box.X - k, box.Y + k, box.Width + 2 * k, box.Height - 2 * k);
+        g.FillRectangle(Pal.Cream, box);
+        g.FillRectangle(Pal.Line, box.X + k, box.Y, box.Width - 2 * k, box.Height);
+        g.FillRectangle(Pal.Line, box.X, box.Y + k, box.Width, box.Height - 2 * k);
+    }
+
     // ── 끝: 어두운 상자 안에 점수를 크게. 새 기록이면 상자 위에 큰 왕관, 아니면 아래 줄에 작은 왕관 + 최고 기록 ──
     // icon: 점수 앞에 붙일 그림 이름 (잡은 수면 벌레 그림처럼). 있으면 숫자 앞에 × 를 붙인다. best 가 0 이면 아래 줄은 없다
     public static void Result(Overlay o, Graphics g, Rectangle f, int k, int score, int best, bool newBest, string? icon = null)
@@ -112,12 +122,7 @@ static class GameHud
         int w1 = (icon != null ? 14 * k : 0) + glyphs * 5 * big, w2 = second ? (13 + 5 * Digits(best)) * small : 0;
         int half = Math.Max(w1, w2) / 2 + 5 * k, row2 = cy + 5 * big + 2 * k + 4 * small;
         var box = o.Client(Rectangle.FromLTRB(cx - half, cy - 5 * big - 3 * k, cx + half, (second ? row2 + 4 * small : cy + 5 * big) + 3 * k));
-        // 말풍선처럼 모서리를 한 칸 깎은 상자: 크림 테두리, 갈색 속
-        g.FillRectangle(Pal.Cream, box.X + k, box.Y - k, box.Width - 2 * k, box.Height + 2 * k);
-        g.FillRectangle(Pal.Cream, box.X - k, box.Y + k, box.Width + 2 * k, box.Height - 2 * k);
-        g.FillRectangle(Pal.Cream, box);
-        g.FillRectangle(Pal.Line, box.X + k, box.Y, box.Width - 2 * k, box.Height);
-        g.FillRectangle(Pal.Line, box.X, box.Y + k, box.Width, box.Height - 2 * k);
+        Box(g, box, k);
         if (icon != null) stamps.Get(icon, 0, small).Put(o, g, cx - w1 / 2 + 7 * k, cy - k);
         Number(o, g, score, cx - w1 / 2 + (icon != null ? 14 * k : 0) + 5 * big / 2, cy, big, -1, icon != null ? 'x' : '\0');
         if (newBest) stamps.Get("game/crown", 0, big).Put(o, g, cx, cy - 5 * big - 3 * k - 7 * big);

@@ -18,8 +18,10 @@ sealed partial class SwarmGame : IGameMode
     int stage = 1, maxStage;                   // 다음 판에 할 단계, 깬 가장 높은 단계 (0 = 아직 없음)
     Dictionary<string, int> stageBest = new(); // 무기 이름 → 그 무기로 깬 가장 높은 단계
     int? forceStage;                           // 디버그로 정한 다음 판 단계
+    bool shiftWas, swapUsed;                   // 지난 프레임에 Shift 가 눌려 있었다 (누르는 순간만), 이번 판에서 다시 뽑기를 썼다 (2~5단계 보상: 한 판에 한 번)
     bool auto, practice;                       // practice: 디버그로 단계를 정한 판 (자동 조종 판처럼 기록·단계에 안 남는다)
-    Watch hud, bossHud, rushHud, flagHud, nadeHud, specHud;
+    Watch hud, bossHud, rushHud, flagHud, nadeHud, specHud, laneHud;
+    readonly List<Rectangle> laneRects = new(), lastLanes = new();   // 돌진 띠: 이번 프레임에 다시 칠할 자리, 지난번에 그린 자리 (사라질 때 지운다)
     bool ctrlWas;                              // 지난 프레임에 Ctrl 이 눌려 있었다 (누르는 순간만 던지게)
     readonly Random pickRng = new();
     internal Func<Rectangle, Session>? FakeOpen;   // 자가 검사: 판을 열지 않고 Start 를 돌려 본다
@@ -29,10 +31,14 @@ sealed partial class SwarmGame : IGameMode
         ["kill"] = Sound.Hit, ["bigkill"] = Sound.Boom, ["boom"] = Sound.Boom, ["swing"] = Sound.Tap, ["hurt"] = Sound.Hurt, ["over"] = Sound.Hurt,
         ["level"] = Sound.Pick, ["heart"] = Sound.Pick, ["magnet"] = Sound.Pick, ["shoe"] = Sound.Pick, ["win"] = Sound.Pick,
         ["grenade"] = Sound.Pick, ["throw"] = Sound.Tap, ["noammo"] = Sound.Tap, ["nade"] = Sound.Boom,   // 수류탄: 줍기, 던지기, 빈 손(톡), 터짐
-        ["cluster"] = Sound.Boom,   // 바주카 새끼 폭탄: 첫 것이 터질 때만 한 번 더 쾅 (특수기 "special" 자체는 소리 없음: 산탄총은 저절로 두 번, 난사는 네 번 울린다)
+        ["swap"] = Sound.Pick, ["cluster"] = Sound.Boom,   // 바주카 새끼 폭탄: 첫 것이 터질 때만 한 번 더 쾅 (특수기 "special" 자체는 소리 없음: 산탄총은 저절로 두 번, 난사는 네 번 울린다)
     };
     // 시작 안내 (줄 순서 규칙: 마우스 → 키 → Esc)
     static readonly string[] GuideKeys = { "note.swarm_move", "note.swarm_auto", "note.swarm_grenade", "note.esc" };
+    static readonly string[] GuideReroll = { "note.swarm_move", "note.swarm_auto", "note.swarm_grenade", "note.swarm_reroll", "note.esc" };   // 2단계를 깼으면 (다시 뽑기)
+    static readonly string[] GuideChoose = { "note.swarm_move", "note.swarm_auto", "note.swarm_grenade", "note.swarm_choose", "note.esc" };   // 6단계를 깼으면 (무기 고르기)
+    string[] GuideNow => maxStage >= 6 ? GuideChoose : maxStage >= 2 ? GuideReroll : GuideKeys;
+    const double RerollSec = 1.5, ChooseSec = 3.0;   // 시작해서 Shift 가 먹는 시간
     // 쏘는 소리는 무기마다 (Arm.Id 순서. 근접은 swing, 바주카는 쏠 때 톡·터질 때 쾅, 화염은 톡)
     static readonly Sound[] FireSound = { Sound.Tap, Sound.Tap, Sound.Shot, Sound.ShotGun, Sound.ShotMg, Sound.Tap, Sound.Tap };
 
@@ -60,12 +66,21 @@ sealed partial class SwarmGame : IGameMode
         pick = null;
         (practice, int play) = (forceStage != null, forceStage ?? stage);
         forceStage = null;
-        Begin(new Swarm(field, k, new Random(), weapon, play));
+        swapUsed = false;
+        Begin(NewRun(field, k, weapon, play));
         ses = FakeOpen?.Invoke(field) ?? Session.Open(host, field, () => Stop(true));
-        ses.Guide(GuideKeys);
+        ses.Guide(GuideNow);
         b.StartPuppet();
         host.ShowPet(false);
         Dbg.Log("mode-start", ("id", Id), ("field", field.ToString()), ("weapon", Arm.Name(weapon)), ("stage", play));
+    }
+
+    // 새 판 하나: 4단계를 깬 사람은 자석 하나로 시작한다 (시작·다시 뽑기·디버그 모두 이 길로)
+    Swarm NewRun(Rectangle field, int k, Arm.Id? weapon, int play)
+    {
+        var s = new Swarm(field, k, new Random(), weapon, play);
+        if (maxStage >= 4) s.Magnets = 1;
+        return s;
     }
 
     // 새 판을 건다 (처음이거나, 하는 중에 디버그로 무기를 바꿔 같은 자리에서 다시)
@@ -79,8 +94,10 @@ sealed partial class SwarmGame : IGameMode
             if (e is "level" or "hurt" or "big" or "bigkill" or "magnet" or "shoe" or "over" or "win" or "rush" or "grenade" or "throw" or "nade")
                 Dbg.Log("swarm", ("event", e), ("stage", s.Stage), ("sec", (int)s.Time), ("weapon", Arm.Name(s.Weapon.Which)), ("level", s.Level), ("kills", s.Kills), ("hp", s.Hp), ("foes", s.Foes.Count), ("shoes", s.Shoes), ("magnets", s.Magnets), ("boss", s.BossesKilled), ("grenades", s.Grenades), ("nadekills", s.NadeKills));
         };
-        hud = bossHud = rushHud = flagHud = nadeHud = specHud = default;
-        ctrlWas = true;   // Ctrl 을 누른 채 시작해도 안 나간다 (떼었다 다시 눌러야 던진다)
+        hud = bossHud = rushHud = flagHud = nadeHud = specHud = laneHud = default;
+        laneRects.Clear();
+        lastLanes.Clear();
+        (ctrlWas, shiftWas) = (true, true);   // Ctrl·Shift 를 누른 채 시작해도 안 나간다·안 바뀐다 (떼었다 다시 눌러야 한다)
         gemRects.Clear();
         flakes.Trim(0);
         flameRect = Rectangle.Empty;
@@ -97,12 +114,33 @@ sealed partial class SwarmGame : IGameMode
             bool ctrl = io.Active && io.Ctrl;   // Ctrl 도 판이 앞 창일 때만 (다른 창에서 Ctrl+C 를 누를 때 아까운 수류탄이 나가면 안 된다)
             if (ctrl && !ctrlWas) s.Throw();    // 누르는 순간만: 꾹 눌러도 한 번 (시작 안내·깃발이 떠 있는 동안에도 던질 수 있다)
             ctrlWas = ctrl;
+            bool shift = io.Active && io.Shift;   // Shift 도 판이 앞 창일 때만 (한/영 전환·대문자로 누르는 일이 판 밖에서 먹지 않게). 시작 몇 초 안에만 의미가 있다
+            if (shift && !shiftWas && CanSwap(s)) Swap(s);
+            shiftWas = shift;
         }
         s.Update(dt);
         Track();
         (host.Pet.X, host.Pet.Y) = (s.X, s.Feet); // 본체는 숨었지만 끝나면 여기서 나타난다
         if (s.Done || Ended(s) && s.EndedFor > .8 && io.LeftHit) Stop(false); // 끝 화면은 0.8초 뒤부터 눌러서 닫을 수 있다
     }
+
+    // 보상 (docs/swarm-levels.md 2-2): 풀림은 깬 가장 높은 단계(maxStage)로만 — 2 다시 뽑기(시작 1.5초 안에 Shift 한 번) · 6 고르기(시작 3초 안에 Shift 를 누를 때마다 다음 무기, 횟수 제한 없음)
+    bool Choosing => maxStage >= 6;
+    bool CanSwap(Swarm s) => s.State == Swarm.Phase.Play && !auto && maxStage >= 2 && (Choosing ? s.Clock < ChooseSec : s.Clock < RerollSec && !swapUsed);
+
+    void Swap(Swarm s)
+    {
+        var next = Choosing ? (Arm.Id)(((int)s.Weapon.Which + 1) % Arm.Kinds) : PickWeapon(pickRng, s.Weapon.Which);
+        Begin(NewRun(s.Field, s.K, next, s.Stage));   // 새 판이다: 시계 0, 볼록이 가운데, 수류탄 1, 벌레·보석 없음 (판 자리·단계·연습 여부는 그대로)
+        swapUsed = true;
+        if (!Choosing) ses?.Guide(GuideKeys);          // 다시 뽑기는 한 번이라 안내에서 Shift 줄을 뺀다 (고르기는 줄을 그대로: 판 시계가 0 이라 4초 동안 다시 뜬다)
+        Snd.Play(Sounds, "swap");
+        Dbg.Log("swarm-swap", ("weapon", Arm.Name(next)), ("stage", s.Stage), ("choose", Choosing));
+    }
+
+    // 머리 위 큰 무기 그림이 떠 있는 시간 (고르기는 3초, 그 밖에는 시작 1.5초)
+    double IntroWeaponSec => Choosing && !auto ? ChooseSec : IntroSec;
+    bool RerollOpen(Swarm s) => s.State == Swarm.Phase.Play && !Choosing && !auto && maxStage >= 2 && !swapUsed && s.Clock < RerollSec;
 
     // quit(보스 키·디버그 stop): 결과 화면·표정 없이 바로 끝낸다. 기록은 조용히 남긴다
     public void Stop(bool quit)
@@ -148,6 +186,7 @@ sealed partial class SwarmGame : IGameMode
     int artK;
     readonly Stamp[][] foe = new Stamp[4][];   // Swarm.Kind 순서
     readonly Stamp[][] elite = new Stamp[3][]; // 엘리트(금색 테두리): 보통·말벌·딱정벌레
+    Stamp[] steel = null!, eliteSteel = null!;  // 강철 딱정벌레(5단계부터)와 그 엘리트
     Stamp[] queen = null!;                     // 여왕: 보스 그림을 한 배율 크게
     readonly Stamp[] rocket = new Stamp[2];    // 오른쪽·왼쪽
     Stamp gem = null!, bigGem = null!, heart = null!, magnet = null!, shoe = null!, flash = null!, plus = null!, crown = null!, bigCrown = null!, spark = null!, bossIcon = null!;
@@ -192,11 +231,14 @@ sealed partial class SwarmGame : IGameMode
             elite[kind] = new Stamp[foe[kind].Length];
             for (int i = 0; i < elite[kind].Length; i++) elite[kind][i] = SwarmArt.Elite(foe[kind][i], kind * 2 + i, small);
         }
+        var beetle = foe[(int)Swarm.Kind.Beetle];
+        (steel, eliteSteel) = (new Stamp[beetle.Length], new Stamp[beetle.Length]);
+        for (int i = 0; i < beetle.Length; i++) (steel[i], eliteSteel[i]) = (SwarmArt.Steel(beetle[i], i, small), SwarmArt.Elite(SwarmArt.Steel(beetle[i], i, small), 6 + i, small));
     }
 
     Stamp FoeArt(Swarm s, Swarm.Foe f)
     {
-        var row = f.Tier >= Swarm.Bosses ? queen : f.Elite ? elite[(int)f.Kind] : foe[(int)f.Kind];
+        var row = f.Tier >= Swarm.Bosses ? queen : f.Heavy ? (f.Elite ? eliteSteel : steel) : f.Elite ? elite[(int)f.Kind] : foe[(int)f.Kind];
         return row[((int)(s.Clock * (f.Kind == Swarm.Kind.Wasp ? 12 : 5)) + (int)f.Speed) % row.Length];
     }
 
@@ -287,6 +329,7 @@ sealed partial class SwarmGame : IGameMode
     // YELL 2026-11-17: 붉은 테두리 띠·붉은 모서리는 너무 눈에 띈다 → 느낌표 시안 2번, 모서리는 원래 색. 자리는 러시마다 한 번 정한다 (rng 를 안 쓴다: 같은 씨 = 같은 판)
     const int Marks = 6;
     readonly (int X, int Y)[] marks = new (int, int)[Marks];
+    readonly int[] markSides = new int[Marks];   // 느낌표마다 서 있는 변 (검사용)
     int marksFor = -1;
 
     void PlaceMarks(Swarm s)
@@ -299,7 +342,8 @@ sealed partial class SwarmGame : IGameMode
         int k = s.K;
         for (int i = 0; i < Marks; i++)
         {
-            int side = s.RushShape == Swarm.Shape.Ring ? r.Next(4) : s.RushSide;
+            int side = s.RushShape == Swarm.Shape.Ring ? r.Next(4) : s.RushShape == Swarm.Shape.Pincer ? s.RushSide ^ (i & 1) : s.RushSide;   // 양쪽 줄은 마주 보는 두 변에 셋씩
+            markSides[i] = side;
             double u = .1 + .8 * r.NextDouble();
             int inset = (5 + r.Next(9)) * k + (side == 2 ? 22 * k : 0);   // 위 변은 기록 줄 아래로
             marks[i] = side switch
@@ -359,6 +403,16 @@ sealed partial class SwarmGame : IGameMode
             if (step < BlastArt.Frames) BlastArt.Burst(BlastArt.Variant(b.X1, b.Y1), step, (int)(s.Weapon.Blast * Arm.Spec.BombBlast * (k / 3.0) * 1.2), GameHud.Small(k));
         }
         specHud.Set(SpecFlash(s) ? (SpecSpark(s) ? 2 : 1) : 0);   // 특수기 번쩍: 없음 · 밝은 판 · 밝은 판 + 반짝이
+        int laneKey = s.LaneCount;   // 돌진 띠: 있는 수·뻗은 칸·자리가 바뀔 때만 다시 칠한다 (뻗는 동안만 프레임마다, 다 뻗으면 가만히)
+        for (int i = 0; i < s.LaneCount; i++) laneKey = HashCode.Combine(laneKey, LaneGrown(s, s.Lanes[i]), s.Lanes[i].Side, (int)s.Lanes[i].A);
+        laneHud.Set(laneKey);
+        laneRects.Clear();
+        if (laneHud.Changed)
+        {
+            laneRects.AddRange(lastLanes);   // 사라진 것의 자리도 지운다
+            lastLanes.Clear();
+            for (int i = 0; i < s.LaneCount; i++) { LaneRects(s, s.Lanes[i], laneRects); LaneRects(s, s.Lanes[i], lastLanes); }
+        }
 
         int keep = 0;
         for (int i = 0; i < flakes.Count; i++) if (s.Clock - flakes[i].Born < FlakeSec) flakes[keep++] = flakes[i];
@@ -434,6 +488,8 @@ sealed partial class SwarmGame : IGameMode
         if (s.Clock - s.SwingAt < s.SwingLen + .05) rs.Add(o.Client(Overlay.Around(s.X, s.Y, s.RangePx + 3 * k, s.RangePx + 3 * k)));
         if (s.Clock - s.MagnetAt < RingSec) rs.Add(o.Client(Overlay.Around(s.X, s.Y, s.PickPx + 3 * k, s.PickPx + 3 * k)));   // 새 줍는 둘레 (점선 원)
         if (s.BossWarning) { var (wx, wy) = WarnAt(f0, k, s.BossSide, s.BossU); rs.Add(o.Client(Overlay.Around(wx, wy, 8 * k, 8 * k))); }
+        if (s.BossTwin) { var (wx, wy) = WarnAt(f0, k, s.BossSide ^ 1, 1 - s.BossU); rs.Add(o.Client(Overlay.Around(wx, wy, 8 * k, 8 * k))); }   // 둘째 보스 세모
+        foreach (var r in laneRects) rs.Add(o.Client(r));   // 돌진 띠 (뻗는 동안·사라질 때)
         if (rushHud.Changed) // 러시 예고 느낌표: 깜빡일 때만
             for (int i = 0; i < Marks; i++) rs.Add(o.Client(Rectangle.Inflate(SwarmArt.Bang(k).Box(marks[i].X, marks[i].Y), 1, 1)));
         if (s.Clock < IntroSec + .1) rs.Add(o.Client(StartRect(f0, k, GameHud.Digits(s.Stage))));   // 시작 깃발 (사라질 때까지)
@@ -442,6 +498,12 @@ sealed partial class SwarmGame : IGameMode
         {
             rs.Add(o.Client(ResultFlagRect(s)));                                                       // 결과의 깃발 줄 (↑·반짝이가 바뀐다)
             if (SwarmArt.Tier(Honor(s)) == SwarmArt.RainbowTier) rs.Add(o.Client(GameHud.CenterRect(f0, k)));   // 무지개 왕관
+            if (hud.Changed || s.EndedFor < 1.5 || SwarmArt.Tier(Honor(s)) == SwarmArt.RainbowTier) rs.Add(o.Client(RowRect(s)));   // 무기 줄: 끝난 프레임·올리는 칸이 반짝이는 동안·무지개 숫자
+        }
+        else if (s.State == Swarm.Phase.Done && hud.Changed)   // 결과가 닫히는 프레임: 줄·깃발 자리도 지운다 (상자 자리보다 아래까지 내려온다)
+        {
+            rs.Add(o.Client(ResultFlagRect(s)));
+            rs.Add(o.Client(RowRect(s)));
         }
         if (hud.Changed)
         {
@@ -498,6 +560,7 @@ sealed partial class SwarmGame : IGameMode
             var bang = SwarmArt.Bang(k);
             for (int i = 0; i < Marks; i++) if ((mask & 1 << i) != 0) bang.Put(o, g, marks[i].X, marks[i].Y);
         }
+        for (int i = 0; i < s.LaneCount; i++) DrawLane(o, g, s, s.Lanes[i]);   // 돌진 띠: 흐린 주황 점선 두 줄 (깜빡임·빨강 없음)
 
         for (int pass = 0; pass < 2; pass++) // 자석·신발은 보석 더미에 묻히지 않게 위에
             foreach (var m in s.Gems)
@@ -577,7 +640,12 @@ sealed partial class SwarmGame : IGameMode
         }
         DrawSwing(o, g, s);
         if (s.Clock - s.MagnetAt < RingSec && s.State == Swarm.Phase.Play) DrawRing(o, g, s);
-        if (s.BossWarning && ((int)((s.Clock - s.BossWarnAt) * 6) & 1) == 0) { var (bwx, bwy) = WarnAt(fl, k, s.BossSide, s.BossU); DrawWarn(o, g, k, s.BossSide, bwx, bwy); }
+        if (s.BossWarning && ((int)((s.Clock - s.BossWarnAt) * 6) & 1) == 0)
+        {
+            var (bwx, bwy) = WarnAt(fl, k, s.BossSide, s.BossU);
+            DrawWarn(o, g, k, s.BossSide, bwx, bwy);
+            if (s.BossTwin) { var (twx, twy) = WarnAt(fl, k, s.BossSide ^ 1, 1 - s.BossU); DrawWarn(o, g, k, s.BossSide ^ 1, twx, twy); }   // 둘째 보스가 들어올 마주 보는 변
+        }
         for (int i = 0; i < s.Nades.Count; i++)   // 날아가는 수류탄: 볼록이·칼 자국 다음 (공중이라 맨 위), 표시보다는 아래
         {
             ref var d = ref s.Nades[i];
@@ -603,8 +671,13 @@ sealed partial class SwarmGame : IGameMode
         }
         else if (EmptyOn(s) && s.State == Swarm.Phase.Play)   // 빈 손: 같은 자리에 회색 수류탄만 0.3초 깜빡 (+ 없음)
             nadeGrayBig.Put(o, g, (int)s.X + 4 * k, (int)(s.Feet - cell + 5 * k - 4 * k));
-        else if (s.Clock < IntroSec && s.State == Swarm.Phase.Play)
-            weaponBig.Put(o, g, (int)s.X, (int)(s.Feet - cell + 5 * k - Math.Min(1, s.Clock / .25) * 4 * k));
+        else if (s.Clock < IntroWeaponSec && s.State == Swarm.Phase.Play)
+        {
+            int iconY = (int)(s.Feet - cell + 5 * k - Math.Min(1, s.Clock / .25) * 4 * k);
+            weaponBig.Put(o, g, (int)s.X, iconY);
+            if (RerollOpen(s)) SwarmArt.Swap((int)(s.Clock / .25), small).Put(o, g, (int)s.X + weaponBig.Bmp.Width / 2 + 6 * k, iconY);   // 다시 뽑기가 열려 있다: 도는 화살표 (글자 없이)
+            else if (Choosing && !auto) DrawChoice(o, g, s.X, iconY - weaponBig.Bmp.Height / 2 - 4 * k, (int)s.Weapon.Which, 2 * k, k);   // 고르기: 무기 일곱 점 (그림 위), 지금 것만 주황
+        }
         if (s.Clock - s.HpAt < FeetBarSec && s.State == Swarm.Phase.Play)                      // 발밑 생명 막대
             GameHud.Bar(o, g, FeetBar(s), k, s.Hp / (double)Swarm.MaxHp, Pal.Red);
 
@@ -680,7 +753,7 @@ sealed partial class SwarmGame : IGameMode
     Rectangle ResultFlagRect(Swarm s)
     {
         var (x, y, sc) = ResultFlagAt(s);
-        return Overlay.Around(x, y, 26 * sc, 9 * sc);
+        return Rectangle.Union(Overlay.Around(x, y, 26 * sc, 9 * sc), Overlay.Around(x + 39 * sc, y, 14 * sc, 9 * sc));   // 오른쪽은 방금 풀린 보상 그림 자리
     }
 
     // 끝: 벌레 × 잡은 수. 새 기록이거나 보스 넷을 다 잡고 버텼으면 큰 왕관(다 잡았으면 반짝이까지), 5:00 을 버티기만 했으면 상자 위에 작은 왕관.
@@ -708,10 +781,124 @@ sealed partial class SwarmGame : IGameMode
                 spark.Put(o, g, left + 11 * sc, fy + 6 * sc);
             }
         }
+        DrawRow(o, g, s, fx, fy);
+        if (Unlocked(s) is var unlock and > 0 && (s.EndedFor >= 1.4 || ((int)(s.EndedFor * 5) & 1) == 0)) DrawUnlock(o, g, unlock, fx + 30 * sc, fy, sc);   // 방금 풀린 보상 그림 (1.4초 깜빡인 뒤 켜져 있다)
         if (!s.Cleared) return;
         for (int i = 0; i < 4; i++)
             if ((((int)(s.Clock * 5) + i) & 1) == 0)
                 spark.Put(o, g, cx + (i < 2 ? -1 : 1) * ((i & 1) == 0 ? 11 : 8) * big, boxTop - 7 * big + ((i & 1) == 0 ? -3 : 2) * big);
+    }
+
+    // ── 방금 풀린 보상 (docs/swarm-levels.md 2-2): 이긴 판이 2·4·6단계를 처음 깼으면 깃발 줄 오른쪽에 그 보상 그림 ──
+    // 2 = 도는 화살표(다시 뽑기) · 4 = 자석 · 6 = 점 일곱(고르기). 연습·자동 조종 판은 아무것도 안 풀린다. 한 번에 둘이 풀리면 높은 쪽
+    int Unlocked(Swarm s)
+    {
+        if (!s.Won || practice || auto) return 0;
+        for (int n = 6; n >= 2; n -= 2) if (maxStage < n && s.Stage >= n) return n;
+        return 0;
+    }
+
+    void DrawUnlock(Overlay o, Graphics g, int n, int x, int y, int sc)
+    {
+        int small = GameHud.Small(sc);
+        if (n == 2) SwarmArt.Swap((int)(swarm!.Clock / .25), small).Put(o, g, x, y);
+        else if (n == 4) magnet.Put(o, g, x, y);
+        else DrawChoice(o, g, x + 9 * sc, y, -1, 2 * sc, sc, centered: true);
+    }
+
+    // 점 일곱 (무기마다 하나): 지금 무기만 주황 #E0A858, 나머지는 판 선 색. 한 점 dot px, 4k 간격. x 는 가운데, y 는 점 줄의 위쪽(centered 면 가운데)
+    static void DrawChoice(Overlay o, Graphics g, double x, int y, int cur, int dot, int k, bool centered = false)
+    {
+        int step = 2 * dot, left = (int)x - ((Arm.Kinds - 1) * step + dot) / 2, top = centered ? y - dot / 2 : y;
+        for (int i = 0; i < Arm.Kinds; i++)
+            g.FillRectangle(i == cur || cur < 0 ? SwarmArt.Amber : Pal.Line, o.Client(new Rectangle(left + i * step, top, dot, dot)));
+    }
+
+    // ── 돌진 띠 (docs/swarm-levels.md 2-1 ①): 띠의 두 가장자리에 점선 두 줄이 들어오는 변에서 0.3초에 걸쳐 뻗어 나온다. 점 2k×k, 6k 간격, 흐린 주황 (느낌표와 같은 색) ──
+    const double LaneGrowSec = .3;
+    static int LaneGrown(Swarm s, in Swarm.Lane ln) => (int)(Math.Clamp((s.Clock - ln.At) / LaneGrowSec, 0, 1) * 12);   // 뻗은 정도 (12칸으로 쪼개 바뀔 때만 다시 칠한다)
+
+    // 한 줄의 점 하나하나 (들어오는 변에서 멀어지는 쪽으로)
+    void DrawLane(Overlay o, Graphics g, Swarm s, in Swarm.Lane ln)
+    {
+        int k = s.K, pitch = 6 * k, dot = 2 * k, span = ln.Side < 2 ? s.Field.Width : s.Field.Height;
+        int cells = (int)(span / (double)pitch * LaneGrown(s, ln) / 12.0) + 1;
+        var f = s.Field;
+        for (int line = 0; line < 2; line++)
+        {
+            int at = (int)(line == 0 ? ln.A : ln.B);
+            for (int c = 0; c < cells; c++)
+            {
+                int d = c * pitch;
+                if (d + dot > span) break;
+                var r = ln.Side switch
+                {
+                    0 => new Rectangle(f.Left + d, f.Top + at - k / 2, dot, k),
+                    1 => new Rectangle(f.Right - d - dot, f.Top + at - k / 2, dot, k),
+                    2 => new Rectangle(f.Left + at - k / 2, f.Top + d, k, dot),
+                    _ => new Rectangle(f.Left + at - k / 2, f.Bottom - d - dot, k, dot),
+                };
+                g.FillRectangle(SwarmArt.Amber, o.Client(r));
+            }
+        }
+    }
+
+    // 다시 칠할 자리: 줄마다 판을 가로지르는 가는 띠 둘
+    static void LaneRects(Swarm s, in Swarm.Lane ln, List<Rectangle> into)
+    {
+        int k = s.K;
+        var f = s.Field;
+        foreach (double at in new[] { ln.A, ln.B })
+            into.Add(ln.Side < 2 ? new Rectangle(f.Left, f.Top + (int)at - k, f.Width, 2 * k) : new Rectangle(f.Left + (int)at - k, f.Top, 2 * k, f.Height));
+    }
+
+    // ── 결과 화면 무기 줄 (docs/swarm-levels.md 2-3, YELL 2026-11-23 시안 2번): 결과 상자 아래 어두운 판 위에 무기 일곱의 단계 기록 (stageBest) ──
+    // 등급 색 숫자 = 그 무기로 깬 가장 높은 단계, 못 깬 무기는 어두운 그림. 이 판이 기록을 올리면(이겼고 · 연습·자동 조종이 아니고 · 이번 단계가 기록보다 높다)
+    // 깃발 ↑ 와 같은 때(0.6초 뒤) 새 숫자로 바뀌고 1.4초까지 반짝인다. 이번 판 무기 밑에 주황 밑줄
+    const int RowPitch = 14;   // 무기 간격 (칸 수, ×k 가 px: 배율 3 이면 42px)
+
+    int RowBest(Arm.Id id) => stageBest.GetValueOrDefault(Arm.Name(id));
+    bool RowRaises(Swarm s) => s.Won && !practice && !auto && s.Stage > RowBest(s.Weapon.Which);
+    int RowShown(Swarm s, Arm.Id id) => id == s.Weapon.Which && RowRaises(s) && s.EndedFor >= .6 ? s.Stage : RowBest(id);
+    bool RowSparkle(Swarm s) => RowRaises(s) && s.EndedFor is >= .6 and < 1.4 && ((int)(s.EndedFor * 10) & 1) == 0;
+
+    // 다시 칠할 자리: 판 + 테두리 + 반짝이
+    Rectangle RowRect(Swarm s)
+    {
+        var (fx, fy, k) = ResultFlagAt(s);
+        return Overlay.Around(fx, fy + 17 * k, 52 * k, 11 * k);
+    }
+
+    // 등급 색 숫자: x 는 첫 글자 가운데 (center 면 전체 가운데)
+    void RowNumber(Overlay o, Graphics g, int n, int x, int y, int scale, int tier, int phase, bool center)
+    {
+        var glyphs = Stamps.Of(o.Art).Digits(scale);
+        int len = GameHud.Digits(n), step = 5 * scale, x0 = center ? x - (len - 1) * step / 2 : x;
+        for (int i = 0, div = (int)Math.Pow(10, len - 1); i < len; i++, div /= 10)
+        {
+            int d = n / div % 10;
+            SwarmArt.Digit(glyphs[d], d, tier, phase, scale).Put(o, g, x0 + i * step, y);
+        }
+    }
+
+    void DrawRow(Overlay o, Graphics g, Swarm s, int fx, int fy)
+    {
+        int k = s.K, small = GameHud.Small(k), phase = (int)(s.Clock * 2), n = Arm.Kinds, cur = (int)s.Weapon.Which;
+        int iy = fy + 13 * k, dy = fy + 21 * k, sx = 0, sy = 0;   // 그림 가운데, 숫자 가운데, 반짝이 자리
+        GameHud.Box(g, o.Client(new Rectangle(fx - 51 * k, fy + 7 * k, 102 * k, 20 * k)), k);
+        for (int i = 0; i < n; i++)
+        {
+            var id = (Arm.Id)i;
+            int cx = fx + (i - n / 2) * RowPitch * k, shown = RowShown(s, id);
+            (shown > 0 ? SwarmArt.Icon(id, small) : SwarmArt.IconDim(id, small)).Put(o, g, cx, iy);
+            if (shown > 0) RowNumber(o, g, shown, cx, dy, k, SwarmArt.Tier(shown), phase, true);
+            if (i != cur) continue;
+            g.FillRectangle(SwarmArt.Amber, o.Client(new Rectangle(cx - 4 * k, fy + 25 * k, 8 * k, k)));   // 이번 판 무기 밑줄
+            (sx, sy) = (cx + GameHud.Digits(shown) * 5 * k / 2 + 2 * k, dy - 5 * k);
+        }
+        if (!RowSparkle(s)) return;
+        spark.Put(o, g, sx, sy);
+        spark.Put(o, g, sx + 3 * k, sy + 9 * k);   // 숫자 오른쪽 아래 (밑줄은 숫자 폭 안쪽이라 안 겹친다)
     }
 
     void DrawShot(Overlay o, Graphics g, Swarm s, ref Swarm.Shot t)
@@ -796,7 +983,7 @@ sealed partial class SwarmGame : IGameMode
 
     // 디버그: swarm / swarm weapon <id> / swarm auto [id] (알아서 한다, 기록 안 남김) / swarm at <초> / swarm boss [1~4] / swarm up [n] / swarm hp <n> / swarm item <heart|magnet|shoe|grenade> / swarm grenade (지금 던진다: 0개면 하나 채우고 쿨다운을 지운다) / swarm stop /
     //   swarm level <n> (n 단계로, 하는 중이면 같은 무기로 새 판: 연습 판이라 기록·단계가 안 바뀐다) / swarm level set <n> (저장된 단계를 n 으로, 깬 단계는 n-1) /
-    //   swarm rush [wall|ring] (지금 예고를 띄우고 1초 뒤 그 모양으로, 안 주면 차례대로) / swarm elite [bug|wasp|beetle] (볼록이 옆에 엘리트 하나) /
+    //   swarm rush [wall|ring|dart|pincer] (지금 예고를 띄우고 1초 뒤 그 모양으로, 안 주면 차례대로) / swarm elite [bug|wasp|beetle|steel] (볼록이 옆에 엘리트 하나) / swarm steel (강철 딱정벌레 하나) / swarm boss twin (3번 보스 + 마주 보는 둘째) /
 //   swarm special (다음 공격에 특수기가 나온다: 산탄총·쌍검·쌍권총·바주카포·화염방사기만)
     public bool Command(string[] a)
     {
@@ -814,13 +1001,14 @@ sealed partial class SwarmGame : IGameMode
                 auto = Running;
                 break;
             case "at": if (s != null && double.TryParse(arg, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double sec)) s.SetClock(sec); break;
-            case "boss": s?.CallBoss(n > 0 ? n : Math.Min(Swarm.Bosses, s.BossesKilled + 1)); break;
+            case "boss": if (arg == "twin") s?.CallTwin(); else s?.CallBoss(n > 0 ? n : Math.Min(Swarm.Bosses, s.BossesKilled + 1)); break;
             case "level":
                 if (arg == "set") { if (int.TryParse(a.Length > 3 ? a[3] : "", out int set)) { stage = Math.Clamp(set, 1, MaxStageNo); maxStage = stage - 1; host.Save(); } }
                 else if (n >= 1) StartLevel(Math.Min(n, MaxStageNo));
                 break;
-            case "rush": s?.CallRush(arg switch { "wall" => Swarm.Shape.Wall, "ring" => Swarm.Shape.Ring, _ => null }); break;
-            case "elite": s?.CallElite(arg switch { "wasp" => Swarm.Kind.Wasp, "beetle" => Swarm.Kind.Beetle, _ => Swarm.Kind.Bug }); break;
+            case "rush": s?.CallRush(arg switch { "wall" => Swarm.Shape.Wall, "ring" => Swarm.Shape.Ring, "dart" => Swarm.Shape.Dart, "pincer" => Swarm.Shape.Pincer, _ => null }); break;
+            case "elite": if (arg == "steel") s?.CallSteel(true); else s?.CallElite(arg switch { "wasp" => Swarm.Kind.Wasp, "beetle" => Swarm.Kind.Beetle, _ => Swarm.Kind.Bug }); break;
+            case "steel": s?.CallSteel(false); break;
             case "up": for (int i = 0; s != null && i < Math.Clamp(n, 1, 60); i++) s.LevelUp(); break;
             case "hp": if (s != null && n > 0) { s.Hp = Math.Min(Swarm.MaxHp, n); s.Heal(0); } break;
             case "item":
@@ -836,14 +1024,14 @@ sealed partial class SwarmGame : IGameMode
     // 그 무기로 시작한다 (null 이면 무작위). 하는 중이면 그 무기로 같은 자리에서 새 판 (단계는 그대로)
     void StartWith(Arm.Id? weapon)
     {
-        if (swarm is { } s) { if (weapon is { } w) Begin(new Swarm(s.Field, s.K, new Random(), w, s.Stage)); }
+        if (swarm is { } s) { if (weapon is { } w) Begin(NewRun(s.Field, s.K, w, s.Stage)); }
         else if (!host.Busy) { pick = weapon; Start(); }
     }
 
     // n 단계 연습 판: 하는 중이면 같은 자리·같은 무기로 새 판, 아니면 무작위 무기로 시작. 기록·단계는 안 바뀐다
     void StartLevel(int n)
     {
-        if (swarm is { } s) { practice = true; Begin(new Swarm(s.Field, s.K, new Random(), s.Weapon.Which, n)); }
+        if (swarm is { } s) { practice = true; Begin(NewRun(s.Field, s.K, s.Weapon.Which, n)); }
         else if (!host.Busy) { (pick, forceStage) = (null, n); Start(); }
     }
 
