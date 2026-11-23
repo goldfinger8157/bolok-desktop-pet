@@ -3,7 +3,7 @@ using System.Drawing.Imaging;
 
 namespace Bolok;
 
-// 방석·집 장면 그려 보기 (화면을 띄우지 않는다): --home-scene 그림.png desk|nap|night|reveal|menu
+// 방석·집 장면 그려 보기 (화면을 띄우지 않는다): --home-scene 그림.png desk|nap|night|reveal|free|drag|drop|menu
 // 진짜 Brain·HomeGeom·Overlay 를 돌려 정해진 순간마다 한 장씩 뽑아 가로로 잇는다 (바탕은 데스크톱 띠: 뒤 창·작업 표시줄). 글자 없이.
 static class HomeScene
 {
@@ -23,8 +23,6 @@ static class HomeScene
         public bool HideCushion, HideHouse, FlashCushion, FlashHouse;
         public int CushionDy, HouseDy;
         public readonly List<Rectangle> Back = new(); // 뒤에 열린 창들 (비면 기본 창 하나). 먼저 넣은 것이 뒤
-        public HomeRoost? Roost;                      // 창 위에 놓인 물건 하나 (Step 이 창을 따라가고 떨어뜨린다)
-        public bool RoostHouse;
         readonly int fh;
         readonly Rectangle area;
         public double Floor => area.Bottom - new Tuning().FloorGap;
@@ -48,21 +46,7 @@ static class HomeScene
 
         public void Step(double sec)
         {
-            for (int i = 0, n = (int)Math.Round(sec * 60); i < n; i++)
-            {
-                if (Roost is { Active: true } r && (RoostHouse ? House : Cushion) is { } it && r.Tick(B.Now, 1 / 60.0, it, K) != RoostChange.None) Place(RoostHouse, r.CenterX, r.FloorY, r.Falling);
-                B.Update(1 / 60.0, false);
-            }
-        }
-
-        // 물건을 그 자리(그림 아래 가운데 x, 발 자리 y)로 옮기고 Brain 에 자리를 다시 넘긴다 (HomeLife.FollowRoost 와 같은 일)
-        public void Place(bool house, double cx, double floorY, bool moving)
-        {
-            var it = house ? House : Cushion;
-            if (it == null) return;
-            var o = HomeGeom.Origin(it, K, cx, floorY);
-            var spot = HomeGeom.Spot(it, K, o, floorY, Center("idle"), Center("sleep"), moving, Floor);
-            if (house) (HouseOrigin, B.House) = (o, spot); else (CushionOrigin, B.Cushion) = (o, spot);
+            for (int i = 0, n = (int)Math.Round(sec * 60); i < n; i++) B.Update(1 / 60.0, false);
         }
 
         public Bitmap Frame()
@@ -141,7 +125,8 @@ static class HomeScene
             case "nap": Nap(frames); rows = 2; break;
             case "night": Night(frames); rows = 2; break;
             case "reveal": Reveal(frames); rows = 2; break;
-            case "roost": Roost(frames); rows = 2; break;
+            case "free": Free(frames); rows = 2; break;
+            case "drag": Drag(frames); rows = 3; break;
             case "drop": Drop(frames); rows = 3; break;
             case "menu": Menu(args[1]); return 0;
             default: throw new ArgumentException("모르는 장면: " + scene);
@@ -241,41 +226,118 @@ static class HomeScene
         }
     }
 
-    // 창 위 방석·집 (윗줄 방석, 아랫줄 집): 바닥에서 밑까지 걸어가 → 올라가 → 안에서 쉬고 → 창을 옮기면 같이 → 창이 닫히면 떨어져 → 바닥에 내려앉는다
-    static void Roost(List<Bitmap> frames)
+    // 진짜 HomeLife(창 없이)로 돌리는 장면: 물건 놓기·끌기·모니터 안으로 눌리기·펫 따라가기·오림이 모두 앱과 같은 코드다
+    sealed class Live : IDisposable
     {
-        const int H = 420;
-        foreach (bool house in new[] { false, true })
+        public readonly Brain B;
+        public readonly HomeLife H;
+        public readonly Sprites Sp;
+        public readonly Overlay Ov;
+        public Point? Cursor;                          // 마우스 (작은 화살표로 그린다)
+        readonly int fh;
+        public double Floor => B.Area.Bottom - B.K.FloorGap;
+
+        // cushionAt·houseAt: 그림 아래 가운데 x, 펫 발 y (null 이면 그 물건 없음)
+        public Live(string species, string stage, string? cushion, (double X, double Y)? cushionAt, string? house, (double X, double Y)? houseAt, double petX, double petY, double energy = 60, int frameH = FH)
         {
-            var (sp, stage, cu, ho, energy) = house ? ("shiba", "adult_playful", (string?)null, (string?)"kennel", 80.0) : ("cat", "adult_sweet", "donut", null, 40.0);
-            using var r = new Rig(sp, stage, cu, ho, 0, 0, 40, energy, H);
-            var win = new Rectangle(170, 215, 300, 165);
-            bool alive = true;
-            var wh = new IntPtr(5);
-            r.B.Windows = () => new List<Win> { new(wh, win, false) };
-            r.B.Probe = _ => new WinState(alive, false, win);
-            r.Back.Add(win);
-            var it = house ? r.House! : r.Cushion!;
-            r.Roost = new HomeRoost(r.B);
-            r.RoostHouse = house;
-            if (!r.Roost.Snap(it, K, win.Left + win.Width / 2.0 + 20, win.Top + HomeRoost.Perch(K))) throw new Exception("창 위에 못 놓았다 " + sp);
-            r.Place(house, r.Roost.CenterX, r.Roost.FloorY, false);
-            if (!(house ? r.B.GoHome(true, HomeUse.Peek, stay: 60) : r.B.GoHome(false, HomeUse.Nap))) throw new Exception("못 간다 " + sp);
-            var spot = house ? r.B.House : r.B.Cushion;
-            double gx = house ? spot.X : spot.SleepX;
-            for (int guard = 0; r.B.Mode == Mode.GoHome && Math.Abs(r.B.X - gx) > 70 && guard < 900; guard++) r.Step(.05);
-            frames.Add(r.Frame());                                                    // 바닥을 걸어 밑으로
-            for (int guard = 0; r.B.Mode == Mode.GoHome && r.B.Y > r.Floor - 45 && guard < 900; guard++) r.Step(.05);
-            frames.Add(r.Frame());                                                    // 곧게 올라간다
-            for (int guard = 0; r.B.Mode == Mode.GoHome && guard < 900; guard++) r.Step(.05);
-            r.Step(1.6); frames.Add(r.Frame());                                       // 안에서 쉰다
-            win.Offset(-90, -30);
-            r.Step(.3); frames.Add(r.Frame());                                        // 창을 옮기면 같이
-            alive = false; win = new Rectangle(0, 0, 0, 0);
-            r.Back.Clear();
-            r.Step(.22); frames.Add(r.Frame());                                       // 창이 닫혔다: 떨어진다
-            r.Step(1.6); frames.Add(r.Frame());                                       // 바닥에 내려앉았다
+            fh = frameH;
+            var area = new Rectangle(0, 0, FW, fh - TaskH);
+            Sp = Sprites.Drawn(PetArt.Embedded, species, null);
+            B = new Brain(new Pet { Stage = stage, Full = 90, Mood = 90, Energy = energy }, new Tuning(), area) { Scale = K, X = petX, Y = petY };
+            B.NightNow = () => true;
+            B.Windows = () => new List<Win>();
+            H = new HomeLife(B, () => HomeArt.Embedded, () => Sp, () => species, _ => K, () => false, () => false, () => { }) { Headless = true };
+            if (cushion != null && cushionAt is { } c) { H.Book.Place(false, cushion); H.Book.CushionAt = new[] { c.X, c.Y }; }
+            if (house != null && houseAt is { } h) { H.Book.Place(true, house); H.Book.HouseAt = new[] { h.X, h.Y }; }
+            (H.Book.CushionGiven, H.Book.HouseGiven) = (true, true);
+            Ov = new Overlay(B, () => Sp, new Rectangle(0, 0, FW, fh));
+            Step(.02);
         }
+
+        public HomeLife.Slot Slot(bool house) => house ? H.House : H.Cushion;
+
+        public void Step(double sec)
+        {
+            for (int i = 0, n = Math.Max(1, (int)Math.Round(sec * 60)); i < n; i++) { B.Update(1 / 60.0, false); H.Tick(); }
+        }
+
+        public Bitmap Frame()
+        {
+            var bmp = new Bitmap(FW, fh, PixelFormat.Format32bppArgb);
+            using var g = Graphics.FromImage(bmp);
+            Backdrop(g, fh, new List<Rectangle>());
+            H.DrawShot(g, 0, 0);
+            Ov.Render(g);
+            string name = B.SpriteName();
+            int ms = PoseMs.GetValueOrDefault(B.Pose, 600), frame = (int)(B.Now * 1000 / ms);
+            var st = g.Save();
+            if (B.HomeClip is { } clip) g.SetClip(clip, CombineMode.Exclude);
+            g.DrawImageUnscaled(Sp.Get(name, frame, K, B.Dir < 0), (int)B.X - B.CellPx / 2, (int)B.Y - B.CellPx);
+            g.Restore(st);
+            if (Cursor is { } m) // 마우스 화살표 (글자 없음)
+            {
+                var arrow = new[] { new Point(m.X, m.Y), new Point(m.X, m.Y + 22), new Point(m.X + 6, m.Y + 17), new Point(m.X + 11, m.Y + 27), new Point(m.X + 15, m.Y + 25), new Point(m.X + 10, m.Y + 15), new Point(m.X + 17, m.Y + 15) };
+                g.FillPolygon(Brushes.White, arrow);
+                g.DrawPolygon(Pens.Black, arrow);
+            }
+            return bmp;
+        }
+
+        public void Dispose() { Ov.Dispose(); H.Dispose(); }
+    }
+
+    // 바탕화면 아무 데나 놓은 방석·집 (여섯 곳): 위·가운데·아래·왼쪽·오른쪽 — 창 윗변이 아니라 놓은 그 자리, 펫이 거기서 앉기·낮잠·빼꼼·잠·캣타워 위
+    static void Free(List<Bitmap> frames)
+    {
+        const int H = 430;
+        void One(string species, string stage, string? cushion, (double, double)? cushionAt, string? house, (double, double)? houseAt, bool onHouse, HomeUse use, double petX, double petY)
+        {
+            using var r = new Live(species, stage, cushion, cushionAt, house, houseAt, petX, petY, use is HomeUse.Nap or HomeUse.Sleep ? 40 : 90, H);
+            if (!r.B.EnterHome(onHouse, use)) throw new Exception("들어가지 못했다 " + species);
+            r.Step(.6);
+            frames.Add(r.Frame());
+        }
+        One("cat", "adult_sweet", "donut", (110, 190), null, null, false, HomeUse.Sit, 300, 330);          // 왼쪽 위 방석에 앉기
+        One("shiba", "adult_playful", null, null, "kennel", (360, 330), true, HomeUse.Peek, 100, 330);      // 오른쪽 아래 집 빼꼼
+        One("cat", "adult_sweet", null, null, "cattree", (240, 300), true, HomeUse.Sleep, 100, 330);        // 가운데 캣타워 위에서 잠
+        One("hamster", "child", "leaf", (380, 170), null, null, false, HomeUse.Nap, 100, 330);              // 오른쪽 위 방석 낮잠
+        One("penguin", "adult_chubby", null, null, "igloo", (130, 260), true, HomeUse.Sleep, 400, 330);     // 왼쪽 가운데 이글루에서 잠
+        One("fox", "adult_sweet", "flower", (350, 250), "mushroom", (130, 330), false, HomeUse.Sit, 100, 330); // 집과 방석을 서로 다른 높이에
+    }
+
+    // 끌기 (윗줄 방석에 앉은 고양이, 가운뎃줄 집에서 자는 시바, 아랫줄 캣타워 위에서 자는 고양이): 가만히 → 끄는 중 → 더 끄는 중 → 놓았다 (펫이 물건과 같이 가고 물건 위에 그대로)
+    static void Drag(List<Bitmap> frames)
+    {
+        const int H = 430;
+        void One(string species, string stage, string cushion, string house, bool useHouse, HomeUse use, (double, double) at, (int X, int Y)[] path)
+        {
+            using var r = new Live(species, stage, useHouse ? null : cushion, useHouse ? null : at, useHouse ? house : null, useHouse ? at : null, 100, 330, use is HomeUse.Nap or HomeUse.Sleep ? 40 : 90, H);
+            if (!r.B.EnterHome(useHouse, use)) throw new Exception("들어가지 못했다 " + species);
+            r.Step(1.2);
+            var s = r.Slot(useHouse);
+            var first = path[0];
+            r.Cursor = new Point(first.X, first.Y);
+            frames.Add(r.Frame());                                                      // 가만히 (마우스를 물건 위에 눌렀다)
+            r.H.BeginDrag(s, first.X - (s.Origin.X + s.Item!.W * K / 2), first.Y - s.Origin.Y);
+            for (int i = 1; i < path.Length; i++)
+            {
+                for (int j = 1; j <= 6; j++) // 한 점에서 다음 점까지 여섯 걸음
+                {
+                    var p = new Point(path[i - 1].X + (path[i].X - path[i - 1].X) * j / 6, path[i - 1].Y + (path[i].Y - path[i - 1].Y) * j / 6);
+                    r.Cursor = p;
+                    r.H.DragTo(s, p);
+                    r.Step(.016);
+                }
+                if (i < path.Length - 1) frames.Add(r.Frame());                         // 끄는 중
+            }
+            r.H.EndDrag(s);
+            r.Cursor = null;
+            r.Step(.5);
+            frames.Add(r.Frame());                                                      // 놓았다
+        }
+        One("cat", "adult_sweet", "donut", "box", false, HomeUse.Sit, (110, 200), new[] { (110, 190), (200, 120), (300, 110), (360, 160) });
+        One("shiba", "adult_playful", "round", "kennel", true, HomeUse.Sleep, (120, 340), new[] { (120, 300), (200, 240), (300, 200), (370, 260) });
+        One("cat", "adult_sweet", "futon", "cattree", true, HomeUse.Sleep, (360, 340), new[] { (360, 250), (300, 200), (200, 220), (130, 280) });
     }
 
     // 들어 놓은 펫 (윗줄 방석에 앉기, 가운뎃줄 집 빼꼼, 아랫줄 기운 낮을 때 방석 낮잠): 들고 있다 → 놓자 들어감 → 머무는 중 → 8~12초 뒤 나옴

@@ -2,8 +2,10 @@ using System.Drawing.Drawing2D;
 
 namespace Bolok;
 
-// 방석·집 이음매 (docs/home.md 5·7장): 물건 창 둘의 자리·배율·끌기·모니터·창 순서·숨기기, 줄 것 보기·받는 순간 연출,
-// Brain 에 자리(HomeSpot)와 오릴 자리(HomeClip) 채우기, 디버그 명령. 화면 계산은 HomeGeom 에 모아 자가 검사·그려 보기가 같이 쓴다
+// 방석·집 이음매 (docs/home.md 5·7장·추가 2): 물건 창 둘의 자리·배율·끌기·모니터·창 순서·숨기기, 줄 것 보기·받는 순간 연출,
+// Brain 에 자리(HomeSpot)와 오릴 자리(HomeClip) 채우기, 디버그 명령. 화면 계산은 HomeGeom 에 모아 자가 검사·그려 보기가 같이 쓴다.
+// 물건은 바탕화면 어디든 (x, y) 에 놓인다 — 놓은 모니터의 작업 영역 안에 통째로 들게만 눌러 준다 (HomeGeom.Fit). 창에 붙지 않는다
+// Headless: 창을 안 만들고 같은 길을 돌린다 (자가 검사·장면 그리기가 끌기·창 순서까지 진짜 코드로 돌리게). Topmost·RaiseAbove·PetFollow 는 이음매
 sealed class HomeLife : IDisposable
 {
     // 물건 하나가 놓인 자리 (방석 하나·집 하나)
@@ -13,11 +15,13 @@ sealed class HomeLife : IDisposable
         public HomeForm? Form;
         public HomeItem? Item;
         public int K = 3;
-        public double CenterX, FloorY;      // 그림 아래 가운데 x, 펫 바닥(MaxY) y — 그림은 seat 줄이 이 바닥에 오게 놓인다
+        public double CenterX, FloorY;      // 그림 아래 가운데 x, 펫 발(seat 줄) y — 그림은 seat 줄이 이 y 에 오게 놓인다. 저장 칸의 [x, y] 가 이것
         public Point Origin;                // 그림 왼쪽 위 (화면 좌표). 끄는 동안은 마우스를 따른다
-        public Rectangle Area;
+        public Rectangle Area;              // 놓인 모니터의 작업 영역
         public bool Shown, Moving, Covered;
-        public HomeRoost Roost = null!;     // 창 위에 놓였나 (창을 따라가고, 창이 사라지면 떨어진다) — 아니면 바닥
+        public int GrabX, GrabY;            // 끌 때 잡은 자리: 그림 가운데에서 마우스까지 가로, 그림 위에서 마우스까지 세로 (잡은 자리 그대로 따라온다)
+        public IntPtr TestHandle;           // Headless 에서 창 순서를 기록할 때 쓰는 가짜 창 번호
+        internal bool Vis;                  // Headless 에서 보이는 중인가
         public string? Id => Item?.Id;
     }
 
@@ -42,8 +46,15 @@ sealed class HomeLife : IDisposable
     string bcStage = "";
     double bcIdle = 20.5, bcSleep = 20.5;
     Region? clip;
-    (HomeClipKind, int, string, int, Point, bool) clipKey;
-    bool dragDirty;
+    (HomeClipKind, int, string, int, Point, bool, int) clipKey;
+    bool dragDirty, needRaise;
+    double nextDragRaise;
+
+    public bool Headless;                          // 창을 안 만든다 (자가 검사·그려 보기)
+    public Action<IntPtr> Topmost = Native.Topmost; // 창 하나를 같은 항상 위 층의 맨 위로 (자가 검사는 기록으로 바꾼다)
+    public Action? RaiseAbove;                     // 물건 위에 올릴 나머지: Overlay → 펫 순서 (PetForm 이 준다)
+    public Action? PetFollow;                      // 물건을 끄는 동안 펫 창을 같은 프레임에 옮긴다 (PetForm 이 준다)
+    public const double DragRaiseSec = .1;         // 끄는 동안 창 순서를 다시 거는 간격
 
     // 받는 순간 (7장): T0 부터 2.6초. 0.0 반짝이 모임 → 0.5 물건이 하얗게 톡 떨어짐 → 1.2 펫이 달려감
     sealed class RevealState { public double T0; public Slot Slot = null!; public bool Run; public bool Placed; }
@@ -66,7 +77,6 @@ sealed class HomeLife : IDisposable
     {
         (this.b, this.artOf, this.spritesOf, this.speciesOf, this.scaleOf, this.playing, this.afk, this.save) = (b, artOf, spritesOf, speciesOf, scaleOf, playing, afk, save);
         all = new[] { Cushion, House };
-        foreach (var s in all) s.Roost = new HomeRoost(b);
     }
 
     public IReadOnlyList<Slot> Slots => all;
@@ -74,20 +84,14 @@ sealed class HomeLife : IDisposable
     public bool Owns(IntPtr h) => all.Any(s => s.Form != null && s.Form.IsHandleCreated && s.Form.Handle == h);
 
     // ── 저장 ──
-    // 불러오면 늘 바닥에 (창은 껐다 켜면 사라진다): 저장 칸에는 창 위였어도 그 x 의 바닥 자리만 있다
-    public void Load(HomeSave? s) { Book.Load(s); foreach (var x in all) x.Roost.Clear(); dirty = true; }
+    // 놓인 자리 [x, y] 는 Book 이 들고 있고 (그림 아래 가운데 x, 펫 발 y), 놓을 때·모니터가 바뀔 때 갱신된다. 불러오면 모니터 안으로 눌러 준다 (Layout).
+    // 바닥 자리만 있던 옛 저장 [x, 바닥 y] 도 같은 칸이라 그대로 읽힌다
+    public void Load(HomeSave? s) { Book.Load(s); dirty = true; }
 
-    // 창 위에 있는 물건은 지금 x 의 바닥 자리를 저장 칸에 적는다 (창을 따라 움직인 x 가 그대로 남는다)
-    public HomeSave Snapshot()
-    {
-        foreach (var s in all)
-            if (s.Roost.Active && s.Item != null)
-            {
-                var at = new[] { s.CenterX, FloorOf(s.Roost.Area) };
-                if (s.House) Book.HouseAt = at; else Book.CushionAt = at;
-            }
-        return Book.Snapshot();
-    }
+    public HomeSave Snapshot() => Book.Snapshot();
+
+    // Book 을 밖에서 바꿨다 (디버그·자가 검사): 자리·그림·오림을 다음 프레임에 새로 잡는다
+    public void Relayout() { dirty = true; clipKey = default; }
     public void NewPet() { Book.NewPet(); reveal = null; dirty = true; }
 
     // ── 자리 ──
@@ -123,22 +127,30 @@ sealed class HomeLife : IDisposable
         var at = s.House ? Book.HouseAt : Book.CushionAt;
         if (item != null && at == null) { ApplyDefault(s.House); at = s.House ? Book.HouseAt : Book.CushionAt; }
         s.Item = item;
-        if (item == null || at == null) { s.Shown = false; s.Roost.Clear(); s.Form?.Hide(); return; }
+        if (item == null || at == null) { s.Shown = false; s.Vis = false; s.Form?.Hide(); return; }
         if (!s.Moving)
         {
             var area = b.World.At(at[0], at[1] - 1);
-            (s.Area, s.K) = (area, scaleOf(area));
-            s.CenterX = Math.Clamp(at[0], area.Left + item.W * s.K / 2.0, area.Right - item.W * s.K / 2.0);
-            s.FloorY = FloorOf(area);
-            if (s.Roost.Active) (s.Area, s.K, s.CenterX, s.FloorY) = (s.Roost.Area, scaleOf(s.Roost.Area), s.Roost.CenterX, s.Roost.FloorY); // 창 위·떨어지는 중이면 그 자리
+            s.Area = area;
+            s.K = scaleOf(area);
+            (s.CenterX, s.FloorY) = HomeGeom.Fit(item, s.K, area, b.K.FloorGap, at[0], at[1]); // 어느 모니터에도 안 들거나 크기가 바뀌었으면 안으로
             s.Origin = HomeGeom.Origin(item, s.K, s.CenterX, s.FloorY);
         }
-        s.Form ??= MakeForm(s);
-        s.Form.Set(art, item, s.K, s.Origin, s.Covered);
+        if (!Headless) s.Form ??= MakeForm(s);
+        s.Form?.Set(art, item, s.K, s.Origin, s.Covered);
         bool show = want && !(reveal is { } r && r.Slot == s && !r.Placed);
-        if (show && !s.Form.Visible) { s.Form.Show(); Native.Topmost(s.Form.Handle); s.Form.Location = s.Origin; }
-        else if (!show && s.Form.Visible) s.Form.Hide();
-        s.Shown = show && s.Form.Visible;
+        if (show && !IsVisible(s)) { ShowForm(s); needRaise = true; } // 새로 뜬 창은 항상 위 층의 맨 위에 생기니 펫·Overlay 도 다시 그 위로 (Refresh 끝에서)
+        else if (!show && IsVisible(s)) { if (Headless) s.Vis = false; else s.Form!.Hide(); }
+        s.Shown = show && IsVisible(s);
+    }
+
+    bool IsVisible(Slot s) => Headless ? s.Vis : s.Form is { Visible: true };
+
+    void ShowForm(Slot s)
+    {
+        if (Headless) { s.Vis = true; return; }
+        s.Form!.Show();
+        s.Form.Location = s.Origin;
     }
 
     HomeForm MakeForm(Slot s)
@@ -146,49 +158,67 @@ sealed class HomeLife : IDisposable
         var f = new HomeForm(s.House) { Now = () => b.Now };
         f.Clicked = _ => Clicked(s);
         f.RightClicked = _ => HomeMenu.ForItem(this, s, f);
-        f.DragStarted = _ => { s.Moving = true; s.Roost.Clear(); dirty = true; }; // 끄는 동안은 창에서 떨어져 공중에
-        f.DragMoved = (_, p) => Dragged(s, f, p);
-        f.DragEnded = _ => Dropped(s);
+        f.Pressed = _ => Raise(); // 누르는 순간 창 순서를 한 번 더 건다 (눌러서 이 창이 위로 올라와도 펫이 그 위에 남게)
+        f.DragStarted = _ => BeginDrag(s, f.GrabX, f.GrabY);
+        f.DragMoved = (_, p) => DragTo(s, p);
+        f.DragEnded = _ => EndDrag(s);
         return f;
     }
 
-    // 끄는 동안: 마우스를 따른다 (그 모니터의 배율로). 놓으면 그 모니터의 바닥으로 톡
-    void Dragged(Slot s, HomeForm f, Point p)
+    // ── 끌기 (HomeForm 이 부르고, 자가 검사도 그대로 부른다) ──
+    // 끌기 시작: grab = 누른 자리가 그림 가운데·위에서 얼마나 떨어졌나 (그 자리를 잡은 채로 따라온다)
+    public void BeginDrag(Slot s, int grabX, int grabY)
     {
-        if (s.Item is not { } item) return;
-        var area = b.World.At(p.X, p.Y);
-        int k = scaleOf(area);
-        s.Area = area;
-        if (k != s.K) { s.K = k; }
-        s.CenterX = Math.Clamp(p.X - f.GrabX, area.Left + item.W * k / 2.0, area.Right - item.W * k / 2.0);
-        s.FloorY = FloorOf(area);
-        int top = Math.Clamp(p.Y - item.H * k * 3 / 4, area.Top - item.H * k / 2, (int)(s.FloorY - item.Seat.Y * k)); // 바닥 위로만 (공중에 들린다)
-        s.Origin = new Point((int)Math.Round(s.CenterX) - item.W * k / 2, top);
-        f.Set(artOf(), item, k, s.Origin, s.Covered);
-        dragDirty = true;
-        Spots();
+        if (s.Item == null) return;
+        (s.GrabX, s.GrabY, s.Moving) = (grabX, grabY, true);
+        dirty = true;
+        Spots(); // 끄는 중임을 Brain 에 바로 알린다 (다른 행동이 이 물건을 목적지로 잡지 않게)
+        nextDragRaise = b.Now + DragRaiseSec;
+        Raise();
     }
 
-    // 놓았다: 아래가 창 윗변 가까이면 그 창 위에 붙고 (창을 따라 움직인다), 아니면 놓은 모니터의 바닥으로 톡
-    void Dropped(Slot s)
+    // 끄는 동안: 잡은 자리를 마우스에 맞춘다. 마우스가 있는 모니터의 배율로, 그 모니터 작업 영역 안에 그림이 통째로 들게 눌러서.
+    // 안·위에 있는 펫은 같은 프레임에 같이 옮기고 (Brain.HomeFollow), 오림도 새로 잡고, 펫 창도 옮긴다 — 순서도 다시 건다
+    public void DragTo(Slot s, Point p)
     {
-        if (s.Item is not { } item) { s.Moving = false; return; }
+        if (s.Item is not { } item || !s.Moving) return;
+        var area = b.World.At(p.X, p.Y);
+        int k = scaleOf(area);
+        if (k != s.K) { s.GrabX = (int)Math.Round(s.GrabX * (double)k / s.K); s.GrabY = (int)Math.Round(s.GrabY * (double)k / s.K); s.K = k; }
+        s.Area = area;
+        double wantX = p.X - s.GrabX, wantY = p.Y - s.GrabY + item.Seat.Y * k;
+        (s.CenterX, s.FloorY) = HomeGeom.Fit(item, k, area, b.K.FloorGap, wantX, wantY);
+        s.Origin = HomeGeom.Origin(item, k, s.CenterX, s.FloorY);
+        s.Form?.Set(artOf(), item, k, s.Origin, s.Covered);
+        dragDirty = true;
+        Spots();
+        FollowPet();
+        if (b.Now >= nextDragRaise) { nextDragRaise = b.Now + DragRaiseSec; Raise(); }
+    }
+
+    // 놓았다: 놓은 그 자리에 그대로 (모니터 안으로만 눌려 있다). 저장은 [x, y]
+    public void EndDrag(Slot s)
+    {
+        if (!s.Moving) return;
         s.Moving = false;
-        PlaceAt(s, item, s.CenterX, s.Origin.Y + item.Seat.Y * s.K);
-        var at = new[] { s.CenterX, FloorOf(s.Area) }; // 저장은 늘 바닥 x
+        if (s.Item is not { } item) return;
+        var at = new[] { s.CenterX, s.FloorY };
         if (s.House) Book.HouseAt = at; else Book.CushionAt = at;
         s.Form?.Set(artOf(), item, s.K, s.Origin, s.Covered);
-        Dbg.Log("home-move", ("kind", s.House ? "house" : "cushion"), ("id", item.Id), ("x", (int)s.CenterX), ("y", (int)s.FloorY), ("window", s.Roost.OnWindow));
+        Dbg.Log("home-move", ("kind", s.House ? "house" : "cushion"), ("id", item.Id), ("x", (int)s.CenterX), ("y", (int)s.FloorY));
         dirty = true;
+        Spots();
+        FollowPet();
+        Raise();
         save();
     }
 
-    // 놓을 자리를 정한다 (창 위 아니면 바닥). 자리·배율·그림 자리를 슬롯에 적는다
-    void PlaceAt(Slot s, HomeItem item, double centerX, double bottomY)
+    // 물건이 옮겨졌다: 안·위에 있는 펫을 같은 프레임에 따라가게 하고 (Brain), 오림을 새로 잡고, 펫 창을 옮긴다
+    void FollowPet()
     {
-        if (s.Roost.Snap(item, s.K, centerX, bottomY)) (s.Area, s.CenterX, s.FloorY) = (s.Roost.Area, s.Roost.CenterX, s.Roost.FloorY);
-        else s.FloorY = FloorOf(s.Area);
-        s.Origin = HomeGeom.Origin(item, s.K, s.CenterX, s.FloorY);
+        b.HomeFollow();
+        UpdateClip(artOf());
+        PetFollow?.Invoke();
     }
 
     // 왼쪽 클릭 (6장): 펫이 그 안·위에서 자면 깨우기, 다른 데 있고 한가하면 부르기 (와서 방석엔 4~6초 앉고 집엔 2초 빼꼼하고 나온다 — 수치 안 바뀜)
@@ -210,7 +240,6 @@ sealed class HomeLife : IDisposable
 
         bool want = !Book.Hidden && stage is not ("egg" or "baby") && !playing();
         Refresh(want); // 바뀐 게 있을 때만 다시 잡는다
-        FollowRoost();
 
         if (b.Now >= nextSlow)
         {
@@ -223,34 +252,6 @@ sealed class HomeLife : IDisposable
     }
 
     bool wantSeen;
-    double lastRoost;
-
-    // 창 위 물건: 창을 따라가고, 못 앉게 되면 떨어뜨리고, 떨어지는 중이면 내려보낸다. 바뀐 게 있을 때만 창을 옮기고 Brain 에 자리를 다시 넘긴다
-    void FollowRoost()
-    {
-        double dt = Math.Clamp(b.Now - lastRoost, 0, .1);
-        lastRoost = b.Now;
-        bool moved = false;
-        foreach (var s in all)
-        {
-            if (!s.Roost.Active || s.Item is not { } it || s.Moving) continue;
-            var c = s.Roost.Tick(b.Now, dt, it, s.K);
-            if (c == RoostChange.None) continue;
-            var r = s.Roost;
-            if (r.Area != s.Area) { s.K = scaleOf(r.Area); dirty = true; } // 다른 모니터의 창으로 옮겨졌다: 배율을 다시
-            (s.Area, s.CenterX, s.FloorY) = (r.Area, r.CenterX, r.FloorY);
-            s.Origin = HomeGeom.Origin(it, s.K, s.CenterX, s.FloorY);
-            if (s.Shown) s.Form?.Set(artOf(), it, s.K, s.Origin, s.Covered);
-            if ((c & RoostChange.Fell) != 0) // 떨어지기 시작: 같은 x 의 바닥을 저장 칸에 (창은 저장 안 한다)
-            {
-                var at = new[] { s.CenterX, FloorOf(s.Area) };
-                if (s.House) Book.HouseAt = at; else Book.CushionAt = at;
-                save();
-            }
-            moved = true;
-        }
-        if (moved) Spots();
-    }
 
     void Refresh(bool want)
     {
@@ -259,6 +260,7 @@ sealed class HomeLife : IDisposable
         dirty = dragDirty = false;
         foreach (var s in all) Layout(s, want);
         Spots();
+        if (needRaise) { needRaise = false; Raise(); }
     }
 
     // 1초에 한 번만 하는 일: 줄 것 보기, 모니터 배율 바뀜
@@ -345,7 +347,7 @@ sealed class HomeLife : IDisposable
         {
             var spot = new HomeSpot();
             if (s.Item is { } it && s.Shown && stage is not ("egg" or "baby"))
-                spot = HomeGeom.Spot(it, s.K, s.Origin, s.FloorY, bcIdle, bcSleep, s.Moving || s.Roost.Falling, FloorOf(s.Area));
+                spot = HomeGeom.Spot(it, s.K, s.Origin, s.FloorY, bcIdle, bcSleep, s.Moving);
             if (s.House) b.House = spot; else b.Cushion = spot;
         }
     }
@@ -368,7 +370,7 @@ sealed class HomeLife : IDisposable
             return;
         }
         bool sleeping = b.Pose == "sleep";
-        var key = (kind, b.HomeIsHouse ? 1 : 0, it.Id, s.K, s.Origin, sleeping);
+        var key = (kind, b.HomeIsHouse ? 1 : 0, it.Id, s.K, s.Origin, sleeping, b.Scale);   // 펫 배율이 바뀌어도 다시 오린다
         if (key == clipKey && clip != null) return;
         clipKey = key;
         var old = clip;
@@ -380,7 +382,16 @@ sealed class HomeLife : IDisposable
     }
 
     // ── 창 순서·숨기기·화면 녹화 ──
-    public void Raise() { foreach (var s in all) if (s.Shown && s.Form is { IsHandleCreated: true } f) Native.Topmost(f.Handle); }
+    // 창 순서 (위 → 아래): 펫 → Overlay → 집·방석 → 다른 창. 아래부터 차례로 올린다: 물건 창들, 그 위에 RaiseAbove(Overlay → 펫).
+    // 물건 창은 눌리거나·새로 뜨거나·끌려도 펫보다 위로 못 간다 — 물건을 올릴 때마다 반드시 그 위로 펫까지 다시 올린다
+    public void Raise()
+    {
+        foreach (var s in all)
+            if (s.Shown && HandleOf(s) is var h && h != IntPtr.Zero) Topmost(h);
+        RaiseAbove?.Invoke();
+    }
+
+    IntPtr HandleOf(Slot s) => s.TestHandle != IntPtr.Zero ? s.TestHandle : s.Form is { IsHandleCreated: true } f ? f.Handle : IntPtr.Zero;
 
     public void HideFromCapture(bool on) { foreach (var s in all) if (s.Form is { IsHandleCreated: true } f) Native.HideFromCapture(f.Handle, on); }
 
@@ -408,7 +419,6 @@ sealed class HomeLife : IDisposable
         foreach (var s in all)
         {
             if (house != null && s.House != house) continue;
-            s.Roost.Clear();
             ApplyDefault(s.House);
         }
         dirty = true;
@@ -417,7 +427,7 @@ sealed class HomeLife : IDisposable
         save();
     }
 
-    // 모니터가 바뀌었다: 자리가 어느 작업 영역에도 안 들면 가장 가까운 모니터의 바닥·안쪽으로, 두 물건이 겹치면 방석을 옆으로
+    // 모니터가 바뀌었다 (뺐다·해상도): 자리가 어느 작업 영역에도 안 들면 가장 가까운 모니터 안으로 눌러 저장 칸에도 적고, 두 물건이 겹치면 방석을 옆으로
     public void Settle()
     {
         foreach (var s in all)
@@ -425,19 +435,21 @@ sealed class HomeLife : IDisposable
             var at = s.House ? Book.HouseAt : Book.CushionAt;
             if (at == null || s.Item == null) continue;
             var area = b.World.At(at[0], at[1] - 1);
-            int k = scaleOf(area);
-            double hw = s.Item.W * k / 2.0, x = Math.Clamp(at[0], area.Left + hw, area.Right - hw), y = FloorOf(area);
+            var (x, y) = HomeGeom.Fit(s.Item, scaleOf(area), area, b.K.FloorGap, at[0], at[1]);
             if (Math.Abs(x - at[0]) > .5 || Math.Abs(y - at[1]) > .5) Dbg.Log("home-settle", ("kind", s.House ? "house" : "cushion"), ("x", (int)x), ("y", (int)y));
             if (s.House) Book.HouseAt = new[] { x, y }; else Book.CushionAt = new[] { x, y };
         }
         if (Cushion.Item is { } c && House.Item is { } h && Book.CushionAt is { } ca && Book.HouseAt is { } ha)
         {
-            double cw = c.W * scaleOf(b.World.At(ca[0], ca[1] - 1)) / 2.0, hw = h.W * scaleOf(b.World.At(ha[0], ha[1] - 1)) / 2.0;
+            var area = b.World.At(ha[0], ha[1] - 1);
+            int ck = scaleOf(b.World.At(ca[0], ca[1] - 1)), hk = scaleOf(area);
+            double cw = c.W * ck / 2.0, hw = h.W * hk / 2.0;
             if (Math.Abs(ca[0] - ha[0]) < cw + hw && Math.Abs(ca[1] - ha[1]) < 2)
             {
-                var area = b.World.At(ha[0], ha[1] - 1);
                 double left = ha[0] - hw - cw - 16, right = ha[0] + hw + cw + 16;
-                Book.CushionAt = new[] { left >= area.Left + cw ? left : Math.Min(right, area.Right - cw), ca[1] };
+                double nx = left >= area.Left + cw ? left : Math.Min(right, area.Right - cw);
+                var (fx, fy) = HomeGeom.Fit(c, ck, area, b.K.FloorGap, nx, ca[1]);
+                Book.CushionAt = new[] { fx, fy };
             }
         }
         dirty = true;
@@ -481,7 +493,6 @@ sealed class HomeLife : IDisposable
                 break;
             case "clear":
                 Book.Clear();
-                foreach (var o in all) o.Roost.Clear();
                 reveal = null;
                 dirty = true; clipKey = default;
                 save();
@@ -489,18 +500,16 @@ sealed class HomeLife : IDisposable
                 break;
             case "spot":
                 if (a.Length > 2 && a[2] == "reset") { ResetSpot(null); break; }
-                if (a.Length > 2 && a[2] is "cushion" or "house" && a.Length > 3 && a[3] is "win" or "fall") { RoostCommand(a[2] == "house", a[3] == "fall"); break; }
                 if (a.Length > 3 && a[2] is "cushion" or "house" && double.TryParse(a[3], out double x))
                 {
+                    // home spot <cushion|house> <x> [y]: 그 자리로 (y 를 안 주면 지금 y). 모니터 안으로 눌러 놓인다
                     bool h = a[2] == "house";
-                    var s = SlotOf(h);
                     var at = h ? Book.HouseAt : Book.CushionAt;
-                    var area = b.World.At(x, at?[1] - 1 ?? b.Area.Bottom - 60);
-                    var arr = new[] { x, FloorOf(area) };
-                    s.Roost.Clear();
+                    double y = a.Length > 4 && double.TryParse(a[4], out double yy) ? yy : at?[1] ?? FloorOf(b.Area);
+                    var arr = new[] { x, y };
                     if (h) Book.HouseAt = arr; else Book.CushionAt = arr;
                     dirty = true; clipKey = default; save();
-                    Dbg.Log("home-move", ("kind", a[2]), ("x", (int)x));
+                    Dbg.Log("home-move", ("kind", a[2]), ("x", (int)x), ("y", (int)y));
                     break;
                 }
                 foreach (var s in all)
@@ -545,32 +554,6 @@ sealed class HomeLife : IDisposable
         }
     }
 
-    // 디버그: home spot <cushion|house> win — 지금 열린 창 중 윗변이 되는 첫 창 위로 올린다 / home spot <cushion|house> fall — 창 위에서 바닥으로 떨어뜨린다
-    void RoostCommand(bool house, bool fall)
-    {
-        var s = SlotOf(house);
-        if (s.Item is not { } it) { Dbg.Log("home-none"); return; }
-        if (fall)
-        {
-            var at = new[] { s.CenterX, FloorOf(s.Area) };
-            if (house) Book.HouseAt = at; else Book.CushionAt = at;
-            s.Roost.StartFall(); dirty = true;
-            return;
-        }
-        s.Moving = false;
-        foreach (var w in b.Windows())
-        {
-            if (s.Roost.Snap(it, s.K, w.R.Left + w.R.Width / 2.0, w.R.Top + HomeRoost.Perch(s.K)))
-            {
-                (s.Area, s.CenterX, s.FloorY) = (s.Roost.Area, s.Roost.CenterX, s.Roost.FloorY);
-                s.Origin = HomeGeom.Origin(it, s.K, s.CenterX, s.FloorY);
-                dirty = true; clipKey = default;
-                return;
-            }
-        }
-        Dbg.Log("home-none", ("why", "no window"));
-    }
-
     public void Dispose()
     {
         clip?.Dispose();
@@ -600,14 +583,26 @@ static class HomeGeom
         return r;
     }
 
-    // ground: 그 모니터의 바닥 y (창 위에 놓였으면 floorY 보다 크다). 안 주면 바닥에 있는 것
-    public static HomeSpot Spot(HomeItem it, int k, Point origin, double floorY, double bcIdle, double bcSleep, bool moving, double ground = double.NaN)
+    // 놓을 수 있는 자리로 맞춘다 (모니터 작업 영역 area 안): x·y 는 그림 아래 가운데 x, 펫 발(seat 줄) y.
+    // ① 그림이 통째로 영역 안에 든다 ② 펫이 서 있는 자리가 영역 안이다 — 발이 바닥(영역 아래 − floorGap)보다 낮지 않고, 펫 머리가 영역 위로 안 나간다
+    // (방석에 앉은 펫은 발이 2칸 올라가고, 캣타워 위에 선 펫은 top 줄까지 올라간다). 영역이 작아 안 맞으면 위·왼쪽을 우선한다
+    public static (double X, double Y) Fit(HomeItem it, int k, Rectangle area, int floorGap, double x, double y)
+    {
+        int w = it.W * k, half = w / 2;
+        double xl = area.Left + half, xh = area.Right - (w - half);
+        int rise = it.Top is { } t ? (it.Seat.Y - t.Y) * k : it.House ? 0 : 2 * k;   // 펫이 seat 줄보다 올라가는 높이
+        double yl = Math.Max(area.Top + it.Seat.Y * k, area.Top + HomeArt.PetCellPx * k + rise);
+        double yh = Math.Min(area.Bottom - floorGap, area.Bottom - (it.H - it.Seat.Y) * k);
+        return (Math.Clamp(x, xl, Math.Max(xl, xh)), Math.Clamp(y, yl, Math.Max(yl, yh)));
+    }
+
+    public static HomeSpot Spot(HomeItem it, int k, Point origin, double floorY, double bcIdle, double bcSleep, bool moving)
     {
         double PetX(double seatX, double bc) => origin.X + (HomeArt.PetCell(seatX, it.Seat.Y, bc).X + HomeArt.PetCellPx / 2.0) * k;
         var s = new HomeSpot
         {
             On = true, Moving = moving, X = PetX(it.Seat.X, bcIdle), SleepX = PetX(it.Seat.X, bcSleep),
-            Ground = double.IsNaN(ground) ? floorY : ground, Bounds = new Rectangle(origin.X, origin.Y, it.W * k, it.H * k),
+            Bounds = new Rectangle(origin.X, origin.Y, it.W * k, it.H * k),
             Y = origin.Y + it.Seat.Y * k,
             SleepDy = it.House ? it.Sleep * k : 0,
             SitDy = it.House ? 0 : -2 * k,

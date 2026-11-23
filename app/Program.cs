@@ -81,7 +81,7 @@ static class Program
             return 0;
         }
 
-        if (args.Length == 3 && args[0] == "--home-scene") // 방석·집 장면 그려 보기 (화면을 띄우지 않는다): --home-scene 그림.png desk|nap|night|reveal|menu
+        if (args.Length == 3 && args[0] == "--home-scene") // 방석·집 장면 그려 보기 (화면을 띄우지 않는다): --home-scene 그림.png desk|nap|night|reveal|free|drag|drop|menu
         {
             ApplicationConfiguration.Initialize();
             L.Use("ko");

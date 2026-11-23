@@ -124,6 +124,8 @@ public sealed class PetForm : Form, IGameHost
         modes = GameModes.Create(this); // 게임 모듈 (app/Games): 기록을 읽기 전에 만든다
         if (debug) modes.Add(showcase = new Showcase(this, PoseMs)); // 디버그 앱: 캐릭터 확인 (모든 종의 아기·어린이·어른)
         home = new HomeLife(b, () => HomeArtNow, () => sprites, () => species, area => ScaleFor(b.K, Native.DpiAt(new Point(area.X + 10, area.Y + 10))), () => Playing, () => Afk(), Save);
+        home.RaiseAbove = RaiseAboveHome;
+        home.PetFollow = FollowHome;
         b.Windows = Native.ListWindows;
         b.Foreground = () => Native.OwnForeground() ? b.Active : Native.Foreground(); // 메뉴를 열어도 활성 창이 바뀐 걸로 치지 않는다
         Restore();
@@ -552,12 +554,22 @@ public sealed class PetForm : Form, IGameHost
     }
 
     // 창 순서 (위 → 아래): 펫 → Overlay(말풍선·zzz·꿈·반짝이) → 집·방석 → 다른 창. 5초마다 아래부터 차례로 올린다
-    // (Overlay 를 같이 안 올리면 zzz·꿈 구름이 지붕 뒤로 숨는다)
-    void RaiseAll()
+    // (Overlay 를 같이 안 올리면 zzz·꿈 구름이 지붕 뒤로 숨는다). 물건 창을 올리는 곳(5초 주기·눌림·끌기·놓기·새로 뜸)은 모두 home.Raise() 로
+    // 물건 → 그 위로 RaiseAboveHome(Overlay → 펫) 를 한 묶음으로 건다 — 물건만 올리면 펫이 물건 뒤로 숨는다
+    void RaiseAll() => home.Raise();
+
+    void RaiseAboveHome()
     {
-        home.Raise();
         foreach (var o in overlays) Native.Topmost(o.Handle);
-        Native.Topmost(Handle);
+        if (!b.Behind) Native.Topmost(Handle);   // 창 뒤에 숨어 있는 동안은 앞으로 끌어내지 않는다 (agy 검토 사소)
+    }
+
+    // 방석·집을 끄는 동안: 물건 창이 옮겨진 그 자리에서 펫 창도 같이 옮긴다 (프레임을 기다리면 물건만 앞서가고 펫이 뒤처져 물건 뒤로 가는 것처럼 보인다)
+    void FollowHome()
+    {
+        var at = new Point((int)b.X - Width / 2, (int)b.Y - Height);
+        if (at != Location) Location = at;
+        if (b.HomeClip != homeClipShown) { homeClipShown = b.HomeClip; Invalidate(); }
     }
 
     // 오래 꺼져 있다 켜서 잠든 채 시작했다: 집(없으면 방석) 안에서 바로 시작. 기운 0 으로 쓰러진 잠은 그 자리 그대로

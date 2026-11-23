@@ -13,9 +13,9 @@ sealed class HomeForm : Form
     public double FlashUntil;                      // 이때까지 하얗게 번쩍 (받는 순간·바꿀 때, 펫 시계 b.Now 기준)
     public Func<double> Now = () => 0;
 
-    public Action<HomeForm>? Clicked, RightClicked, DragStarted, DragEnded;
+    public Action<HomeForm>? Clicked, RightClicked, Pressed, DragStarted, DragEnded;
     public Action<HomeForm, Point>? DragMoved;     // 끄는 중: 마우스 화면 좌표
-    public int GrabX;                              // 누른 자리와 그림 가운데의 가로 거리 (끌 때 그 자리를 잡은 채로)
+    public int GrabX, GrabY;                       // 누른 자리와 그림 가운데의 가로 거리, 그림 위의 세로 거리 (끌 때 그 자리를 잡은 채로)
     HomeArt? art;
     public HomeArt? Art => art;
     bool pressing, dragging, flashShown;
@@ -89,6 +89,8 @@ sealed class HomeForm : Form
         {
             pressing = true; dragging = false; pressAt = MousePosition;
             GrabX = MousePosition.X - (Left + Width / 2);
+            GrabY = MousePosition.Y - Top;
+            Pressed?.Invoke(this);
         }
         else if (e.Button == MouseButtons.Right) RightClicked?.Invoke(this);
     }

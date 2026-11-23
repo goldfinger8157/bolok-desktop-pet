@@ -10,9 +10,7 @@ public struct HomeSpot
     public double SitDy;            // 방석에 앉아 있을 때(idle 계열) 위로 올리는 픽셀 (음수): 서 있는 그림이 누운 그림보다 두 칸 낮아서
     public bool HasTop;             // 캣타워처럼 위에 올라가 자는 자리가 있다 (어른만)
     public double TopX, TopY;
-    public double Ground;           // 그 모니터의 바닥(펫 MaxY). 창 위에 놓였으면 Y 보다 크다 — 펫은 바닥에서 밑까지 걸어가 곧게 올라간다
     public Rectangle Bounds;        // 그림이 차지한 자리 (화면 좌표). 마우스로 들었다 놓은 펫이 이 위에 놓였는지 보는 데 쓴다 (비어 있으면 안 본다)
-    public bool Elevated => Ground > Y + 1;   // 창 위에 있다 (떨어지는 중 포함)
 }
 
 public enum HomeUse { None, Sit, Nap, Peek, Sleep }
@@ -26,9 +24,9 @@ public sealed partial class Brain
     public Func<bool> NightNow = () => DateTime.Now.Hour is >= 21 or < 6;  // 밤 21~06시 (집을 더 고른다). 자가 검사는 바꿔 쓴다
 
     HomeUse homeUse;
-    bool homeHouse, homeTop, homeWalkAsleep, homeFast, homeCheer, homeClimb, homeVisit;
+    bool homeHouse, homeTop, homeWalkAsleep, homeFast, homeCheer, homeVisit;
     int homeStep;                      // 0 빼꼼·앉기, 1 캣타워 오르기, 2 자는 중, 3 깨서 내다보기·기지개
-    double homeUntil, homeStay, homeYoff, homeClimbT, homePoseAt, homeCheerUntil, homeLimit;
+    double homeUntil, homeStay, homeYoff, homeClimbT, homePoseAt, homeCheerUntil, homeLimit; // homeClimbT: 캣타워 위로 오르는 0~1
     string homePose = "idle";
 
     public HomeUse AtHome => Mode == Mode.Home ? homeUse : HomeUse.None;
@@ -49,7 +47,7 @@ public sealed partial class Brain
         if (house && !Pet.Grown(P.Stage) && use == HomeUse.Sleep) return false; // 집에서 자는 것은 다 자란 뒤
         (homeHouse, homeUse, homeFast, homeStay, homeCheer) = (house, use, fast, stay, cheer);
         homeWalkAsleep = P.Asleep;
-        (homeClimb, homeVisit, homeLimit) = (false, false, 0);
+        (homeVisit, homeLimit) = (false, 0);
         homeStep = 0;
         homeTop = false;
         homeYoff = 0;
@@ -66,7 +64,7 @@ public sealed partial class Brain
         ref var s = ref SpotOf(house);
         if (!s.On) return false;
         (homeHouse, homeUse, homeFast, homeStay, homeCheer, homeWalkAsleep) = (house, use, false, visit, false, false);
-        (homeClimb, homeVisit, homeLimit) = (false, visit > 0, visit > 0 ? Now + visit : 0);
+        (homeVisit, homeLimit) = (visit > 0, visit > 0 ? Now + visit : 0);
         then = null;
         (solo, tailSpin, fleeing) = (false, false, false);
         Mode = Mode.GoHome;
@@ -92,6 +90,12 @@ public sealed partial class Brain
             return EnterHome(house, use, Rand(K.HomeVisitMinSec, K.HomeVisitMaxSec));
         }
         return false;
+    }
+
+    // 물건을 끄는 동안 부른다: 물건 자리가 바뀐 같은 프레임에 안·위에 있는 펫도 자리를 따라가게 (프레임을 기다리면 물건만 앞서가 펫이 뒤처져 보인다)
+    public void HomeFollow()
+    {
+        if (Mode == Mode.Home) UpdateHome(0);
     }
 
     // 머무는 중에 눌렀다: 바로 나온다 (자는 중이면 깨서 기지개 뒤)
@@ -122,7 +126,6 @@ public sealed partial class Brain
     void ExitHome()
     {
         ref var s = ref SpotOf(homeHouse);
-        if (s.Elevated && !homeTop) { Y = s.Y; LeaveHome(); JumpDown(); return; } // 창 위: 폴짝 뛰어 내려간다 (창 위 낮잠을 깰 때와 같다)
         if (homeHouse && !homeTop)
         {
             double dir = X < Area.Left + Area.Width / 2.0 ? 1 : -1; // 화면 가운데 쪽으로 0.9칸 걸어 나온다
@@ -170,13 +173,11 @@ public sealed partial class Brain
         if (instant) homeYoff = homeTop ? 0 : s.SleepDy;
     }
 
-    // 가다가 그만둔다: 창 위로 올라가던 중이면 공중에 멈추지 않게 떨어뜨린다 (agy 검토 2026-11-23: 잠든 채 공중에 멈췄다)
+    // 가다가 그만둔다 (물건이 없어졌다·걷다 깼다·이어지지 않은 모니터): 그 자리에서 다시 돌아다닌다. 펫은 바탕화면 어디서든 돌아다니니 떨어뜨리지 않는다
     void GiveUpGoHome()
     {
         Mode = Mode.Wander;
         next = Now + 1;
-        homeClimb = false;
-        if (Y < MaxY - CellPx * .15 && P.Stage != "egg") Throw(0, 0);
     }
 
     void UpdateGoHome(double dt)
@@ -189,15 +190,7 @@ public sealed partial class Brain
         double speed = homeFast ? K.HomeSpeed * 1.3 : P.Asleep ? K.HomeSleepySpeed : K.HomeSpeed;
         double gx = top ? s.TopX : sleepy ? s.SleepX : s.X;
         if (World.NextArea(Area, World.At(gx, s.Y), CellPx) == null && World.At(gx, s.Y) != Area) { GiveUpGoHome(); return; } // 이어지지 않은 모니터
-        if (s.Elevated)
-        {
-            // 창 위: 바닥에서 물건 밑까지 걸어간 뒤 (창 윗변에 올라갈 때처럼) 곧게 올라간다. 올라가는 동안 창이 움직이면 따라간다
-            if (!homeClimb) { if (Go(gx, s.Ground, speed, dt)) homeClimb = true; return; }
-            Pose = "hop";
-            if (Go(gx, s.Y, speed, dt)) ArriveHome(false);
-            return;
-        }
-        if (Go(gx, s.Y, speed, dt)) ArriveHome(false);
+        if (Go(gx, s.Y, speed, dt)) ArriveHome(false); // 물건이 바탕화면 어디에 있든 그리로 곧장 걸어간다 (돌아다니는 것과 같다)
     }
 
     void UpdateHome(double dt)
@@ -205,8 +198,7 @@ public sealed partial class Brain
         ref var s = ref SpotOf(homeHouse);
         if (!s.On || P.Stage == "egg")
         {
-            LeaveHome();
-            if (Y < MaxY - CellPx * .15 && P.Stage != "egg") Throw(0, 0); // 창 위에서 물건이 없어졌다: 공중에 떠 있지 않고 떨어진다
+            LeaveHome(); // 물건이 없어졌다: 그 자리에서 평소처럼 (자던 중이면 계속 잔다)
             return;
         }
         if (homeTop && !s.HasTop) { homeTop = false; homeClimbT = 0; if (homeStep == 1) homeStep = 2; }   // 캣타워 위에 있다가 위칸 없는 집으로 바뀌었다: 문 안 자리로 (TopX·TopY 가 0 이라 화면 밖으로 사라졌다)
