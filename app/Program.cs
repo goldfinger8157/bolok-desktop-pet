@@ -64,6 +64,12 @@ static class Program
             return 0;
         }
 
+        if (args.Length >= 3 && args[0] == "--home-look") // 방석·집 그려 보기 (화면을 띄우지 않는다): --home-look 그림.png cushions|houses [배율]
+        {
+            ApplicationConfiguration.Initialize();
+            return HomeLook.Run(args);
+        }
+
         if (args.Length >= 2 && args[0] == "--art-all") // 모든 종의 아기·어린이·어른을 한 장으로 (디버그: --art-all 그림.png [자세])
         {
             ApplicationConfiguration.Initialize();
