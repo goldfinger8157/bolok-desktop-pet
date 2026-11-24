@@ -32,6 +32,7 @@ sealed partial class SwarmGame : IGameMode
         ["level"] = Sound.Pick, ["heart"] = Sound.Pick, ["magnet"] = Sound.Pick, ["shoe"] = Sound.Pick, ["win"] = Sound.Pick,
         ["grenade"] = Sound.Pick, ["throw"] = Sound.Tap, ["noammo"] = Sound.Tap, ["nade"] = Sound.Boom,   // 수류탄: 줍기, 던지기, 빈 손(톡), 터짐
         ["swap"] = Sound.Pick, ["cluster"] = Sound.Boom,   // 바주카 새끼 폭탄: 첫 것이 터질 때만 한 번 더 쾅 (특수기 "special" 자체는 소리 없음: 산탄총은 저절로 두 번, 난사는 네 번 울린다)
+        ["mound"] = Sound.Tap,                             // 가만히 있기 막기: 흙더미가 놓일 때 톡 (글자 없이 소리와 그림으로)
     };
     // 시작 안내 (줄 순서 규칙: 마우스 → 키 → Esc)
     static readonly string[] GuideKeys = { "note.swarm_move", "note.swarm_auto", "note.swarm_grenade", "note.esc" };
@@ -78,7 +79,7 @@ sealed partial class SwarmGame : IGameMode
     // 새 판 하나: 4단계를 깬 사람은 자석 하나로 시작한다 (시작·다시 뽑기·디버그 모두 이 길로)
     Swarm NewRun(Rectangle field, int k, Arm.Id? weapon, int play)
     {
-        var s = new Swarm(field, k, new Random(), weapon, play);
+        var s = new Swarm(field, k, new Random(), weapon, play) { CampOn = true };   // 가만히 있기 막기는 진짜 판에서만
         if (maxStage >= 4) s.Magnets = 1;
         return s;
     }
@@ -194,6 +195,8 @@ sealed partial class SwarmGame : IGameMode
     readonly Stamp[] nadeFly = new Stamp[4];   // 날아가는 수류탄 네 장 (도는 차례)
     readonly Stamp[] bladeFly = new Stamp[4];  // 날아가는 칼 네 장 (쌍검 특수기)
     readonly Stamp[] fireFloor = new Stamp[2]; // 불 자리 두 장 (화염 특수기, 0.16초마다 번갈아)
+    readonly Stamp[] mound = new Stamp[3];     // 흙더미 셋 (가만히 있기 막기: 펴짐 → 갈라짐 → 부풀어 떨림, 0.8초 안에)
+    readonly Stamp[] burst = new Stamp[2];     // 벌레가 올라온 직후 튀는 흙덩이 둘
     readonly Stamp[] handLit = new Stamp[2];   // 특수기 번쩍: 밝은 손 (오른쪽·왼쪽)
     Stamp bomb = null!, iconLit = null!;       // 새끼 폭탄, 밝은 머리 그림
     Stamp nade = null!, nadeBright = null!, nadeGray = null!, nadeGrayBig = null!, shadeBig = null!, shadeSmall = null!;   // 수류탄: 줍는 것·표시(작은 배율), 번쩍, 회색(0개·빈 손), 머리 위 회색, 그림자
@@ -222,6 +225,8 @@ sealed partial class SwarmGame : IGameMode
         (shadeBig, shadeSmall) = (SwarmArt.NadeShade(false, k), SwarmArt.NadeShade(true, k));
         for (int i = 0; i < bladeFly.Length; i++) bladeFly[i] = SwarmArt.BladeFly(i, k);
         (bomb, fireFloor[0], fireFloor[1]) = (SwarmArt.Bomb(k), SwarmArt.FireFloor(0, k), SwarmArt.FireFloor(1, k));
+        for (int i = 0; i < mound.Length; i++) mound[i] = SwarmArt.Mound(i, small);
+        for (int i = 0; i < burst.Length; i++) burst[i] = SwarmArt.Burst(i, small);
         (handLit[0], handLit[1], iconLit) = (SwarmArt.HandBright(id, small, false), SwarmArt.HandBright(id, small, true), SwarmArt.IconBright(id, small));
         for (var u = Swarm.Up.Fast; u <= Swarm.Up.Power; u++) upIcon[(int)u] = SwarmArt.UpIcon(u, k);
         upIcon[(int)Swarm.Up.Heal] = heart;
@@ -249,10 +254,19 @@ sealed partial class SwarmGame : IGameMode
     Rectangle FoeRect(Swarm s, Swarm.Foe f)
     {
         int small = GameHud.Small(s.K), x = FoeX(s, f);
-        var r = Rectangle.Inflate(FoeArt(s, f).Box(x, (int)f.Y), 2 + small, 2 + small);
+        var r = Rectangle.Inflate(FoeArt(s, f).Box(x, (int)f.Y + RiseY(s, f)), 2 + small, 2 + small);
+        if (Rising(s, f)) r = Rectangle.Union(r, Rectangle.Inflate(burst[0].Box(x, (int)f.Y + 6 * small), 1, 1));   // 흙덩이 (솟는 동안만)
         if (f.Elite) return Rectangle.Union(r, Rectangle.Inflate(spark.Box(x, CrownY(s, f)), 1, 1));
         return f.Tier >= Swarm.Bosses ? Rectangle.Union(r, Rectangle.Inflate(crown.Box(x, CrownY(s, f)), 1, 1)) : r;
     }
+
+    // 흙더미: 놓인 지 얼마나 됐는지에 따라 셋 중 하나 (마지막 단계는 한 칸씩 좌우로 떨린다). 올라온 벌레는 0.25초 동안 땅에서 솟고 흙덩이가 튄다
+    static int MoundStage(Swarm s, in Swarm.Mound m) => Math.Min(2, (int)((s.Clock - m.At) / Swarm.MoundSec * 3));
+    static int MoundShake(Swarm s, in Swarm.Mound m) => MoundStage(s, m) == 2 ? (((int)(s.Clock * 30) & 1) == 0 ? 1 : -1) * GameHud.Small(s.K) : 0;
+    const double RiseSec = .25;
+    static bool Rising(Swarm s, Swarm.Foe f) => f.Dirt && s.Clock - f.BornAt < RiseSec;
+    static int RiseY(Swarm s, Swarm.Foe f) => Rising(s, f) ? (int)((1 - (s.Clock - f.BornAt) / RiseSec) * 6 * GameHud.Small(s.K)) : 0;   // 땅에서 솟는 동안 그려지는 아래 쪽 어긋남
+    int BurstFrame(Swarm s, Swarm.Foe f) => s.Clock - f.BornAt < RiseSec / 2 ? 0 : 1;
 
     Stamp GemArt(Swarm.Gem m) => m.Item switch { Swarm.Item.Magnet => magnet, Swarm.Item.Shoe => shoe, Swarm.Item.Grenade => nade, Swarm.Item.Heart => heart, _ => m.Xp > 1 ? bigGem : gem };
 
@@ -480,6 +494,11 @@ sealed partial class SwarmGame : IGameMode
             rs.Add(o.Client(Rectangle.Inflate(shadeSmall.Box((int)bx, (int)(by + 8 * k / 3.0)), 1, 1)));
         }
         if (s.BladeOut) rs.Add(o.Client(Rectangle.Inflate(bladeFly[BladeFrame(s)].Box((int)s.BladeX, (int)s.BladeY), 1, 1)));   // 날아가는 칼 (공중인 동안 프레임마다)
+        for (int i = 0; i < s.Mounds.Count; i++)   // 흙더미 (있는 동안 프레임마다: 장이 바뀌고 떨린다. 사라지는 프레임도 지운다)
+        {
+            ref var m = ref s.Mounds[i];
+            rs.Add(o.Client(Rectangle.Inflate(mound[2].Box((int)m.X, (int)m.Y), 2 * small, 1)));
+        }
         for (int i = 0; i < s.Fires.Count; i++) rs.Add(o.Client(Rectangle.Inflate(fireFloor[0].Box((int)s.Fires[i].X, (int)s.Fires[i].Y), 1, 1)));   // 불 자리 (있는 동안 프레임마다: 장이 바뀌고 깜빡이며 꺼진다)
         if (!flameRect.IsEmpty) rs.Add(o.Client(flameRect));
         foreach (var r in gemRects) rs.Add(o.Client(r));
@@ -565,6 +584,11 @@ sealed partial class SwarmGame : IGameMode
         for (int pass = 0; pass < 2; pass++) // 자석·신발은 보석 더미에 묻히지 않게 위에
             foreach (var m in s.Gems)
                 if (m.Item >= Swarm.Item.Magnet == (pass == 1)) GemArt(m).Put(o, g, (int)m.X, (int)ShowY(s, m));
+        for (int i = 0; i < s.Mounds.Count; i++)   // 흙더미: 바닥에 깔린다 (보석 다음·벌레 앞). 글자 없이 그림만
+        {
+            ref var m = ref s.Mounds[i];
+            mound[MoundStage(s, m)].Put(o, g, (int)m.X + MoundShake(s, m), (int)m.Y);
+        }
         for (int i = 0; i < s.Fires.Count; i++)   // 불 자리: 바닥에 깔린다 (보석 다음·그림자와 벌레 앞). 꺼지기 0.4초 전부터 깜빡
         {
             ref var fs = ref s.Fires[i];
@@ -594,7 +618,8 @@ sealed partial class SwarmGame : IGameMode
         foreach (var f in order)
         {
             int fx = FoeX(s, f);
-            if (!Fx.Flash(s.Clock, f.Hit)) FoeArt(s, f).Put(o, g, fx, (int)f.Y); // 맞으면 번쩍
+            if (!Fx.Flash(s.Clock, f.Hit)) FoeArt(s, f).Put(o, g, fx, (int)f.Y + RiseY(s, f)); // 맞으면 번쩍
+            if (Rising(s, f)) burst[BurstFrame(s, f)].Put(o, g, fx, (int)f.Y + 6 * small);   // 땅에서 올라온 직후: 흙덩이
             if (f.Tier >= Swarm.Bosses) crown.Put(o, g, fx, CrownY(s, f));        // 여왕은 왕관
             if (Sparkle(s, f)) spark.Put(o, g, fx, CrownY(s, f));                 // 엘리트는 머리 위 반짝이
             if (s.Clock < f.BurnUntil)                                           // 불붙은 벌레: 등에 불씨가 깜빡

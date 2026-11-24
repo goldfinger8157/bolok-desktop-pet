@@ -15,14 +15,14 @@ sealed partial class SwarmGame
         foreach (int stg in new[] { 1, 2 })
             foreach (var id in new[] { Arm.Id.Twin, Arm.Id.Pistols, Arm.Id.Flame, Arm.Id.Bazooka })
             {
-                var r = BotGame(id, 1000, stg);
+                var r = BotGame(id, 1000, stg, null, true, true, -1, false);   // 가만히 있기 막기는 끈다 (2차 전과 같은 판인지 보는 지문)
                 sb.Append($"{r.Kills},{r.Born},{(int)(r.Time * 10)},{r.DamageTaken};");
             }
         return sb.ToString();
     }
 
-    // 쌍검 둘(첫째·다섯째)만 2026-11-24 밸런스 패치(회전 베기는 걸을 때만)로 바뀌었다 (1806·1896 → 1487·1790). 다른 여섯은 그대로
-    const string FingerprintWas = "1487,1519,2557,276;1168,1272,2231,214;1880,1882,3000,346;1847,1869,3000,548;1790,1828,3000,314;1120,1192,2132,195;1635,1673,2648,338;1596,1636,2628,503;";
+    // 쌍검 둘(첫째·다섯째)만 밸런스 패치로 바뀌었다: 2026-11-24 회전 베기는 걸을 때만 (1806·1896 → 1487·1790), 밸런스 패치 2 에서 몸이 정말 움직였을 때만 걸은 것으로 센다 (→ 1867·1830). 다른 여섯은 그대로
+    const string FingerprintWas = "1867,1916,3000,276;1168,1272,2231,214;1880,1882,3000,346;1847,1869,3000,548;1830,1865,3000,304;1120,1192,2132,195;1635,1673,2648,338;1596,1636,2628,503;";
 
     static string Stage2Check(SwarmGame game, SceneHost host)
     {

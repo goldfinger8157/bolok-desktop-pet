@@ -561,4 +561,45 @@ sealed partial class SwarmGame
             } || s.Clock > 20;
         }, 60 * 60);
     }
+
+    // ── 그려 보기 (--mode-scene swarm 그림.png mound): 가만히 있기 막기 여섯 장 (구석에 선 볼록이 둘레만 잘라서) ──
+    // 1 흙더미가 놓인 0.1초 (펴진 흙) · 2 0.4초 (갈라짐) · 3 0.7초 (부풀어 떨림, 곧 올라온다) · 4 벌레가 올라온 0.05초 (흙덩이가 튄다, 아직 땅 속) · 5 0.15초 (흙덩이가 흩어진다, 거의 올라옴) · 6 오래 서 있어 흙더미 셋과 올라온 벌레
+    static void MoundScene(string path, int k)
+    {
+        var host = new SceneHost(scale: k);
+        var game = new SwarmGame(host);
+        var field = FieldAt(k);
+        double sf = k / 3.0;
+        Swarm s = null!;
+        void New(int shot)
+        {
+            s = new Swarm(field, k, new Random(7 + shot), Arm.Id.Twin) { Spawning = false, CampOn = true, CampForce = true };
+            (s.X, s.Y) = (field.Left + 12 * sf, field.Top + 26 * sf);   // 왼쪽 위 구석
+            s.CampPrime(shot == 5 ? Swarm.CampAfter + 14 : Swarm.CampAfter - .02);
+            game.Begin(s);
+            s.OnEvent = null;
+            game.ses = null;
+        }
+        var view = new Rectangle(field.Left - (int)(8 * sf), field.Top - (int)(8 * sf), (int)(172 * sf), (int)(132 * sf));
+        using var ov = host.Overlay(game);
+        int made = -1;
+        SceneKit.Shots(path, ov, view, 6, shot =>
+        {
+            if (made != shot) { made = shot; New(shot); }
+            s.Update(Tick);
+            if (s.State == Swarm.Phase.Play) s.Hp = Swarm.MaxHp;
+            game.Track();
+            double bornAge = -1;
+            foreach (var f in s.Foes) if (f.Dirt) bornAge = Math.Max(bornAge, s.Clock - f.BornAt);
+            return shot switch
+            {
+                0 => s.Mounds.Count > 0 && s.Clock - s.Mounds[0].At >= .1,
+                1 => s.Mounds.Count > 0 && s.Clock - s.Mounds[0].At >= .4,
+                2 => s.Mounds.Count > 0 && s.Clock - s.Mounds[0].At >= .7,
+                3 => bornAge >= .05 && bornAge < .1,
+                4 => bornAge >= .15 && bornAge < .2,
+                _ => s.Mounds.Count >= 3 && s.Foes.Count >= 1 && s.Clock - s.Mounds[^1].At >= .3,
+            } || s.Clock > 40;
+        }, 60 * 60, 3);
+    }
 }

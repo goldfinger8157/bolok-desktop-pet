@@ -27,6 +27,8 @@ sealed class Swarm
         public double X, Y, R, Speed, Hit = -9, StunUntil = -9, BurnUntil = -9, BurnTick;   // Hit 은 번쩍임 전용, 멈칫은 StunUntil
         public double DashAt = 1e9, DashX, DashY, SpawnDue = 1e9;   // 돌진(3번 보스·여왕): 떨기 시작하는 때와 방향. 여왕이 벌레를 낳는 때
         public bool Winding, Dead;
+        public double BornAt = -9;                  // 땅에서 올라온 때 (올라오는 그림)
+        public bool Dirt;                           // 땅에서 올라온 벌레 (가만히 있기 막기): 잡아도 보석·아이템이 안 나온다 (눌러앉아 경험치를 모으는 길을 막는다)
         public int Cut;                             // 마지막으로 맞은 칼(쌍검 특수기)의 번호: 같은 길에서 두 번 안 맞게 (새 벌레는 0)
         public bool Elite;                          // 엘리트 (2단계부터): 체력 ×2.5, 닿는 피해 ×1.5, 걸음 ×0.9. 금색 테두리
         public bool Heavy;                          // 강철 딱정벌레 (5단계부터): 체력 ×1.5, 밀침 ×¼, 멈칫 없음, 보석 5. 은회색
@@ -62,6 +64,12 @@ sealed class Swarm
         ThrowDist = 120, ThrowSec = .55, ThrowArc = 34, ThrowCool = .6,      // 수류탄: 던지는 거리, 날아가는 시간(떨어지면 바로 터진다), 포물선 높이(그림 전용), 다시 던질 때까지
         NadeBlast = 80, NadeDmg = 70, NadeDmgGrow = .5, NadeBoss = .5, NadeKnock = 30, NadeStun = .4,   // 폭발: 반지름, 피해 70 + 0.5×지난 초 (× 벌레 체력 배율), 보스는 그 절반 (× 보스 배율), 밀침, 멈칫
         GrenadeFirst = 30, GrenadeGap = 80;                                  // 수류탄이 처음 나올 수 있는 때, 하나 떨어진 뒤 다음 것까지 쉬는 시간
+    // 가만히 있기 막기 (YELL 2026-11-24 「쌍칼은 구석에 가만히 있어도 안죽어」): 몸이 닻 자리 CampRadius 안에서 CampAfter 초를 넘기면 둘레 땅에 흙더미가 생기고 MoundSec 초 뒤 벌레가 올라온다 (잡아도 보석 없음).
+    // 오래 설수록 잦고 많다. 닻을 잠깐 벗어났다 오면 쌓인 초만 줄고, CampAway 초 넘게 벗어나 있으면 거기가 새 닻 (벽에 키를 쥐고 있어도 몸이 안 움직이면 가만히로 센다)
+    public const double CampRadius = 40, CampAfter = 12, CampAway = 2.5, CampCool = 2,         // 닻 둘레, 첫 흙더미까지 서 있는 초, 이만큼 벗어나 있으면 새 닻, 벗어나 있는 동안 쌓인 초가 줄어드는 빠르기
+        MoundSec = .8, MoundDist = 64, MoundNear = 52,                                          // 흙더미가 보이는 시간, 볼록이에게서 놓는 거리, 이보다 가까운 자리는 피한다
+        CampGapFirst = 2.2, CampGapDrop = .08, CampGapMin = .7, CampStep = 7;                    // 흙더미 사이: 처음 2.2초 → 넘긴 1초마다 0.08초씩 줄어 0.7초까지, 7초마다 한 번에 하나씩 더 (셋까지)
+    public const int MaxMounds = 6, MoundMax = 3;
     public const int MaxHp = 100, HeartHp = 30, MaxFoes = 110, FinaleCap = 90, MaxGems = 150, MaxShoes = 3, MaxMagnets = 5, MaxShots = 200, Bosses = 4, StartGrenades = 1, MaxGrenades = 3, MaxNades = 4, BotThrowMin = 6, BotThrowHurt = 4;   // MaxFoes: 한 화면 상한 (여왕이 살아 있는 마무리는 FinaleCap)
 
     // ── 1분 주기 (분 안의 초): 잔잔 0~35 · 예고 35~40 · 러시 40~55(물결 5번, 3초마다) · 숨 고르기 55~60 · 보스 60.
@@ -132,6 +140,16 @@ sealed class Swarm
     public int Grenades = StartGrenades, Thrown, NadeKills;   // 든 수류탄, 던진 수, 수류탄으로 잡은 벌레 수
     public double GrenadeChance = .008;            // 보통 벌레를 잡을 때 수류탄이 떨어질 확률 (검사에서 0·1 로 바꾼다)
     public bool BotIdle;                           // 자동 조종이 제자리에 서 있는다 (가만히 있기가 이기는 길이 아닌지 재는 표·검사 전용: 무기·수류탄·특수기는 그대로)
+    public bool BotGrab;                           // 제자리 봇이 가까이(BotGrabR px) 떨어진 보석·하트를 주우러 나갔다 돌아온다
+    public double BotGrabR = 110;
+    public bool BotHold;                           // 제자리 봇이 모서리·변에 닿은 뒤에도 방향키를 벽 쪽으로 계속 누른다 (몸은 안 움직인다. 사람이 구석에서 키를 쥔 채 서 있는 것)
+    public int Burrows;                            // 한자리에 오래 있어 땅에서 올라오게 한 벌레 수 (가만히 있기 막기: 흙더미를 놓은 수)
+    public bool CampOn;                            // 가만히 있기 막기 켜짐 (게임이 켠다: SwarmGame.NewRun. 표는 BotGame 이 켠다. 안 켜면 서 있는 검사는 그대로)
+    public bool CampForce;                         // 자가 검사·장면: 벌레 나오기(Spawning)를 껐어도 가만히 있기 막기는 돌린다
+    public struct Mound { public double X, Y, At; public int Kind; }   // 땅에서 벌레가 올라올 흙더미: 놓인 자리·때·벌레 종류
+    public readonly Bag<Mound> Mounds = new(MaxMounds);
+    double campX, campY, campHeat, campAway = -1, campDue = -1;  // 가만히 있는지 보는 닻 자리, 그 둘레에 머문 초(쌓인 정도), 닻을 벗어나 있기 시작한 때, 다음 흙더미를 놓을 때
+    public int BotCamp, BotCorner;                 // 제자리 봇이 서는 곳: 0 가운데(그대로), 1 모서리, 2 변 가운데 (처음에 걸어가서 선다). 어느 모서리·변인지(0~3 = 왼쪽 위·오른쪽 위·왼쪽 아래·오른쪽 아래 / 왼쪽·오른쪽·위·아래)
     public bool BotThrows = true;                  // 자동 조종이 수류탄을 던진다 (표에서 끄고 켜서 수류탄 몫을 잰다)
     public double SwingAt = -9, SwingDir, SwingArc, SwingLen = SwingSec;   // 마지막 휘두름: 때, 쪽, 부채꼴 절반 각, 자국이 보이는 시간
     public int SwingHand = -1, SwingCount;         // 쌍검: 이번에 휘두른 손(1 오른쪽·-1 왼쪽), 휘두른 횟수
@@ -231,6 +249,7 @@ sealed class Swarm
         (Stage, T) = (Math.Max(1, stage), Tune.Of(stage));
         sf = k / 3.0;
         (X, Y) = (field.Left + field.Width / 2.0, field.Top + field.Height / 2.0);
+        (campX, campY) = (X, Y);
     }
 
     public double Feet => Y + 20 * sf;             // (X, Y) 는 몸 가운데
@@ -264,15 +283,16 @@ sealed class Swarm
         Moving = len > .01;
         if (Moving)
         {
-            MovedAt = Clock;
-            double step = Speed * sf * dt / len;
+            double step = Speed * sf * dt / len, x0 = X, y0 = Y;
             (X, Y) = Inside(X + steerX * step, Y + steerY * step);
+            if (Math.Abs(X - x0) + Math.Abs(Y - y0) > .01) MovedAt = Clock;   // 몸이 정말 움직였을 때만 (벽에 키를 쥐고 서 있는 건 걷는 게 아니다)
             if (Math.Abs(steerX) > .01) Dir = steerX > 0 ? 1 : -1;
             (faceX, faceY) = (steerX / len, steerY / len);
         }
         for (int i = LaneCount - 1; i >= 0; i--)   // 다 지나간 띠는 지운다
             if (Clock >= Lanes[i].Until) Lanes[i] = Lanes[--LaneCount];
         Spawn(dt);
+        Camp(dt);
         MoveFoes(dt);
         Attack(dt);
         MoveShots(dt);
@@ -295,7 +315,7 @@ sealed class Swarm
         }
     }
 
-    void Go(Phase p, string ev) { (State, endAt, Moving, FlameOn, LaneCount) = (p, Math.Min(Clock, WinSec), false, false, 0); Nades.Trim(0); ClearSpecials(); OnEvent?.Invoke(ev); }   // 판이 끝나면 공중 수류탄도 사라진다
+    void Go(Phase p, string ev) { (State, endAt, Moving, FlameOn, LaneCount) = (p, Math.Min(Clock, WinSec), false, false, 0); Nades.Trim(0); Mounds.Trim(0); ClearSpecials(); OnEvent?.Invoke(ev); }   // 판이 끝나면 공중 수류탄도 사라진다
 
     // 판이 끝나면 새끼 폭탄·불 자리·공중 칼·미뤄 둔 둘째 발·난사 물결도 사라진다
     void ClearSpecials()
@@ -345,6 +365,55 @@ sealed class Swarm
             AddBoss(bossSeen, BossSide, BossU);
             if (TwoBoss && (bossSeen == 3 || bossSeen == 2 && Stage >= 9)) AddExtra(BossSide ^ 1, 1 - BossU);   // 7단계 3:00 · 9단계부터 2:00 도 둘째 보스가 마주 보는 변에서 (rng 안 씀)
         }
+    }
+
+    // ── 가만히 있기 막기: 닻 자리 둘레에서 오래 서 있으면 볼록이 둘레(구석이면 벽을 따라서도)에 흙더미를 놓고, 0.8초 뒤 거기서 벌레가 올라온다. rng 를 안 쓴다 (안 서 있는 판은 그대로) ──
+    public double Still => campHeat;              // 닻 둘레에 머문 초 (잠깐 벗어나면 줄어들고, 오래 벗어나면 0 에서 새로 시작)
+    public void CampPrime(double heat) => (campX, campY, campHeat, campAway, campDue) = (X, Y, heat, -1, -1);   // 장면·검사: 지금 자리를 닻으로 하고 이미 이만큼 서 있었던 것으로
+    static double CampGap(double u) => Math.Max(CampGapMin, CampGapFirst - CampGapDrop * u);   // u: 첫 흙더미를 놓을 수 있는 때(CampAfter)를 넘긴 초
+    static int CampCount(double u) => 1 + Math.Min(MoundMax - 1, (int)(u / CampStep));
+
+    void Camp(double dt)
+    {
+        if (!Spawning && !CampForce) return;
+        if (Dist(X, Y, campX, campY) <= CampRadius * sf) (campAway, campHeat) = (-1, campHeat + dt);
+        else
+        {
+            if (campAway < 0) campAway = Clock;
+            campHeat = Math.Max(0, campHeat - CampCool * dt);   // 닻 둘레를 잠깐 벗어났다 오는 건 쌓인 정도를 줄일 뿐 (보석을 주우러 나갔다 오기)
+            if (Clock - campAway >= CampAway) (campX, campY, campHeat, campAway, campDue) = (X, Y, 0, -1, -1);   // 오래 벗어났다: 여기가 새 닻
+        }
+        double u = campHeat - CampAfter;
+        if (CampOn && u >= 0 && Clock >= campDue)   // 넘었다: 흙더미 하나(오래 서 있을수록 더 많이)를 놓고 다음 때를 정한다
+        {
+            int n = CampCount(u);
+            double a0 = Burrows * 2.39996, dist = MoundDist * sf;   // 기준 각은 지금까지 놓은 수 × 황금각 (매번 다른 쪽)
+            for (int i = 0; i < n && Mounds.Count < MaxMounds; i++)
+            {
+                double best = -1, bx = X, by = Y;
+                for (int t = 0; t < 8; t++)   // 벽에 눌려 볼록이와 너무 가까운 자리는 건너뛰고 다른 쪽으로 (구석이면 벽을 따라·안쪽으로 놓인다). 다 가까우면 가장 먼 곳
+                {
+                    double a = a0 + i * 2 * Math.PI / n + (t + 1) / 2 * (t % 2 == 0 ? 1 : -1) * .7;
+                    var (x, y) = Inside(X + Math.Cos(a) * dist, Y + Math.Sin(a) * dist);
+                    double d = Dist(x, y, X, Y);
+                    if (d > best) (best, bx, by) = (d, x, y);
+                    if (d >= MoundNear * sf) break;
+                }
+                int kind = Burrows % 6 == 5 && Clock >= 60 ? (int)Kind.Beetle : Burrows % 3 == 2 && Clock >= 20 ? (int)Kind.Wasp : (int)Kind.Bug;   // 벌레 가끔 말벌·딱정벌레 (나올 수 있는 때부터)
+                Mounds.Add() = new Mound { X = bx, Y = by, At = Clock, Kind = kind };
+                Burrows++;
+            }
+            campDue = Clock + CampGap(u);
+            OnEvent?.Invoke("mound");
+        }
+        int keep = 0;
+        for (int i = 0, n = Mounds.Count; i < n; i++)   // 때가 된 흙더미에서 벌레가 올라온다 (상한이 꽉 찼으면 그냥 흩어진다)
+        {
+            var m = Mounds[i];
+            if (Clock - m.At < MoundSec) { Mounds[keep++] = m; continue; }
+            if (Foes.Count < Cap()) { var b = Add((Kind)m.Kind, m.X, m.Y); (b.Dirt, b.BornAt) = (true, Clock); }
+        }
+        Mounds.Trim(keep);
     }
 
     // 한 화면 상한: 여왕이 살아 있는 마무리는 90, 아니면 110
@@ -1251,6 +1320,7 @@ sealed class Swarm
         Kills++;
         bool boss = f.Kind == Kind.Boss;
         Pops.Add(new Pop { X = f.X, Y = f.Y, At = Clock, R = f.R * 1.5 });
+        if (f.Dirt) { OnEvent?.Invoke("kill"); return; }   // 땅에서 올라온 벌레는 아무것도 안 남긴다
         Gems.Add(new Gem { X = f.X, Y = f.Y, Xp = f.Extra ? BossGems[0] / 2 : boss ? BossGems[f.Tier - 1] : f.Kind == Kind.Beetle ? f.Heavy ? (f.Elite ? 2 * SteelGems : SteelGems) : f.Elite ? EliteBeetleGems : 3 : f.Elite ? EliteGems : GemValue() });
         if (f.Extra) Gems.Add(new Gem { X = f.X + 14 * sf, Y = f.Y, Item = Item.Heart });   // 둘째 보스: 보석 7 + 하트만 (보스 수·첫 보스 초·보석 끌어오기·자석 없음)
         else if (boss)
@@ -1456,12 +1526,33 @@ sealed class Swarm
         (botThrow, botNadeX, botNadeY) = (true, NadeDirs[bestAt].X, NadeDirs[bestAt].Y);
     }
 
+    // 제자리 봇: 가운데면 그대로 서고, 모서리·변 가운데면 처음에 그리로 걸어가서 선다 (판 밖을 겨눠 가장자리에 닿게 한다).
+    // BotHold 면 닿은 뒤에도 벽 쪽 키를 쥐고, BotGrab 이면 가까이 떨어진 보석·하트를 주우러 나갔다 돌아온다 (눌러앉아 싸우는 사람 흉내)
+    (double, double) CampSteer()
+    {
+        if (BotCamp == 0) return (0, 0);
+        double ex = BotCamp == 1 ? (BotCorner & 1) * 2 - 1 : BotCorner < 2 ? BotCorner * 2 - 1 : 0, ey = BotCamp == 1 ? (BotCorner >> 1) * 2 - 1 : BotCorner < 2 ? 0 : (BotCorner - 2) * 2 - 1;
+        var (gx, gy) = Inside(X + ex * 1e4, Y + ey * 1e4);
+        if (BotGrab)
+        {
+            var (sx, sy) = Inside(Field.Left + Field.Width / 2.0 + ex * 1e4, Field.Top + Field.Height / 2.0 + ey * 1e4);   // 서 있는 자리
+            Gem? pick = null;
+            double best = BotGrabR * sf;
+            foreach (var g in Gems) { double d = Dist(g.X, g.Y, sx, sy); if (d < best && g.Item != Item.Magnet) (pick, best) = (g, d); }
+            if (pick != null) { double d = Dist(pick.X, pick.Y, X, Y); return d > 6 * sf ? ((pick.X - X) / d, (pick.Y - Y) / d) : (0, 0); }
+            double dd = Dist(sx, sy, X, Y);
+            return dd > 2 * sf ? ((sx - X) / dd, (sy - Y) / dd) : (0, 0);
+        }
+        if (Math.Abs(gx - X) < .5 * sf && Math.Abs(gy - Y) < .5 * sf && !BotHold) return (0, 0);
+        return (ex, ey);
+    }
+
     public (double Dx, double Dy) BotSteer()
     {
         if (Clock - botAt < .1) return bot;
         botAt = Clock;
         BotNade();
-        if (BotIdle) return bot = (0, 0);
+        if (BotIdle) return bot = CampSteer();
         var w = Weapon;
         double hx = Field.Width / 2.0, hy = Field.Height / 2.0, bestScore = double.MinValue, want = w.BotGap * sf, tight = Math.Min(20, w.BotGap * .5) * sf;
         bool hunt = w.Kind is Arm.Sort.Melee or Arm.Sort.Flame || w.Which == Arm.Id.Shotgun;

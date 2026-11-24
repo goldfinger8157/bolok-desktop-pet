@@ -290,6 +290,86 @@ static class SwarmArt
     public static Stamp Bomb(int scale) => Cached(170, scale, BombRows);
     public static Stamp FireFloor(int frame, int scale) => Peek(180 + (frame & 1), scale) ?? Store(180 + (frame & 1), scale, Make((frame & 1) == 0 ? FireRows : FireTwin(), scale));
 
+    // ── 흙더미 (가만히 있기 막기): 땅에서 벌레가 올라오기 0.8초 전부터 셋(펴짐 → 갈라짐 → 부풀어 떨림), 올라온 직후 흙덩이가 튀는 둘. 모두 15×11 (아래가 땅)
+    static readonly string[][] MoundRows =
+    {
+        new[]
+        {
+            "...............",
+            "...............",
+            "...............",
+            "...............",
+            "...............",
+            "...............",
+            "......ooo......",
+            "....oobttboo...",
+            "...obbbttbbbo..",
+            "...oobbbbbboo..",
+            ".....oooooooo..",
+        },
+        new[]
+        {
+            "...............",
+            "...............",
+            "...............",
+            "...............",
+            ".......o.......",
+            ".....oootooo...",
+            "....obbtttbbo..",
+            "...obbbtoobbbo.",
+            "...obbbbobbbbo.",
+            "..obbbbbbbbbbbo",
+            "...ooooooooooo.",
+        },
+        new[]
+        {
+            ".....g....g....",
+            "......o.o..g...",
+            ".....ooooo.....",
+            "....obtttbo....",
+            "...obtttttbbo..",
+            "..obbtoootbbbo.",
+            "..obbtobobbbbo.",
+            ".obbbbobbobbbbo",
+            ".obbbbbbbbbbbbo",
+            "..obbbbbbbbbbo.",
+            "...oooooooooo..",
+        },
+    };
+    static readonly string[][] BurstRows =
+    {
+        new[]
+        {
+            "...............",
+            "...o.......o...",
+            "..obo..o...obo.",
+            "...o..obo...o..",
+            "..o....o....o..",
+            "...............",
+            "...............",
+            "....ooooooo....",
+            "..oobbbbbbboo..",
+            ".obbbbtttbbbbo.",
+            "..ooooooooooo..",
+        },
+        new[]
+        {
+            ".o...........o.",
+            "obo....o....obo",
+            ".o....obo....o.",
+            "...............",
+            "...............",
+            "...............",
+            "...............",
+            ".....ooooo.....",
+            "..oobbbbbbboo..",
+            ".obbbtbbbtbbbo.",
+            "..ooooooooooo..",
+        },
+    };
+    public static Stamp Mound(int stage, int scale) => Peek(310 + stage, scale) ?? Store(310 + stage, scale, Make(MoundRows[stage], scale));
+    public static Stamp Burst(int frame, int scale) => Peek(320 + frame, scale) ?? Store(320 + frame, scale, Make(BurstRows[frame & 1], scale));
+
     public static bool Dual(Arm.Id id) => id is Arm.Id.Twin or Arm.Id.Pistols;   // 양손에 하나씩 드는 무기
 
     static string[] Flip(string[] rows)
@@ -324,7 +404,7 @@ static class SwarmArt
         return new Stamp(bmp);
     }
 
-    static readonly Dictionary<(int Kind, int Scale), Stamp> made = new();   // Kind: 0~6 손(오른쪽) · 10~16 손(왼쪽) · 20~26 머리 위 · 30~32 갈래 · 40 위 화살표 · 41~42 다시 뽑기 · 70~71 강철 · 50~59 깃발 · 60~69 왕관 · 190~196 못 깬 무기 · 200~299 등급 숫자 · 80~ 엘리트 · 90 러시 느낌표 · 100 수류탄 · 101 밝은 판 · 102 회색 판 · 110~113 날아가는 네 장 · 120·121 그림자 · 130~136 밝은 손(오른쪽)·140~146 밝은 손(왼쪽)·150~156 밝은 머리 그림 · 160~163 날아가는 칼 · 170 새끼 폭탄 · 180·181 불 자리
+    static readonly Dictionary<(int Kind, int Scale), Stamp> made = new();   // Kind: 0~6 손(오른쪽) · 10~16 손(왼쪽) · 20~26 머리 위 · 30~32 갈래 · 40 위 화살표 · 41~42 다시 뽑기 · 70~71 강철 · 50~59 깃발 · 60~69 왕관 · 190~196 못 깬 무기 · 200~299 등급 숫자 · 80~ 엘리트 · 90 러시 느낌표 · 100 수류탄 · 101 밝은 판 · 102 회색 판 · 110~113 날아가는 네 장 · 120·121 그림자 · 130~136 밝은 손(오른쪽)·140~146 밝은 손(왼쪽)·150~156 밝은 머리 그림 · 160~163 날아가는 칼 · 170 새끼 폭탄 · 180·181 불 자리 · 310~312 흙더미 · 320·321 흙덩이
     // 이미 만든 그림은 바로 (프레임마다 부르는 곳에서 람다·새 객체를 안 만든다: 만드는 쪽은 따로 둔 메서드)
     static Stamp? Peek(int kind, int scale) { lock (made) return made.TryGetValue((kind, scale), out var hit) ? hit : null; }
     static Stamp Store(int kind, int scale, Stamp stamp) { lock (made) return made.TryGetValue((kind, scale), out var hit) ? hit : made[(kind, scale)] = stamp; }
@@ -463,7 +543,7 @@ static class SwarmArt
     // 자가 검사: 줄 길이가 같고 색 글자가 팔레트 안인지
     public static string? Broken()
     {
-        foreach (var (rows, i) in Hands.Concat(Ups).Concat(new[] { FlagRows, ArrowRows, SwapRows, NadeRows, FlyRows, ShadeBig, ShadeSmall, BladeRows, BombRows, FireRows }).Select((r, i) => (r, i)))
+        foreach (var (rows, i) in Hands.Concat(Ups).Concat(new[] { FlagRows, ArrowRows, SwapRows, NadeRows, FlyRows, ShadeBig, ShadeSmall, BladeRows, BombRows, FireRows }.Concat(MoundRows).Concat(BurstRows)).Select((r, i) => (r, i)))
             if (rows.Any(r => r.Length != rows[0].Length || r.Any(ch => ch != '.' && !Colors.ContainsKey(ch) && !(rows == FlagRows && ch is 'a' or 'h' or 'k')))) return $"그림 {i}";
         if (FlyRows.Length != FlyRows[0].Length || Fly.Any(f => f.Length != FlyRows.Length || f.Any(r => r.Length != FlyRows.Length))) return "날아가는 수류탄은 정사각형";
         if (BladeRows.Length != BladeRows[0].Length || BladeFlyRows.Any(f => f.Length != BladeRows.Length || f.Any(r => r.Length != BladeRows.Length))) return "날아가는 칼은 정사각형";
