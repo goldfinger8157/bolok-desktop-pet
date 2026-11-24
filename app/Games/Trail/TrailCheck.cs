@@ -75,7 +75,8 @@ static partial class TrailCheck
         var r60 = Fixed(_ => 1.0 / 60);
         var r30 = Fixed(_ => 1.0 / 30);
         var jit = Fixed(i => (new Random(i).NextDouble() * .045 + .004));
-        Expect(Math.Abs(r60.Pos - r30.Pos) < 1.2 && Math.Abs(r60.Pos - jit.Pos) < 1.2, $"프레임 빠르기와 무관 (1/60 {r60.Pos:0.0} · 1/30 {r30.Pos:0.0} · 들쭉날쭉 {jit.Pos:0.0})");
+        double tol = Math.Max(1.2, TrailTune.Now.Dash / 60.0);   // 한 틱에 가는 만큼까지는 같다고 본다 (빨라지면 그만큼)
+        Expect(Math.Abs(r60.Pos - r30.Pos) < tol && Math.Abs(r60.Pos - jit.Pos) < tol, $"프레임 빠르기와 무관 (1/60 {r60.Pos:0.0} · 1/30 {r30.Pos:0.0} · 들쭉날쭉 {jit.Pos:0.0})");
         Expect(r60.Hits == r30.Hits && r60.Hits == jit.Hits && r60.Score == r30.Score && r60.Score == jit.Score, "프레임 빠르기와 무관: 넘어짐·점수");
         _ = rng;
         return "씨 · 1/60·1/30·들쭉날쭉";
@@ -182,7 +183,8 @@ static partial class TrailCheck
             Run(t, 3);
             Expect(t.Hits == 1, $"닿은 뒤에는 바로 다시 안 닿는다 (넘어짐 {t.Hits})");
             var h = With(Bare(), Th(TrailKind.Hole, 0, 55));
-            Run(h, 2.1);
+            for (int i = 0; i < 60 * 4 && h.Hits == 0; i++) h.Update(Trail.Tick);   // 닿을 때까지 (빠르기·가속에 따라 닿는 때가 다르다)
+            Run(h, .3);
             Expect(h.Halted || h.HaltLeft > 0, "물구멍: 멈춘다");
             Expect(h.InvLeft >= h.HaltLeft + h.T.SafeAfter - .1, $"멈춤이 끝난 뒤 {h.T.SafeAfter}초는 안 닿는다 ({h.InvLeft:0.00}/{h.HaltLeft:0.00})");
         }
@@ -211,9 +213,9 @@ static partial class TrailCheck
         {   // 빙판: 좌우가 30% 만 먹는다 · 옆바람: 3초 동안 옆으로 밀린다 · 길 밖: 빠르기 ×0.7
             var ice = With(Bare(), Th(TrailKind.Ice, 0, 10));
             var dry = Bare();
-            Run(ice, 1.0); Run(dry, 1.0);
+            for (int i = 0; i < 60 * 3 && !ice.OnIce; i++) { ice.Update(Trail.Tick); dry.Update(Trail.Tick); }   // 빙판에 올라설 때까지 (빠르기에 따라 때가 다르다)
             Expect(ice.OnIce, $"빙판 위 (자리 {ice.Pos:0})");
-            Run(ice, .3, 1); Run(dry, .3, 1);
+            Run(ice, .15, 1); Run(dry, .15, 1);   // 빙판을 지나기 전에 짧게 좌우
             Expect(Math.Abs(ice.X) < Math.Abs(dry.X) * .6, $"빙판은 좌우가 덜 먹는다 ({ice.X:0.00} / {dry.X:0.00})");
             var wind = With(Bare(), new TrailThing { Kind = TrailKind.Wind, U = 1, P = 30, P0 = 30 });
             Run(wind, 4.5);

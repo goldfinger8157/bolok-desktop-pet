@@ -8,11 +8,11 @@ sealed record TrailTune
 
     // 한 판 (4-1)
     public int Legs { get; init; } = 5;                 // 쉼터 수 = 구간 수
-    public double LegLen { get; init; } = 1920;         // 구간 길이 (걸음). 빠르기를 올리며 같은 비율로 늘려 한 판 길이는 그대로 (2026-11-24)
-    public double Speed { get; init; } = 64;            // 기본 빠르기 (걸음/초). YELL 2026-11-24 「조금 느리다, 답답해」 → 50 에서 64 (+28%). 구간도 같은 비율로 길게 해서 시간 값은 그대로
-    public double Dash { get; init; } = 87;             // Shift 질주
-    public double Slow { get; init; } = 45;             // ↓ 천천히
-    public double Accel { get; init; } = 59;            // 빠르기 되찾기 (초당)
+    public double LegLen { get; init; } = 2610;         // 구간 길이 (걸음). 빠르기를 올리며 같은 비율로 늘려 한 판 길이는 그대로 (2026-11-24)
+    public double Speed { get; init; } = 87;            // 기본 빠르기 (걸음/초). YELL 2026-11-24 「조금 느리다, 답답해」 → 50 에서 64, 다시 「아직도 느려, 지금 질주를 기본으로」 → 87 (질주 118). 구간도 같은 비율로 길게 해서 시간 값은 그대로
+    public double Dash { get; init; } = 118;             // Shift 질주
+    public double Slow { get; init; } = 61;             // ↓ 천천히
+    public double Accel { get; init; } = 80;            // 빠르기 되찾기 (초당)
     public double StartSec { get; init; } = 42;         // 시작 시간
     public double GateSec { get; init; } = 32;          // 1단계 쉼터 보너스 (남은 시간에 더한다)
     public double GateSecStep { get; init; }       // 단계마다 줄어드는 보너스
@@ -20,11 +20,11 @@ sealed record TrailTune
     public double GateSecPow { get; init; } = 1.8;
     public double GateSecMin { get; init; } = 20;
     public double TimeCap { get; init; } = 60;          // 시간은 이 이상 안 쌓인다
-    public double SeeDist { get; init; } = 520;         // 보이기 시작하는 거리 (기본 빠르기로 8초 앞, 12% 크기 점)
+    public double SeeDist { get; init; } = 707;         // 보이기 시작하는 거리 (기본 빠르기로 8초 앞, 12% 크기 점)
     public double CountSec { get; init; } = .8;         // 3·2·1 한 칸
 
     // 움직임 (4-2)
-    public double Steer { get; init; } = 1.6;           // 좌우 (초당 자리)
+    public double Steer { get; init; } = 1.9;           // 좌우 (초당 자리). 앞 빠르기를 87 로 올리며 1.6 → 1.9 (장애물이 더 빨리 다가온다)
     public double SteerStop { get; init; } = .08;       // 떼면 멈추는 시간
     public double OffRoad { get; init; } = .7;          // 길 밖 눈밭 빠르기 배율
     public double OffLimit { get; init; } = 1.15;       // 더는 못 나간다
@@ -44,7 +44,7 @@ sealed record TrailTune
     public double IceGrip { get; init; } = .3;          // 빙판 위 좌우가 먹는 몫
     public double WindPush { get; init; } = .5;         // 옆바람 (초당 자리)
     public double WindSec { get; init; } = 3;
-    public double WindWarn { get; init; } = 128;        // 예고 눈발이 보이는 거리 (걸음, 2초 앞)
+    public double WindWarn { get; init; } = 174;        // 예고 눈발이 보이는 거리 (걸음, 2초 앞)
     public double BallRoll { get; init; } = .6;         // 굴러오는 눈덩이가 길 쪽으로 오는 빠르기 (기본 빠르기 몫)
 
     // 줍는 것 (4-4)
@@ -55,7 +55,7 @@ sealed record TrailTune
 
     // 길 만들기 (4-3 공정하게)
     public double MoreBase { get; init; } = .42;        // 한 묶음에 하나 더 나올 확률 (1단계 첫 구간)
-    public double MoreStage { get; init; } = .07;       // 단계마다 늘어난다
+    public double MoreStage { get; init; } = .05;       // 단계마다 늘어난다
     public double MoreLeg { get; init; } = .03;         // 구간마다 늘어난다
     public double MoreDecay { get; init; } = .55;       // 셋·넷째는 이만큼씩 어렵게
     public double GapMin { get; init; } = .5;           // 묶음마다 지나갈 틈 (좌우 자리 폭)
@@ -64,9 +64,10 @@ sealed record TrailTune
     public double BundleGapStep { get; init; } = .1;   // 단계마다 줄어든다
     public double BundleGapMin { get; init; } = .6;
     public double BundleGapLeg { get; init; } = .03;    // 구간이 갈수록 조금 잦아진다 (몫)
-    public double GateClear { get; init; } = 30;        // 쉼터 앞뒤 빈 자리 (걸음)
-    public double FirstClear { get; init; } = 110;      // 첫 묶음까지 (몸풀기)
-    public double NewKindClear { get; init; } = 40;     // 처음 보이는 종류 앞뒤 더 비움
-    public double BallLead { get; init; } = 157;        // 굴러오는 눈덩이가 처음 서 있는 자리 (만나는 곳보다 얼마나 앞)
-    public double BallPad { get; init; } = 40;          // 눈덩이 묶음 앞뒤 더 비움 (만나는 곳이 빠르기에 따라 달라진다)
+    // 아래 걸음 값들은 빠르기 64 → 87 에 맞춰 ×1.36 (시간으로는 그대로)
+    public double GateClear { get; init; } = 41;        // 쉼터 앞뒤 빈 자리 (걸음)
+    public double FirstClear { get; init; } = 150;      // 첫 묶음까지 (몸풀기)
+    public double NewKindClear { get; init; } = 54;     // 처음 보이는 종류 앞뒤 더 비움
+    public double BallLead { get; init; } = 214;        // 굴러오는 눈덩이가 처음 서 있는 자리 (만나는 곳보다 얼마나 앞)
+    public double BallPad { get; init; } = 54;          // 눈덩이 묶음 앞뒤 더 비움 (만나는 곳이 빠르기에 따라 달라진다)
 }
