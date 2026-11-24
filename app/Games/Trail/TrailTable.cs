@@ -76,7 +76,7 @@ static partial class TrailCheck
         var (tune, easy, good) = Overrides(spec);
         var sb = new StringBuilder();
         int[] stages = full ? new[] { 1, 2, 3, 4, 5, 7, 10 } : new[] { 1, 3, 5 };
-        sb.AppendLine($"눈길 마중 봇 표 — 씨 {seeds}개, 어린이 몸");
+        sb.AppendLine($"아이스런 봇 표 — 씨 {seeds}개, 어린이 몸");
         foreach (var skill in new[] { easy, good })
         {
             sb.AppendLine($"[{skill.Name}] 단계 | 완주 | 평균 닿은 쉼터 | 구간당 넘어짐 | 완주 판 길이 | 질주 비율");

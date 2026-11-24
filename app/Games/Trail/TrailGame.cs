@@ -40,7 +40,7 @@ sealed partial class TrailGame : IGameMode
     public string Id => "trail";
     public string? MenuKey => "menu.trail";
     public bool Running => run != null;
-    public string HudLine => plays > 0 ? $"눈길 마중 {stage}단계 (최고 {best})" : "";
+    public string HudLine => plays > 0 ? $"아이스런 {stage}단계 (최고 {best})" : "";
 
     // ── 시작 ──
     public void Start()

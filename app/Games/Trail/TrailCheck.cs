@@ -51,7 +51,7 @@ static partial class TrailCheck
         string game = CheckGame();
         string art = CheckArt();
         string bots = CheckBots();
-        return $"눈길 마중: 같은 씨 같은 판({determinism}) · 길 공정함({fair}) · 닿음({touch}) · 시간·쉼터({time}) · 기록·Esc·조작·자리({game}) · 그림({art}) · 봇 표({bots}) 모두 통과 ({sw.Elapsed.TotalSeconds:0.0}초)";
+        return $"아이스런: 같은 씨 같은 판({determinism}) · 길 공정함({fair}) · 닿음({touch}) · 시간·쉼터({time}) · 기록·Esc·조작·자리({game}) · 그림({art}) · 봇 표({bots}) 모두 통과 ({sw.Elapsed.TotalSeconds:0.0}초)";
     }
 
     // ── 같은 씨 = 같은 판 ──
@@ -250,7 +250,7 @@ static partial class TrailCheck
     static string CheckTime()
     {
         var t = Bare();
-        double cap = t.T.TimeCap, start = cap - 10;   // 시간 상한은 손잡이 값 (2026-11-24 빠르기를 올리며 60 → 47)
+        double cap = t.T.TimeCap, start = cap - 10;   // 시간 상한은 손잡이 값 (지금 60)
         int s0 = (int)start;
         t.Time = start; t.Pos = t.Gates[0] - .5;
         Run(t, .2);
