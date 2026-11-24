@@ -58,8 +58,20 @@ sealed partial class TrailGame : IGameMode
         {
             screens.Clear();
             foreach (var s in Screen.AllScreens) screens.Add(s.WorkingArea);   // 판을 여는 때 한 번 (창을 따라갈 때 모니터 고르기에도 쓴다)
-            var (field, win) = WindowPick.Arena(Native.Foreground(), Native.ListWindows(), b.Area, screens, b.CellPx, w + 24, h + 48);
-            if (win is { } aw) { winH = aw.H; p = InWindow(Rectangle.Intersect(aw.R, field), w, h, f); }
+            // 볼록이가 올라가 있는(볼록이 몸 가운데가 들어 있는) 맨 위 창. 판이 들어갈 만큼 크면 그 창 안 볼록이 가까이, 아니면 바탕화면 볼록이 둘레 (YELL 2026-11-24: 가까운 자리에서 열린다)
+            var at = new Point((int)b.X, (int)(b.Y - b.CellPx / 2.0));
+            foreach (var wn in Native.ListWindows())   // 위 창부터
+            {
+                if (wn.Topmost || !wn.R.Contains(at)) continue;
+                var inside = Rectangle.Intersect(wn.R, MostOn(wn.R));
+                if (inside.Width >= w + 24 && inside.Height >= h + 48)
+                {
+                    winH = wn.H;
+                    p = NearPet(inside, b.X, b.Y, w, h, f);
+                    winOff = new Point(p.X - wn.R.X, p.Y - wn.R.Y);   // 창이 움직이면 창 안의 같은 자리로 따라간다
+                }
+                break;   // 볼록이 바로 밑 창만 본다 (그 아래 가려진 창은 쓰지 않는다)
+            }
         }
         if (winH == IntPtr.Zero) p = Around(area, b.X, b.Y, w, h, f);
         int seed = forceSeed ?? Random.Shared.Next(1, 1 << 30);
@@ -78,6 +90,13 @@ sealed partial class TrailGame : IGameMode
 
     // 창 안 아래 가운데
     internal static Rectangle InWindow(Rectangle win, int w, int h, int k) => new(win.Left + (win.Width - w) / 2, win.Bottom - h - 6 * k, w, h);
+
+    // 창 안에서 볼록이 가까이: 볼록이가 판 아래 가운데쯤 오게, 창(모니터와 겹친 부분) 안으로 맞춘다 (아래는 6칸 띄운다)
+    internal static Rectangle NearPet(Rectangle inside, double petX, double petY, int w, int h, int k) =>
+        new((int)Math.Clamp(petX - w / 2.0, inside.Left, Math.Max(inside.Left, inside.Right - w)),
+            (int)Math.Clamp(petY + 8 * k - h, inside.Top, Math.Max(inside.Top, inside.Bottom - h - 6 * k)), w, h);
+
+    Point winOff;   // 판이 창 왼쪽 위에서 떨어진 만큼 (창을 따라갈 때 같은 자리로)
 
     // 볼록이 둘레: 볼록이가 판 아래 가운데쯤 오게 (모니터 안으로)
     internal static Rectangle Around(Rectangle area, double petX, double petY, int w, int h, int k) =>
@@ -202,7 +221,8 @@ sealed partial class TrailGame : IGameMode
         // 창이 가장 많이 걸친 모니터 안에서만 (펫이 있던 모니터와 다를 수 있다). 잘린 창이 판보다 작으면 따라가기를 그만둔다 (판이 화면 밖으로 나가지 않게)
         var inter = Rectangle.Intersect(st.R, MostOn(st.R));
         if (inter.Width < panel.Width + 24 || inter.Height < panel.Height + 48) { winH = IntPtr.Zero; Dbg.Log("trail-window-lost", ("reason", "offscreen")); return; }
-        var now = InWindow(inter, panel.Width, panel.Height, f);
+        var want = new Rectangle(st.R.X + winOff.X, st.R.Y + winOff.Y, panel.Width, panel.Height);
+        var now = NearPet(inter, want.X + panel.Width / 2.0, want.Bottom - 8 * f, panel.Width, panel.Height, f);   // 창 안 같은 자리 (창이 잘리면 안쪽으로)
         if (now == panel) return;
         panel = now;
         guidePic?.Dispose(); guidePic = null;
