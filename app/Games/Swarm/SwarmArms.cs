@@ -33,7 +33,7 @@ sealed class Arm
     public double BurnSec;     // 불길을 벗어난 뒤 불이 남는 시간
     public double BotGap;      // 자동 조종이 벌레와 지키고 싶은 틈 (무기마다 다르다: 근접은 붙어야 친다)
     public double Guard = 1;   // 닿았을 때 받는 피해 배율 (근접이 너무 아프면 낮추는 손잡이)
-    public bool Spin;          // 쌍검: 넷째 휘두름마다 한 바퀴 회전 베기 (세게 3단계부터)
+    public bool Spin;          // 쌍검: 넷째 휘두름마다 한 바퀴 회전 베기 (세게 3단계부터, 걸으며 휘두를 때만: Swarm.SpinMoveSec)
     public int Every;          // 특수기가 저절로 나오는 공격 횟수 (0 = 없음, docs/swarm-specials.md). 레벨이 올라도 안 바뀐다
 
     public readonly int[] Ups = new int[3];   // 갈래마다 자란 횟수 (Swarm.Up.Fast·Wide·Power 순서)

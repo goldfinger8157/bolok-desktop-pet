@@ -53,7 +53,7 @@ sealed class Swarm
     public struct FireSpot { public double X, Y, At; }                          // 불 자리 (화염 특수기): 놓인 자리와 때
 
     // 배율 3 기준 px·초. 판은 앱이 볼록이 둘레에 220×150 칸(배율 3 이면 660×450)으로 잡는다
-    public const double WinSec = 300, MoveSpeed = 170, PickRange = 56, SafeSec = 1, SwingSec = .2, EndSec = 3.5, HurtPush = 60, HpTrailSec = .4,
+    public const double WinSec = 300, MoveSpeed = 170, PickRange = 56, SafeSec = 1, SwingSec = .2, SpinMoveSec = .5, EndSec = 3.5, HurtPush = 60, HpTrailSec = .4,
         BossEvery = 60, BossWarn = 2,                                        // 보스: 1분마다, 2초 전에 들어올 자리를 알린다
         DashEvery = 5, DashWind = .6, DashSec = .5, DashSpeed = 260, QueenEvery = 6,   // 돌진: 5초마다 0.6초 떨다가 0.5초 내달린다. 여왕은 6초마다 벌레 넷
         MagnetStep = 22, MagnetFirst = 20, MagnetGap = 35, PullSpeed = 420,  // 자석: 하나마다 넓어지는 둘레, 처음 나올 수 있는 때, 주운 뒤 쉬는 시간, 끌려오는 빠르기
@@ -131,10 +131,13 @@ sealed class Swarm
     public double ThrowAt = -9, GrenadeAt = -9, EmptyAt = -9, NadeBoomAt = -9;   // 마지막으로 던진 때, 던졌거나 주운 때(표시 번쩍), 빈 손으로 눌러 본 때, 마지막 수류탄이 터진 때
     public int Grenades = StartGrenades, Thrown, NadeKills;   // 든 수류탄, 던진 수, 수류탄으로 잡은 벌레 수
     public double GrenadeChance = .008;            // 보통 벌레를 잡을 때 수류탄이 떨어질 확률 (검사에서 0·1 로 바꾼다)
+    public bool BotIdle;                           // 자동 조종이 제자리에 서 있는다 (가만히 있기가 이기는 길이 아닌지 재는 표·검사 전용: 무기·수류탄·특수기는 그대로)
     public bool BotThrows = true;                  // 자동 조종이 수류탄을 던진다 (표에서 끄고 켜서 수류탄 몫을 잰다)
     public double SwingAt = -9, SwingDir, SwingArc, SwingLen = SwingSec;   // 마지막 휘두름: 때, 쪽, 부채꼴 절반 각, 자국이 보이는 시간
     public int SwingHand = -1, SwingCount;         // 쌍검: 이번에 휘두른 손(1 오른쪽·-1 왼쪽), 휘두른 횟수
     public bool SwingSpin;                         // 이번 휘두름이 한 바퀴 회전 베기였다
+    public double MovedAt = -9;                    // 마지막으로 걸은 때 (쌍검 회전 베기는 걸으며 휘두를 때만 나간다)
+    bool spinDue;                                  // 넷째 휘두름이 됐는데 아직 안 걸어서 못 한 회전 베기 (걷기 시작하면 바로 나간다)
     public double AimAngle;                        // 화염: 겨눈 쪽 (천천히 돈다)
     // 특수기: 켜짐(표·검사에서 끈다. 끄면 고치기 전과 똑같은 판), 쓴 횟수, 특수기로 잡은 수, 특수기 탄 수, 마지막으로 쓴 때(번쩍 신호)
     public bool SpecialsOn = true;
@@ -261,6 +264,7 @@ sealed class Swarm
         Moving = len > .01;
         if (Moving)
         {
+            MovedAt = Clock;
             double step = Speed * sf * dt / len;
             (X, Y) = Inside(X + steerX * step, Y + steerY * step);
             if (Math.Abs(steerX) > .01) Dir = steerX > 0 ? 1 : -1;
@@ -775,7 +779,9 @@ sealed class Swarm
         var w = Weapon;
         SwingCount++;
         SwingHand = -SwingHand;
-        SwingSpin = w.Spin && SwingCount % 4 == 0;
+        if (w.Spin && SwingCount % 4 == 0) spinDue = true;
+        SwingSpin = spinDue && Clock - MovedAt <= SpinMoveSec;   // 가만히 서서는 못 돈다: 몸이 움직여야 돌 힘이 붙는다
+        if (SwingSpin) spinDue = false;
         (cool, SwingAt, SwingDir, SwingArc, SwingLen) = (cool + w.Cool, Clock, Math.Atan2(near.Y - Y, near.X - X), SwingSpin ? Math.PI : w.ArcHalf, Math.Min(SwingSec, w.Cool * .8));
         AimDir = near.X >= X ? 1 : -1;
         int dmg = SwingSpin ? w.Dmg * 3 / 2 : w.Dmg;
@@ -1455,6 +1461,7 @@ sealed class Swarm
         if (Clock - botAt < .1) return bot;
         botAt = Clock;
         BotNade();
+        if (BotIdle) return bot = (0, 0);
         var w = Weapon;
         double hx = Field.Width / 2.0, hy = Field.Height / 2.0, bestScore = double.MinValue, want = w.BotGap * sf, tight = Math.Min(20, w.BotGap * .5) * sf;
         bool hunt = w.Kind is Arm.Sort.Melee or Arm.Sort.Flame || w.Which == Arm.Id.Shotgun;

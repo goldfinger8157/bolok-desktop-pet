@@ -33,15 +33,15 @@ sealed partial class SwarmGame
             Console.OutputEncoding = Encoding.UTF8;
             L.Use("ko");
             var part = ta.Split(':');
-            if (part.Length > 1 && int.TryParse(part[1], out int only1))   // table:<단계>:<씨 수>:off = 수류탄 없이, :nospec = 특수기 없이 (고치기 전 표와 같아야 한다), 둘은 , 로 같이
+            if (part.Length > 1 && int.TryParse(part[1], out int only1))   // table:<단계>:<씨 수>:off = 수류탄 없이, :nospec = 특수기 없이 (고치기 전 표와 같아야 한다), :idle = 봇이 제자리에 선다 (수류탄은 그대로), 여럿은 , 로 같이
             {
                 var opts = part.Length > 3 ? part[3].Split(',') : Array.Empty<string>();
-                Console.WriteLine(Table(part.Length > 2 && int.TryParse(part[2], out int sd) ? sd : only1 >= 5 ? 80 : 40, only1, !opts.Contains("off"), !opts.Contains("nospec")));
+                Console.WriteLine(Table(part.Length > 2 && int.TryParse(part[2], out int sd) ? sd : only1 >= 5 ? 80 : 40, only1, !opts.Contains("off"), !opts.Contains("nospec"), opts.Contains("idle")));
             }
             else Console.WriteLine(Tables());
             return;
         }
-        if (arg is { } tu && tu.StartsWith("tune:")) { Console.OutputEncoding = Encoding.UTF8; L.Use("ko"); Console.WriteLine(Tune(tu.Split(':'))); return; }   // tune:<단계>:<씨 수>:<무기>[,<무기>…][:nospec] 무기 몇 개만 빨리 (손잡이 맞출 때)
+        if (arg is { } tu && tu.StartsWith("tune:")) { Console.OutputEncoding = Encoding.UTF8; L.Use("ko"); Console.WriteLine(Tune(tu.Split(':'))); return; }   // tune:<단계>:<씨 수>:<무기>[,<무기>…][:nospec|:idle] 무기 몇 개만 빨리 (손잡이 맞출 때)
         if (arg == "art") { SwarmArt.Sheet(path, 8); return; }   // 위 둘은 줄 하나라 하나만 크게
         if (arg == "stage") { StageScene(path, k); return; }
         if (arg == "row") { RowScene(path, k); return; }   // 결과 화면 무기 줄 두 장
@@ -302,9 +302,9 @@ sealed partial class SwarmGame
     }
 
     // 자동 조종 한 판 (화면 없이 규칙만). 끝난 판을 돌려준다
-    static Swarm BotGame(Arm.Id id, int seed, int stage = 1, Func<Swarm, bool>? each = null, bool throws = true, bool specials = true)
+    static Swarm BotGame(Arm.Id id, int seed, int stage = 1, Func<Swarm, bool>? each = null, bool throws = true, bool specials = true, bool idle = false)
     {
-        var s = new Swarm(TestField, 3, new Random(seed), id, stage) { BotThrows = throws, SpecialsOn = specials, Magnets = stage >= 5 ? 1 : 0 };   // 5단계부터는 4단계를 깬 사람: 자석 하나로 시작
+        var s = new Swarm(TestField, 3, new Random(seed), id, stage) { BotThrows = throws, SpecialsOn = specials, BotIdle = idle, Magnets = stage >= 5 ? 1 : 0 };   // 5단계부터는 4단계를 깬 사람: 자석 하나로 시작
         for (int i = 0; i < 60 * (Swarm.WinSec + 10) && s.State == Swarm.Phase.Play; i++)
         {
             s.BotPlay();
@@ -326,12 +326,12 @@ sealed partial class SwarmGame
     public static string Tables() => string.Join("\n\n", new[] { 1, 3, 5, 10 }.Select(st => Table(st >= 5 ? 80 : 40, st)));
 
     // 무기 표: 무기 7 × 씨 seeds 개를 자동 조종으로 끝까지 (판마다 Swarm·Random 을 따로 쓰므로 나란히 돌려도 된다)
-    public static string Table(int seeds, int stage = 1, bool throws = true, bool specials = true)
+    public static string Table(int seeds, int stage = 1, bool throws = true, bool specials = true, bool idle = false)
     {
         var runs = new Swarm[Arm.Kinds * seeds];
-        Parallel.For(0, runs.Length, i => runs[i] = BotGame((Arm.Id)(i / seeds), 1000 + i % seeds, stage, null, throws, specials));
+        Parallel.For(0, runs.Length, i => runs[i] = BotGame((Arm.Id)(i / seeds), 1000 + i % seeds, stage, null, throws, specials, idle));
         var sb = new StringBuilder();
-        sb.AppendLine($"### {stage}단계 (씨 {seeds}개씩{(throws ? "" : ", 수류탄 없이")}{(specials ? "" : ", 특수기 없이")})");
+        sb.AppendLine($"### {stage}단계 (씨 {seeds}개씩{(idle ? ", 제자리(idle)" : "")}{(throws ? "" : ", 수류탄 없이")}{(specials ? "" : ", 특수기 없이")})");
         sb.AppendLine("| 무기 | 5:00 비율 | 1:00 비율 | 평균 초 | 중앙 초 | 평균 레벨 | 3:00 레벨 | 잡은 수 | 받은 피해 | 남은 생명 | 잡은 보스 | 첫 보스(초) | 자석 | 던진 수 | 수류탄으로 잡은 수 | 특수기 수 | 특수기로 잡은 수 |");
         sb.AppendLine("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
         var win = new double[Arm.Kinds];
@@ -368,14 +368,15 @@ sealed partial class SwarmGame
     {
         int stage = int.Parse(part[1]), seeds = int.Parse(part[2]);
         var ids = part[3].Split(',').Select(n => Arm.Find(n, out var id) ? id : throw new ArgumentException(n)).ToArray();
-        bool specials = !part.Skip(4).Contains("nospec");
+        bool specials = !part.Skip(4).Contains("nospec"), idle = part.Skip(4).Contains("idle");
         var runs = new Swarm[ids.Length * seeds];
-        Parallel.For(0, runs.Length, i => runs[i] = BotGame(ids[i / seeds], 1000 + i % seeds, stage, null, true, specials));
+        Parallel.For(0, runs.Length, i => runs[i] = BotGame(ids[i / seeds], 1000 + i % seeds, stage, null, true, specials, idle));
         var sb = new StringBuilder();
         for (int w = 0; w < ids.Length; w++)
         {
             var mine = runs.Skip(w * seeds).Take(seeds).ToArray();
-            sb.AppendLine($"{stage}단계 {Arm.Name(ids[w])}: 5:00 {mine.Count(r => r.Won) * 100.0 / seeds:0.0}% · 평균 {mine.Average(r => r.Time):0}초 · 잡은 수 {mine.Average(r => r.Kills):0} · 특수기 {mine.Average(r => r.Specials):0.0}번 · 특수기로 잡은 수 {mine.Average(r => r.SpecKills):0}");
+            var sorted = mine.Select(r => r.Time).OrderBy(t => t).ToArray();
+            sb.AppendLine($"{stage}단계 {Arm.Name(ids[w])}{(idle ? "(제자리)" : "")}: 5:00 {mine.Count(r => r.Won) * 100.0 / seeds:0.0}% · 평균 {mine.Average(r => r.Time):0}초 · 중앙 {sorted[seeds / 2]:0} · 90% {sorted[seeds * 9 / 10]:0} · 최대 {sorted[^1]:0} · 잡은 수 {mine.Average(r => r.Kills):0} · 특수기 {mine.Average(r => r.Specials):0.0}번 · 특수기로 잡은 수 {mine.Average(r => r.SpecKills):0}");
         }
         return sb.ToString().TrimEnd();
     }
@@ -450,10 +451,50 @@ sealed partial class SwarmGame
         for (int n = 1; n <= 8; n++)
         {
             var (h1, h2) = (sf1.Hp, sb1.Hp);
+            spin.MovedAt = spin.Clock;   // 회전 베기는 걸으며 휘두를 때만 나간다 (걷는 중으로 친다)
             for (int was = spin.SwingCount; spin.SwingCount == was;) spin.Update(tick);
             (sf1.X, sb1.X) = (spin.X + 25, spin.X - 26); // 밀려난 과녁을 제자리로
             if (n % 4 == 0) Expect(spin.SwingSpin && spin.SwingArc == Math.PI && h1 - sf1.Hp == spin.Weapon.Dmg * 3 / 2 && h2 - sb1.Hp == h1 - sf1.Hp, $"넷째 휘두름은 한 바퀴 회전 베기 (피해 1.5배): {h1 - sf1.Hp}·{h2 - sb1.Hp}");
             else Expect(!spin.SwingSpin && h1 - sf1.Hp == spin.Weapon.Dmg && h2 == sb1.Hp, $"보통 휘두름은 겨눈 쪽만: {n}번째 {h1 - sf1.Hp}·{h2 - sb1.Hp}");
+        }
+
+        // 가만히 서서는 회전 베기가 안 나간다: 넷째·여덟째… 차례가 와도 보통 휘두름이고, 걷기 시작하면 밀렸던 회전 베기가 바로 나간다 (밀린 건 하나뿐)
+        var still = Empty(3, Arm.Id.Twin);
+        still.SafeUntil = 1e9;
+        for (int i = 0; i < 3; i++) still.Weapon.Grow(Swarm.Up.Power);
+        var stillMark = Dummy(still, Swarm.Kind.Beetle, 25, 0);
+        void Swing(Swarm t) { stillMark.X = t.X + 25; for (int was = t.SwingCount; t.SwingCount == was;) t.Update(tick); }   // 밀려난 과녁을 제자리로 놓고 한 번 휘두를 때까지
+        for (int n = 1; n <= 12; n++)
+        {
+            Swing(still);
+            Expect(!still.SwingSpin && still.SwingArc < Math.PI - .01, $"가만히 서면 {n}번째 휘두름도 회전 베기가 아니다");
+        }
+        still.MovedAt = still.Clock;
+        Swing(still);
+        Expect(still.SwingSpin && still.SwingCount == 13, $"걷기 시작하면 밀렸던 회전 베기가 바로 나간다: {still.SwingCount}번째");
+        still.MovedAt = still.Clock;
+        Swing(still);
+        Expect(!still.SwingSpin, "밀렸던 회전 베기는 한 번만 (14번째는 보통)");
+        still.MovedAt = -9;   // 걸은 지 한참 됐다
+        for (int n = 15; n <= 16; n++) Swing(still);
+        Expect(!still.SwingSpin, "걸음을 멈추면 16번째 차례도 안 돈다");
+        still.MovedAt = still.Clock;
+        Swing(still);
+        Expect(still.SwingSpin, "다시 걸으면 17번째에 나간다");
+
+        // 제자리 자동 조종: 가만히 선 채로는 어느 무기도 5:00 을 못 버틴다 (1단계, 무기마다 씨 8개. 고치기 전 표: 제자리 5:00 0%, 평균 58초·가장 길게 쌍검 249초)
+        double idleAvg;
+        {
+            const int idleSeeds = 8;
+            var idle = new Swarm[Arm.Kinds * idleSeeds];
+            Parallel.For(0, idle.Length, i => idle[i] = BotGame((Arm.Id)(i / idleSeeds), 1000 + i % idleSeeds, 1, null, true, true, true));
+            for (int w = 0; w < Arm.Kinds; w++)
+            {
+                var mine = idle.Skip(w * idleSeeds).Take(idleSeeds).ToArray();
+                Expect(mine.All(r => !r.Won && r.BotIdle), $"가만히 서 있으면 {KoNames[w]}도 5:00 에 못 닿는다: {string.Join(" ", mine.Select(r => (int)r.Time))}초");
+            }
+            idleAvg = idle.Average(r => r.Time);
+            Expect(idleAvg < 120, $"가만히 서 있으면 평균 두 분을 못 넘긴다 (움직이는 봇은 270초쯤): {idleAvg:0}초");
         }
 
         // ── 장검: 넓은 부채꼴 안 모두를 한 번에, 멀리 밀어낸다. 등 뒤는 그대로 ──
@@ -1596,7 +1637,7 @@ sealed partial class SwarmGame
         });
         string special = SpecCheck(game, host);
         string stage2 = Stage2Check(game, host);
-        return $"버그 떼: 무기 {Arm.Kinds}가지 (판마다 하나, 뽑힌 수 {string.Join("·", drawn)}/200), 자동 조종 평균 초/끝까지 버틴 판({seeds}판씩) — {line}. 생명 {Swarm.MaxHp}, 보스 1분마다 {Swarm.Bosses}번, {Swarm.WinSec:0}초에 끝, 자석 {Swarm.MaxMagnets}개까지 둘레 {Swarm.PickRange:0}→{Swarm.PickRange + Swarm.MagnetStep * Swarm.MaxMagnets:0}. {special} {stage2}";
+        return $"버그 떼: 무기 {Arm.Kinds}가지 (판마다 하나, 뽑힌 수 {string.Join("·", drawn)}/200), 자동 조종 평균 초/끝까지 버틴 판({seeds}판씩) — {line}, 제자리 자동 조종은 평균 {idleAvg:0}초에 쓰러져 5:00 은 없음. 생명 {Swarm.MaxHp}, 보스 1분마다 {Swarm.Bosses}번, {Swarm.WinSec:0}초에 끝, 자석 {Swarm.MaxMagnets}개까지 둘레 {Swarm.PickRange:0}→{Swarm.PickRange + Swarm.MagnetStep * Swarm.MaxMagnets:0}. {special} {stage2}";
 
         static void Frames2(SwarmGame g, int n) { for (int i = 0; i < n; i++) g.Frame(Tick); }
     }
