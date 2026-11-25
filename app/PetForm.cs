@@ -583,11 +583,11 @@ public sealed class PetForm : Form, IGameHost
         if (b.HomeClip != homeClipShown) { homeClipShown = b.HomeClip; Invalidate(); }
     }
 
-    // 오래 꺼져 있다 켜서 잠든 채 시작했다: 집(없으면 방석) 안에서 바로 시작. 기운 0 으로 쓰러진 잠은 그 자리 그대로
+    // 오래 꺼져 있다 켜서 잠든 채 시작했다: 놓인 집·방석 안에서 바로 시작. 기운 0 으로 쓰러진 잠은 그 자리 그대로
     void EnterHomeAtStart()
     {
         if (!b.P.Asleep || b.P.Energy <= 0 || b.Mode != Mode.Wander) return;
-        if (!(b.House.On && Pet.Grown(b.P.Stage) && b.EnterHome(true, HomeUse.Sleep))) b.EnterHome(false, HomeUse.Nap);
+        b.EnterSleepHome();
     }
 
     // 본체 창 위쪽 빈자리: 머리 장식(해바라기·클로버·낙엽·수면 모자)이 창 밖으로 잘리지 않게 그림을 이만큼 내려 그린다
@@ -907,7 +907,7 @@ public sealed class PetForm : Form, IGameHost
         else if (Night && nightDay != NightKey)
         {
             nightDay = NightKey; b.Emote("moon", 2.5); b.Greet("stretch", 1.6); Dbg.Log("greet", ("when", "night"));
-            if (b.P.Energy <= 70) b.GoHome(true, HomeUse.Sleep); // 밤 인사 뒤 기운 70 이하면 집으로 (집이 없으면 그대로)
+            if (b.P.Energy <= 70) b.GoSleepHome(); // 밤 인사 뒤 기운 70 이하면 놓인 집·방석으로 (없으면 그대로)
             Save();
         }
     }

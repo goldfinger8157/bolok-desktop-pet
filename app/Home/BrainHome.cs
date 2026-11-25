@@ -16,7 +16,8 @@ public struct HomeSpot
 public enum HomeUse { None, Sit, Nap, Peek, Sleep }
 public enum HomeClipKind { None, Front, Inside } // 펫을 가릴 자리: 방석·캣타워 위는 앞 겹만, 집 안은 문 안 말고 전부 + 앞 겹
 
-// 행동 쪽 방석·집 (docs/home.md 6장). 새 모드 둘: GoHome(가는 중)·Home(붙어 있음).
+// 행동 쪽 방석·집 (docs/home.md 6장·추가 3). 새 모드 둘: GoHome(가는 중)·Home(붙어 있음).
+// 화면에는 방석·집 중 하나만 놓인다 — 진짜 앱은 Cushion·House 중 한쪽만 On 이고, 펫은 그 하나로 낮잠·밤잠·자리 비움 잠·앉기를 다 한다
 public sealed partial class Brain
 {
     public HomeSpot Cushion, House;
@@ -37,6 +38,28 @@ public sealed partial class Brain
 
     ref HomeSpot SpotOf(bool house) { if (house) return ref House; return ref Cushion; }
 
+    // 지금 화면에 놓인 하나 (집이 켜져 있으면 집, 아니면 방석). 없으면 false
+    bool ActiveHome(out bool house) { house = House.On; return House.On || Cushion.On; }
+
+    // 놓인 하나로 가서 잔다 (집이면 안에서 Sleep, 방석이면 위에서 Nap): 밤 인사 뒤·자리 비움·디버그가 쓴다
+    public bool GoSleepHome() => ActiveHome(out var house) && GoHome(house, house ? HomeUse.Sleep : HomeUse.Nap);
+
+    // 걷지 않고 바로 거기서 잔다 (오래 꺼져 있다 켰을 때)
+    public bool EnterSleepHome() => ActiveHome(out var house) && EnterHome(house, house ? HomeUse.Sleep : HomeUse.Nap);
+
+    // 메뉴로 방석 ↔ 집을 바꿨다: 안·위에 있던 펫은 새 물건으로 그 자리에서 옮겨 앉는다 (자던 채면 계속 잔다). 옮겼으면 true
+    public bool HomeRetarget()
+    {
+        if (Mode != Mode.Home || !ActiveHome(out bool house) || house == homeHouse) return false;
+        ref var s = ref SpotOf(house);
+        if (s.Moving) return false;
+        homeUse = P.Asleep ? (house ? HomeUse.Sleep : HomeUse.Nap) : house ? HomeUse.Peek : HomeUse.Sit;
+        (homeHouse, homeTop, homeCheer, homeWalkAsleep, homeYoff) = (house, false, false, false, 0);
+        homeStay = homeVisit ? Math.Max(1, homeLimit - Now) : 3; // 들어 놓은 펫이면 남은 시간만큼 더
+        ArriveHome(true);
+        return true;
+    }
+
     bool Idleish => Mode is Mode.Wander or Mode.Anim;
 
     // 갈 수 있으면 true. fast: 받는 순간의 달려가기(×1.3), stay: 앉기·빼꼼 시간(0 이면 무작위), cheer: 도착해서 기뻐하기(하트)
@@ -44,7 +67,6 @@ public sealed partial class Brain
     {
         ref var s = ref SpotOf(house);
         if (!s.On || s.Moving || P.Stage is "egg" or "baby" || !Idleish) return false;
-        if (house && !Pet.Grown(P.Stage) && use == HomeUse.Sleep) return false; // 집에서 자는 것은 다 자란 뒤
         (homeHouse, homeUse, homeFast, homeStay, homeCheer) = (house, use, fast, stay, cheer);
         homeWalkAsleep = P.Asleep;
         (homeVisit, homeLimit) = (false, 0);
@@ -260,8 +282,8 @@ public sealed partial class Brain
         return homePose;
     }
 
-    // 쉬러 간다 (낮잠 갈 때 — 기운이 낮을 때·혼자 놀기·메뉴 「재우기」): 방석 3 : 창 위 1 : 집 1 (밤엔 집 6) 무게로 하나.
-    // 다른 모니터 것은 무게 ÷3, 눈·비로 얌전한 중엔 1.5칸보다 먼 것은 빼고, 활성 창 밑인 것도 뺀다. 아무것도 없으면 지금처럼 창 위 → 없으면 false
+    // 쉬러 간다 (낮잠 갈 때 — 기운이 낮을 때·혼자 놀기·메뉴 「재우기」): 놓인 방석·집 3 : 창 위 1 무게로 하나 (밤엔 놓인 것 6).
+    // 놓인 것이 다른 모니터에 있으면 무게 ÷3, 눈·비로 얌전한 중엔 1.5칸보다 먼 것은 빼고, 활성 창 밑인 것도 뺀다. 아무것도 없으면 지금처럼 창 위 → 없으면 false
     public bool TryRest()
     {
         if (P.Stage == "egg" || P.Asleep) return false;
@@ -272,21 +294,19 @@ public sealed partial class Brain
             return true;
         }
         if (!Idleish) return TryNap();
-        double night = NightNow() ? K.NightHouse : K.NapHouse;
-        double wc = RestWeight(Cushion, false) * K.NapCushion, wh = RestWeight(House, true) * night;
+        bool has = ActiveHome(out bool house);
+        double wh = has ? RestWeight(SpotOf(house)) * (NightNow() ? K.NightHome : K.NapHome) : 0;
         double wp = HideSpots.FindPerch(Windows(), World.Areas, CellPx, rng).Count > 0 ? K.NapPerch : 0;
-        double sum = wc + wh + wp;
+        double sum = wh + wp;
         if (sum <= 0) return TryNap();
-        double r = rng.NextDouble() * sum;
-        if (r < wc) { if (GoHome(false, HomeUse.Nap)) return true; }
-        else if (r < wc + wh) { if (GoHome(true, HomeUse.Sleep)) return true; }
+        if (rng.NextDouble() * sum < wh && GoHome(house, house ? HomeUse.Sleep : HomeUse.Nap)) return true;
         return TryNap();
     }
 
     // 그 자리로 갈 수 있나 (1 = 같은 모니터, 1/3 = 다른 모니터, 0 = 못 간다)
-    double RestWeight(HomeSpot s, bool house)
+    double RestWeight(HomeSpot s)
     {
-        if (!s.On || s.Moving || (house && !Pet.Grown(P.Stage))) return 0;
+        if (!s.On || s.Moving) return 0;
         var to = World.At(s.X, s.Y);
         double w = 1;
         if (to != Area) { if (World.NextArea(Area, to, CellPx) == null) return 0; w = 1.0 / K.NapOtherDiv; }
@@ -295,20 +315,21 @@ public sealed partial class Brain
         return w;
     }
 
-    // 혼자 놀다가 방석에 그냥 앉아 있기 (수치는 안 바뀐다): 방석까지 화면 폭의 0.6 안일 때만
-    bool TrySit()
+    // 혼자 놀다가 놓인 방석에 그냥 앉아 있기, 집이면 문 앞에서 내다보기 (수치는 안 바뀐다): 거기까지 화면 폭의 0.6 안일 때만
+    internal bool TrySit()
     {
-        if (!Cushion.On || Cushion.Moving || P.Stage is "egg" or "baby" || P.Asleep) return false;
+        if (!ActiveHome(out bool house) || P.Stage is "egg" or "baby" || P.Asleep) return false;
+        ref var s = ref SpotOf(house);
+        if (s.Moving) return false;
         if (rng.NextDouble() >= (P.Energy <= 65 ? K.SitChanceTired : K.SitChance)) return false;
-        if (Math.Abs(Cushion.X - X) > Area.Width * K.SitReach || World.At(Cushion.X, Cushion.Y) != Area || OnActive(Cushion.X, Cushion.Y)) return false;
-        return GoHome(false, HomeUse.Sit);
+        if (Math.Abs(s.X - X) > Area.Width * K.SitReach || World.At(s.X, s.Y) != Area || OnActive(s.X, s.Y)) return false;
+        return GoHome(house, house ? HomeUse.Peek : HomeUse.Sit, stay: house ? Rand(K.SitMinSec, K.SitMaxSec) : 0);
     }
 
-    // 자리 비움으로 잠들 때: 집(없으면 방석)이 있으면 졸린 걸음으로 가서 들어가 잔다. 기운 0 으로 쓰러진 잠은 그 자리 그대로 (갈 힘이 없다)
+    // 자리 비움으로 잠들 때: 놓인 하나(집이든 방석이든)로 졸린 걸음으로 가서 들어가 잔다. 기운 0 으로 쓰러진 잠은 그 자리 그대로 (갈 힘이 없다)
     void SleepAtHome()
     {
         if (Mode != Mode.Wander || P.Energy <= 0) return;
-        if (House.On && !House.Moving && Pet.Grown(P.Stage) && RestWeight(House, true) > 0) GoHome(true, HomeUse.Sleep);
-        else if (Cushion.On && !Cushion.Moving && RestWeight(Cushion, false) > 0) GoHome(false, HomeUse.Nap);
+        if (ActiveHome(out bool house) && RestWeight(SpotOf(house)) > 0) GoHome(house, house ? HomeUse.Sleep : HomeUse.Nap);
     }
 }

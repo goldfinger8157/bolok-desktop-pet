@@ -1,6 +1,6 @@
 namespace Bolok;
 
-// 방석·집 메뉴 (docs/home.md 8장): 물건을 오른쪽 클릭하면 그 종류의 받은 것만, 펫 메뉴에는 「집·방석」 묶음.
+// 방석·집 메뉴 (docs/home.md 8장·추가 3): 물건을 오른쪽 클릭하면 받은 방석·받은 집이 다 나오고 (하나를 고르면 그것만 화면에 남는다), 펫 메뉴에는 「집·방석」 묶음.
 // 글은 menuTexts 에 넣지 않고 열 때 L.T 로 (받은 것이 늘어난다). 작은 그림은 HomeArt.Thumb
 static class HomeMenu
 {
@@ -10,18 +10,25 @@ static class HomeMenu
     {
         var it = art.Find(id)!;
         var m = new ToolStripMenuItem(L.Home(id), new Bitmap(art.Thumb(it, px))) { Checked = placed, Tag = id }; // 그림은 복사본: 메뉴가 닫힐 때 같이 놓는다 (캐시는 건드리지 않는다)
-        m.Click += (_, _) => h.SetPlaced(it.House, id);
+        m.Click += (_, _) => h.SetPlaced(id);
         return m;
     }
 
-    // 물건을 오른쪽 클릭: 그 종류의 받은 것만 받은 순서로 ([작은 그림] 이름, 놓인 것은 체크) — 분리선 — 「제자리로」
-    // 그 종류의 받은 것만 받은 순서로 + 분리선 + 「제자리로」 (그려 보기도 이걸 쓴다)
-    public static ContextMenuStrip ItemMenu(HomeLife h, HomeArt art, bool house, int px)
+    // 물건을 오른쪽 클릭: 받은 방석 ([작은 그림] 이름) — 분리선 — 받은 집 — 분리선 — 「제자리로」. 놓인 하나만 체크, 다른 종류를 고르면 그것으로 바뀐다
+    // (받은 것이 없는 종류는 그 묶음을 뺀다. 그려 보기도 이걸 쓴다)
+    public static ContextMenuStrip ItemMenu(HomeLife h, HomeArt art, int px)
     {
         var menu = new ContextMenuStrip { ImageScalingSize = new Size(px, px) };
-        foreach (var id in h.Book.Received(house)) menu.Items.Add(Entry(h, art, id, id == h.Book.Placed(house), px));
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(L.T("menu.home_reset"), null, (_, _) => h.ResetSpot(house));
+        foreach (bool house in new[] { false, true })
+        {
+            var list = h.Book.Received(house).ToList();
+            if (list.Count == 0) continue;
+            if (menu.Items.Count > 0) menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add(new ToolStripMenuItem(L.T(house ? "menu.home_house" : "menu.home_cushion")) { Enabled = false }); // 묶음 이름 (누를 수 없다)
+            foreach (var id in list) menu.Items.Add(Entry(h, art, id, id == h.Book.Active, px));
+        }
+        if (menu.Items.Count > 0) menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(L.T("menu.home_reset"), null, (_, _) => h.ResetSpot());
         return menu;
     }
 
@@ -33,7 +40,7 @@ static class HomeMenu
 
     public static void ForItem(HomeLife h, HomeLife.Slot s, HomeForm f)
     {
-        var menu = ItemMenu(h, f.Art!, s.House, ThumbPx(f));
+        var menu = ItemMenu(h, f.Art!, ThumbPx(f));
         var back = Native.GetForegroundWindow(); // 메뉴를 닫으면 일하던 창으로 돌려준다 (펫 메뉴와 같게)
         Native.SetForegroundWindow(f.Handle);
         menu.Closed += (_, _) =>
@@ -60,7 +67,7 @@ static class HomeMenu
             this.h = h;
             this.art = art;
             Root.DropDownItems.AddRange(new ToolStripItem[] { cushions, houses, line, reset, hide });
-            reset.Click += (_, _) => h.ResetSpot(null);
+            reset.Click += (_, _) => h.ResetSpot();
             hide.Click += (_, _) => h.SetHidden(!h.Book.Hidden);
         }
 
@@ -87,7 +94,7 @@ static class HomeMenu
             parent.Visible = list.Count > 0;
             DisposeItems(parent.DropDownItems.Cast<ToolStripItem>());
             ((ToolStripDropDownMenu)parent.DropDown).ImageScalingSize = new Size(px, px);
-            foreach (var id in list) parent.DropDownItems.Add(Entry(h, art(), id, id == h.Book.Placed(house), px));
+            foreach (var id in list) parent.DropDownItems.Add(Entry(h, art(), id, id == h.Book.Active, px)); // 체크는 화면에 놓인 하나에만
         }
     }
 }

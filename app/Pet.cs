@@ -77,10 +77,9 @@ public sealed class Tuning
     public double SitReach { get; set; } = .6;          // 방석까지 화면 폭의 이만큼 안일 때만
     public double SitMinSec { get; set; } = 6;          // 앉아 있는 시간
     public double SitMaxSec { get; set; } = 14;
-    public double NapCushion { get; set; } = 3;         // 낮잠 고르기 무게: 방석 3 : 창 위 1 : 집 1 (밤 21~06시엔 집 6)
+    public double NapHome { get; set; } = 3;            // 낮잠 고르기 무게: 화면에 놓인 방석·집 3 : 창 위 1 (밤 21~06시엔 놓인 것 6) — 놓인 것은 하나뿐 (추가 3)
     public double NapPerch { get; set; } = 1;
-    public double NapHouse { get; set; } = 1;
-    public double NightHouse { get; set; } = 6;
+    public double NightHome { get; set; } = 6;
     public double NapOtherDiv { get; set; } = 3;        // 다른 모니터에 있는 것은 무게를 이만큼 나눈다
     public double HomeSpeed { get; set; } = 150;        // 방석·집으로 가는 걸음 (낮잠 가기 190 보다 느긋하게), 졸린 걸음은 HomeSleepySpeed
     public double HomeSleepySpeed { get; set; } = 90;

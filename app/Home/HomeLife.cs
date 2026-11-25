@@ -2,13 +2,14 @@ using System.Drawing.Drawing2D;
 
 namespace Bolok;
 
-// 방석·집 이음매 (docs/home.md 5·7장·추가 2): 물건 창 둘의 자리·배율·끌기·모니터·창 순서·숨기기, 줄 것 보기·받는 순간 연출,
+// 방석·집 이음매 (docs/home.md 5·7장·추가 2·3): 물건 창의 자리·배율·끌기·모니터·창 순서·숨기기, 줄 것 보기·받는 순간 연출,
 // Brain 에 자리(HomeSpot)와 오릴 자리(HomeClip) 채우기, 디버그 명령. 화면 계산은 HomeGeom 에 모아 자가 검사·그려 보기가 같이 쓴다.
 // 물건은 바탕화면 어디든 (x, y) 에 놓인다 — 놓은 모니터의 작업 영역 안에 통째로 들게만 눌러 준다 (HomeGeom.Fit). 창에 붙지 않는다
+// 화면에는 늘 하나만 놓인다 (추가 3): 방석이든 집이든 Book.Active 하나, 자리는 Book.At 하나. 창은 방석용·집용 둘을 두고 놓인 쪽만 보인다
 // Headless: 창을 안 만들고 같은 길을 돌린다 (자가 검사·장면 그리기가 끌기·창 순서까지 진짜 코드로 돌리게). Topmost·RaiseAbove·PetFollow 는 이음매
 sealed class HomeLife : IDisposable
 {
-    // 물건 하나가 놓인 자리 (방석 하나·집 하나)
+    // 물건 창 하나 (방석용·집용). 둘 중 놓인 쪽에만 Item 이 있다
     public sealed class Slot
     {
         public bool House;
@@ -57,7 +58,8 @@ sealed class HomeLife : IDisposable
     public const double DragRaiseSec = .1;         // 끄는 동안 창 순서를 다시 거는 간격
 
     // 받는 순간 (7장): T0 부터 2.6초. 0.0 반짝이 모임 → 0.5 물건이 하얗게 톡 떨어짐 → 1.2 펫이 달려감
-    sealed class RevealState { public double T0; public Slot Slot = null!; public bool Run; public bool Placed; }
+    // Old·OldId: 이 연출로 바뀌어 빠지는 옛 물건 (다른 쪽 창). 새 물건이 톡 떨어지는 0.5초까지는 그대로 보인다
+    sealed class RevealState { public double T0; public Slot Slot = null!; public bool Run; public bool Placed; public Slot? Old; public string? OldId; }
     RevealState? reveal;
     public (double X, double Y, double T)? RevealNow
     {
@@ -81,6 +83,7 @@ sealed class HomeLife : IDisposable
 
     public IReadOnlyList<Slot> Slots => all;
     Slot SlotOf(bool house) => house ? House : Cushion;
+    public Slot? ActiveSlot => Book.Active == null ? null : SlotOf(Book.ActiveHouse);   // 지금 놓인 하나의 창
     public bool Owns(IntPtr h) => all.Any(s => s.Form != null && s.Form.IsHandleCreated && s.Form.Handle == h);
 
     // ── 저장 ──
@@ -97,37 +100,26 @@ sealed class HomeLife : IDisposable
     // ── 자리 ──
     double FloorOf(Rectangle area) => area.Bottom - b.K.FloorGap;
 
-    // 기본 자리 (그림 아래 가운데 x): 펫이 있는 모니터의 오른쪽 아래 — 집은 Area.Right − 집 폭/2 − 24·S, 방석은 그 왼쪽 (집이 아직 없어도 그 자리 — 나중에 집이 와도 안 겹친다)
-    double DefaultX(bool house, Rectangle area)
-    {
-        int k = scaleOf(area);
-        double s = k / 3.0, hw = (HouseWidth() * k) / 2.0;
-        var art = artOf();
-        double cw = (art.Find(Book.Cushion ?? "") is { } c ? c.W : 50) * k / 2.0;
-        double x = house ? area.Right - hw - 24 * s : area.Right - hw * 2 - 24 * s - 16 * s - cw;
-        double w = house ? hw : cw;
-        return Math.Clamp(x, area.Left + w, area.Right - w);
-    }
-
-    int HouseWidth() => artOf().Find(Book.House ?? "") is { } h ? h.W : 62;
-
-    void ApplyDefault(bool house)
+    // 기본 자리: 펫이 있는 모니터의 오른쪽 아래 (그림 아래 가운데 x = Area.Right − 그림 폭/2 − 24·S)
+    void ApplyDefault()
     {
         var area = b.Area;
-        double x = DefaultX(house, area), y = FloorOf(area);
-        if (house) Book.HouseAt = new[] { x, y }; else Book.CushionAt = new[] { x, y };
+        int k = scaleOf(area);
+        double w = (artOf().Find(Book.Active ?? "") is { } it ? it.W : 56) * k / 2.0;
+        double x = Math.Clamp(area.Right - w - 24 * (k / 3.0), area.Left + w, area.Right - w);
+        Book.At = new[] { x, FloorOf(area) };
     }
 
     // 물건 하나의 그림·배율·자리를 새로 잡는다 (물건이 바뀌었거나 모니터·배율이 바뀌었을 때만)
     void Layout(Slot s, bool want)
     {
         var art = artOf();
-        var id = Book.Placed(s.House);
+        var id = Book.Placed(s.House) ?? (reveal is { Placed: false } held && held.Old == s ? held.OldId : null); // 새 물건이 톡 떨어지기 전까진 옛 물건이 그 자리에 그대로
         var item = id == null ? null : art.Find(id);
-        var at = s.House ? Book.HouseAt : Book.CushionAt;
-        if (item != null && at == null) { ApplyDefault(s.House); at = s.House ? Book.HouseAt : Book.CushionAt; }
+        var at = Book.At;
+        if (item != null && at == null) { ApplyDefault(); at = Book.At; }
         s.Item = item;
-        if (item == null || at == null) { s.Shown = false; s.Vis = false; s.Form?.Hide(); return; }
+        if (item == null || at == null) { s.Shown = false; s.Vis = false; s.Covered = false; s.Form?.Hide(); return; }
         if (!s.Moving)
         {
             var area = b.World.At(at[0], at[1] - 1);
@@ -202,8 +194,7 @@ sealed class HomeLife : IDisposable
         if (!s.Moving) return;
         s.Moving = false;
         if (s.Item is not { } item) return;
-        var at = new[] { s.CenterX, s.FloorY };
-        if (s.House) Book.HouseAt = at; else Book.CushionAt = at;
+        Book.At = new[] { s.CenterX, s.FloorY };
         s.Form?.Set(artOf(), item, s.K, s.Origin, s.Covered);
         Dbg.Log("home-move", ("kind", s.House ? "house" : "cushion"), ("id", item.Id), ("x", (int)s.CenterX), ("y", (int)s.FloorY));
         dirty = true;
@@ -280,22 +271,26 @@ sealed class HomeLife : IDisposable
     public void Give(bool house, string? id, bool animate)
     {
         id ??= HomeBook.Pick(house, speciesOf(), Book.Got, rng);
+        house = HomeBook.IsHouse(id);
         bool first = !Book.Has(id);
-        Book.Place(house, id);
-        if (house) { Book.HouseGiven = true; ApplyDefaultIfNone(true); } else { Book.CushionGiven = true; ApplyDefaultIfNone(false); }
+        var old = Book.Active is { } oa && HomeBook.IsHouse(oa) != house ? SlotOf(!house) : null; // 다른 쪽 물건이 놓여 있었다: 이 물건이 그 자리에 바꿔 놓인다
+        string? oldId = Book.Active;
+        Book.Place(id);
+        if (house) Book.HouseGiven = true; else Book.CushionGiven = true;
+        ApplyDefaultIfNone();
         Dbg.Log("home-give", ("kind", house ? "house" : "cushion"), ("id", id), ("species", PetArt.Base(speciesOf())), ("first", first));
         save();
         var s = SlotOf(house);
         if (!animate || playing()) { dirty = true; return; }
-        StartReveal(s);
+        StartReveal(s, old, oldId);
     }
 
-    void ApplyDefaultIfNone(bool house) { if ((house ? Book.HouseAt : Book.CushionAt) == null) ApplyDefault(house); }
+    void ApplyDefaultIfNone() { if (Book.At == null) ApplyDefault(); }
 
-    // 연출만 (받지 않는다)
-    public void StartReveal(Slot s)
+    // 연출만 (받지 않는다). old: 다른 쪽에서 빠지는 옛 물건 (새 물건이 떨어지는 순간까지 보인다)
+    public void StartReveal(Slot s, Slot? old = null, string? oldId = null)
     {
-        reveal = new RevealState { T0 = b.Now, Slot = s };
+        reveal = new RevealState { T0 = b.Now, Slot = s, Old = old, OldId = oldId };
         dirty = true;
         Refresh(!Book.Hidden && b.P.Stage is not ("egg" or "baby") && !playing()); // 자리·그림을 잡는다 (연출이 시작됐으니 아직 안 보인다: 0.5초에 띄운다)
         if (s.Item == null) { reveal = null; return; }
@@ -397,11 +392,13 @@ sealed class HomeLife : IDisposable
 
     public void SetHidden(bool hidden) { Book.Hidden = hidden; dirty = true; save(); Dbg.Log("home-hide", ("hidden", hidden)); }
 
-    // 메뉴: 놓인 것 바꾸기 (그 자리 그대로 그림만, 0.25초 흰 번쩍). 펫이 그 위·안에 있으면 그대로 있고 오림만 새로
-    public void SetPlaced(bool house, string id)
+    // 메뉴: 놓인 것 바꾸기 (그 자리 그대로 그림만, 0.25초 흰 번쩍). 방석 ↔ 집으로 바꿔도 하나만 남는다.
+    // 펫이 그 위·안에 있으면 그대로 있고 (새 물건 쪽으로 옮겨 앉고) 오림만 새로
+    public void SetPlaced(string id)
     {
-        if (Book.Placed(house) == id) return;
-        Book.Place(house, id);
+        if (Book.Active == id || !HomeBook.Known(id)) return;
+        bool house = HomeBook.IsHouse(id), kindChanged = Book.Active == null || Book.ActiveHouse != house;
+        Book.Place(id);
         if (house) Book.HouseGiven = true; else Book.CushionGiven = true;
         var s = SlotOf(house);
         // 폭이 달라도 아래 가운데 기준 (Layout 이 CenterX 를 그대로 쓴다)
@@ -409,48 +406,30 @@ sealed class HomeLife : IDisposable
         clipKey = default; // 오림을 새로
         Refresh(!Book.Hidden && b.P.Stage is not ("egg" or "baby") && !playing());
         if (s.Form != null) s.Form.FlashUntil = b.Now + .25;
+        if (kindChanged && b.HomeRetarget()) FollowPet();
         Dbg.Log("home-set", ("kind", house ? "house" : "cushion"), ("id", id));
         save();
     }
 
     // 「제자리로」: 기본 자리로 (화면 밖에 있어도 꺼내 올 수 있다)
-    public void ResetSpot(bool? house)
+    public void ResetSpot()
     {
-        foreach (var s in all)
-        {
-            if (house != null && s.House != house) continue;
-            ApplyDefault(s.House);
-        }
+        ApplyDefault();
         dirty = true;
         clipKey = default;
-        Dbg.Log("home-move", ("reset", house?.ToString() ?? "both"));
+        Dbg.Log("home-move", ("reset", true));
         save();
     }
 
-    // 모니터가 바뀌었다 (뺐다·해상도): 자리가 어느 작업 영역에도 안 들면 가장 가까운 모니터 안으로 눌러 저장 칸에도 적고, 두 물건이 겹치면 방석을 옆으로
+    // 모니터가 바뀌었다 (뺐다·해상도): 자리가 어느 작업 영역에도 안 들면 가장 가까운 모니터 안으로 눌러 저장 칸에도 적는다
     public void Settle()
     {
-        foreach (var s in all)
+        if (ActiveSlot is { Item: { } it } s && Book.At is { } at)
         {
-            var at = s.House ? Book.HouseAt : Book.CushionAt;
-            if (at == null || s.Item == null) continue;
             var area = b.World.At(at[0], at[1] - 1);
-            var (x, y) = HomeGeom.Fit(s.Item, scaleOf(area), area, b.K.FloorGap, at[0], at[1]);
+            var (x, y) = HomeGeom.Fit(it, scaleOf(area), area, b.K.FloorGap, at[0], at[1]);
             if (Math.Abs(x - at[0]) > .5 || Math.Abs(y - at[1]) > .5) Dbg.Log("home-settle", ("kind", s.House ? "house" : "cushion"), ("x", (int)x), ("y", (int)y));
-            if (s.House) Book.HouseAt = new[] { x, y }; else Book.CushionAt = new[] { x, y };
-        }
-        if (Cushion.Item is { } c && House.Item is { } h && Book.CushionAt is { } ca && Book.HouseAt is { } ha)
-        {
-            var area = b.World.At(ha[0], ha[1] - 1);
-            int ck = scaleOf(b.World.At(ca[0], ca[1] - 1)), hk = scaleOf(area);
-            double cw = c.W * ck / 2.0, hw = h.W * hk / 2.0;
-            if (Math.Abs(ca[0] - ha[0]) < cw + hw && Math.Abs(ca[1] - ha[1]) < 2)
-            {
-                double left = ha[0] - hw - cw - 16, right = ha[0] + hw + cw + 16;
-                double nx = left >= area.Left + cw ? left : Math.Min(right, area.Right - cw);
-                var (fx, fy) = HomeGeom.Fit(c, ck, area, b.K.FloorGap, nx, ca[1]);
-                Book.CushionAt = new[] { fx, fy };
-            }
+            Book.At = new[] { x, y };
         }
         dirty = true;
         clipKey = default;
@@ -475,7 +454,7 @@ sealed class HomeLife : IDisposable
                 if (a.Length > 2 && a[2] == "all")
                 {
                     foreach (var id in HomeBook.Cushions.Concat(HomeBook.Houses)) Book.Receive(id);
-                    foreach (bool h in new[] { false, true }) if (Book.Placed(h) == null) { Book.Place(h, HomeBook.Pick(h, speciesOf(), new List<string>(), rng)); ApplyDefaultIfNone(h); }
+                    if (Book.Active == null) { Book.Place(HomeBook.Pick(Pet.Grown(b.P.Stage), speciesOf(), new List<string>(), rng)); ApplyDefaultIfNone(); } // 하나만 놓는다: 다 자랐으면 집, 아니면 방석
                     (Book.CushionGiven, Book.HouseGiven) = (true, Pet.Grown(b.P.Stage) || Book.HouseGiven);
                     dirty = true; save();
                     Dbg.Log("home-give", ("all", true));
@@ -489,7 +468,7 @@ sealed class HomeLife : IDisposable
                 }
                 break;
             case "set":
-                if (a.Length > 2 && HomeBook.Known(a[2])) SetPlaced(HomeBook.IsHouse(a[2]), a[2]);
+                if (a.Length > 2 && HomeBook.Known(a[2])) SetPlaced(a[2]);
                 break;
             case "clear":
                 Book.Clear();
@@ -499,18 +478,18 @@ sealed class HomeLife : IDisposable
                 Dbg.Log("home-clear");
                 break;
             case "spot":
-                if (a.Length > 2 && a[2] == "reset") { ResetSpot(null); break; }
-                if (a.Length > 3 && a[2] is "cushion" or "house" && double.TryParse(a[3], out double x))
+                if (a.Length > 2 && a[2] == "reset") { ResetSpot(); break; }
                 {
-                    // home spot <cushion|house> <x> [y]: 그 자리로 (y 를 안 주면 지금 y). 모니터 안으로 눌러 놓인다
-                    bool h = a[2] == "house";
-                    var at = h ? Book.HouseAt : Book.CushionAt;
-                    double y = a.Length > 4 && double.TryParse(a[4], out double yy) ? yy : at?[1] ?? FloorOf(b.Area);
-                    var arr = new[] { x, y };
-                    if (h) Book.HouseAt = arr; else Book.CushionAt = arr;
-                    dirty = true; clipKey = default; save();
-                    Dbg.Log("home-move", ("kind", a[2]), ("x", (int)x), ("y", (int)y));
-                    break;
+                    // home spot <x> [y] (앞에 cushion|house 를 붙여도 된다 — 옛 꼴): 그 자리로 (y 를 안 주면 지금 y). 모니터 안으로 눌러 놓인다
+                    int i = a.Length > 2 && a[2] is "cushion" or "house" ? 3 : 2;
+                    if (a.Length > i && double.TryParse(a[i], out double x))
+                    {
+                        double y = a.Length > i + 1 && double.TryParse(a[i + 1], out double yy) ? yy : Book.At?[1] ?? FloorOf(b.Area);
+                        Book.At = new[] { x, y };
+                        dirty = true; clipKey = default; save();
+                        Dbg.Log("home-move", ("x", (int)x), ("y", (int)y));
+                        break;
+                    }
                 }
                 foreach (var s in all)
                     Dbg.Log("home-spot", ("kind", s.House ? "house" : "cushion"), ("id", s.Id), ("shown", s.Shown), ("k", s.K), ("x", (int)s.CenterX), ("floor", (int)s.FloorY), ("origin", s.Origin.ToString()),
@@ -518,19 +497,18 @@ sealed class HomeLife : IDisposable
                 break;
             case "sleep":
                 if (b.P.Asleep) b.Care("wake");
-                if (!(House.Shown && b.GoHome(true, HomeUse.Sleep)) && !b.GoHome(false, HomeUse.Nap)) Dbg.Log("home-none");
+                if (!b.GoSleepHome()) Dbg.Log("home-none"); // 놓인 하나로 (집이면 집 안에서, 방석이면 방석 위에서)
                 break;
-            case "nap": if (!b.GoHome(false, HomeUse.Nap)) Dbg.Log("home-none"); break;
-            case "sit": if (!b.GoHome(false, HomeUse.Sit)) Dbg.Log("home-none"); break;
+            case "nap": if (!(Book.Active != null && b.GoHome(Book.ActiveHouse, Book.ActiveHouse ? HomeUse.Sleep : HomeUse.Nap))) Dbg.Log("home-none"); break;
+            case "sit": if (!(Book.Active != null && b.GoHome(Book.ActiveHouse, Book.ActiveHouse ? HomeUse.Peek : HomeUse.Sit))) Dbg.Log("home-none"); break;
             case "out": b.HomeOut(); break;
             case "reveal":
                 {
                     string? id = a.Length > 2 && HomeBook.Known(a[2]) ? a[2] : null;
-                    bool house = id != null ? HomeBook.IsHouse(id) : Book.House != null && Pet.Grown(b.P.Stage);
-                    var s = SlotOf(house);
-                    if (id != null && Book.Placed(house) != id) SetPlaced(house, id);
-                    ApplyDefaultIfNone(house);
-                    StartReveal(s);
+                    if (id != null && Book.Active != id) SetPlaced(id);
+                    if (Book.Active == null) { Dbg.Log("home-none"); break; }
+                    ApplyDefaultIfNone();
+                    StartReveal(SlotOf(Book.ActiveHouse));
                 }
                 break;
             case "pick":
