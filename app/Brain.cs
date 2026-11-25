@@ -56,7 +56,7 @@ public sealed partial class Brain
     double watchAt, bobAt, runUntil, nextHide, activeAt, activeSeen, startleOk, rollV, flipAt, lastPoke = -99, pokeShown;
     int combo;
     string? lastKind;
-    bool ducked, fleeing, knocked, solo, tailSpin;
+    bool fleeing, knocked, solo, tailSpin;
     Action? then;
     readonly List<(double T, Point P)> trail = new(); // 들고 있는 동안의 마우스 자취
     readonly List<(double T, Point P)> shakeTrail = new();
@@ -1024,7 +1024,6 @@ public sealed partial class Brain
                     Mode = Mode.Hiding;
                     until = Now + Rand(K.HideStayMinSec, K.HideStayMaxSec);
                     bobAt = Now + Rand(1.5, 4);
-                    ducked = false;
                     Dbg.Log("hiding", ("edge", peek.E.ToString()));
                 }
                 break;
@@ -1036,9 +1035,9 @@ public sealed partial class Brain
                 if (P.Asleep) { Pose = "sleep"; break; }
                 Pose = peek.E == Edge.Top ? "idle" : "peek";
                 if (Now > until && !Sheltering || P.Need(K) != null || Holes.Count != P.Bites) { Mode = Mode.Emerge; break; }
-                if (Now > bobAt) { ducked = !ducked; bobAt = Now + (ducked ? Rand(.6, 1.6) : Rand(2, 7)); }
+                // 창 뒤로 완전히 숨기(쏙 들어갔다 나오기)는 뺐다 — 늘 빼꼼 내다보는 자리에 있는다 (YELL 2026-11-25: 「창 뒤로 완전히 숨는것만 빼줘」)
                 var at = HidePos();
-                Walk(ducked ? at.DuckX : at.X, ducked ? at.DuckY : at.Y, 70, dt);
+                Walk(at.X, at.Y, 70, dt);
                 if (peek.E != Edge.Top) Dir = peek.E == Edge.Left ? -1 : 1; // 창 바깥을 내다본다
                 break;
             }
