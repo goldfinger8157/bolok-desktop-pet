@@ -59,6 +59,7 @@ static class GameModes
         new("fortress", h => new FortressGame(h), FortressGame.Check, FortressGame.Scene, FortressGame.BenchRun),
         new("volley", h => new VolleyGame(h), VolleyGame.Check, VolleyGame.Scene, VolleyGame.BenchRun),
         new("trail", h => new TrailGame(h), TrailGame.Check, TrailGame.Scene, TrailGame.BenchRun),
+        new("climb", h => new ClimbGame(h), ClimbGame.Check, ClimbGame.Scene, ClimbGame.BenchRun),
     };
 
     public static List<IGameMode> Create(IGameHost host) => All.Select(e => e.Create(host)).ToList();

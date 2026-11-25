@@ -353,19 +353,19 @@ static partial class TrailCheck
         var inWin = TrailGame.InWindow(win, 600, 360, 3);
         Expect(win.Contains(inWin) && Math.Abs(inWin.X + 300 - (win.X + win.Width / 2)) < 2 && inWin.Bottom <= win.Bottom, "판은 창 안 아래 가운데");
         // 창 안에서는 볼록이 가까이 (늘 같은 자리가 아니다), 창 밖으로 안 나간다 (YELL 2026-11-24)
-        var near1 = TrailGame.NearPet(win, 900, 700, 600, 360, 3);
-        var near2 = TrailGame.NearPet(win, 1400, 900, 600, 360, 3);
-        var edge = TrailGame.NearPet(win, -500, 5000, 600, 360, 3);
+        var near1 = PanelPlace.NearPet(win, 900, 700, 600, 360, 3);
+        var near2 = PanelPlace.NearPet(win, 1400, 900, 600, 360, 3);
+        var edge = PanelPlace.NearPet(win, -500, 5000, 600, 360, 3);
         Expect(win.Contains(near1) && win.Contains(near2) && win.Contains(edge) && near1 != near2
             && Math.Abs(near1.X + 300 - 900) < 2 && Math.Abs(near1.Bottom - (700 + 24)) < 2 && edge.X == win.X && edge.Bottom <= win.Bottom,
             $"창 안 판은 볼록이 가까이·창 안으로 ({near1} · {near2} · {edge})");
         var area = new Rectangle(0, 0, 1920, 1040);
         foreach (var (px, py) in new[] { (50.0, 40.0), (960.0, 1000.0), (1900.0, 600.0), (0.0, 1040.0) })
         {
-            var p = TrailGame.Around(area, px, py, 600, 360, 3);
+            var p = PanelPlace.Around(area, px, py, 600, 360, 3);
             Expect(area.Contains(p) && p.Width == 600 && p.Height == 360, $"바탕화면 판은 모니터 안 ({px},{py} → {p})");
         }
-        Expect(TrailGame.Around(area, 960, 800, 600, 360, 3).Bottom >= 800, "볼록이가 판 안 아래에 온다");
+        Expect(PanelPlace.Around(area, 960, 800, 600, 360, 3).Bottom >= 800, "볼록이가 판 안 아래에 온다");
 
         // 기록: 완주하면 다음 단계, 시간 초과는 그대로, 연습·자동 판은 안 남고, 저장했다 읽으면 같다
         var host = new SceneHost();

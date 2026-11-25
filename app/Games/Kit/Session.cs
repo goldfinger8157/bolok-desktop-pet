@@ -20,6 +20,7 @@ sealed class Session
     readonly Func<bool> active;
     readonly Func<Point> mouse;
     bool leftNow, rightNow, leftHit, rightHit, leftUp, rightUp, started;
+    bool arrowLHeld, arrowRHeld, arrowLHit, arrowRHit, wasActive;   // ← → 를 누른 프레임 (KeyEvent 와 Tick 의 값을 합친다)
 
     public readonly Rectangle Field;
     public GameLayer? Layer { get; private set; }   // 커서 모양을 바꿀 때만 쓴다 (키·마우스 이벤트를 따로 달지 않는다)
@@ -28,6 +29,11 @@ sealed class Session
     public int AxisX { get; private set; }          // 방향키 ← → : -1·0·1 (판이 앞 창일 때만)
     public int AxisY { get; private set; }          // 방향키 ↑ ↓ : -1(위)·0·1(아래)
     public bool Up => AxisY < 0;                    // ↑ (점프처럼 한 키로 쓸 때)
+    // ← → 키별 값 (방향키 합친 AxisX 로는 「← 를 쥔 채 → 를 두드렸다 뗐다」가 「← 를 또 눌렀다」로 읽힌다: 번갈아 두드리는 게임용, YELL 2026-11-25 클라이밍)
+    public bool ArrowLeft { get; private set; }       // ← 를 쥐고 있나 (판이 앞 창일 때만)
+    public bool ArrowRight { get; private set; }
+    public bool ArrowLeftHit { get; private set; }    // 이번 프레임에 ← 를 눌렀나: 쥔 채로는 다시 안 뜬다. 15ms 보다 짧게 친 키도 놓치지 않는다 (판이 받은 KeyDown 을 줄 세운다)
+    public bool ArrowRightHit { get; private set; }
     public bool Ctrl { get; private set; }
     public bool Shift { get; private set; }
     public Point Mouse { get; private set; }        // 화면 좌표
@@ -47,7 +53,12 @@ sealed class Session
     {
         Session s = null!;
         s = new Session(host, field, Native.KeyDown, () => s.Layer is { IsDisposed: false } l && Native.GetForegroundWindow() == l.Handle, () => Control.MousePosition);
-        if (layer) s.Layer = host.OpenLayer(field, (_, e) => s.Press(e.Button, true), (_, e) => s.Press(e.Button, false), quit);
+        if (layer)
+        {
+            s.Layer = host.OpenLayer(field, (_, e) => s.Press(e.Button, true), (_, e) => s.Press(e.Button, false), quit);
+            s.Layer.KeyDown += (_, e) => s.KeyEvent(e.KeyCode, true);   // 짧게 친 ← → 를 줄 세운다 (Tick 이 키 상태만 보면 프레임 사이에 눌렀다 뗀 키를 못 본다)
+            s.Layer.KeyUp += (_, e) => s.KeyEvent(e.KeyCode, false);
+        }
         host.HideFromCapture(true); // 판을 연 뒤에: 판도 같이 숨는다
         return s;
     }
@@ -65,12 +76,33 @@ sealed class Session
 
     bool Key(Keys k) => Array.IndexOf(Allowed, k) >= 0 && key(k);
 
+    // 판이 받은 ← → 의 KeyDown·KeyUp (판이 앞 창일 때만 온다. 자가 검사는 직접 부른다). 쥐고 있어 되풀이되는 KeyDown 은 한 번으로 친다
+    public void KeyEvent(Keys k, bool down)
+    {
+        if (!Active) return;
+        if (k == Keys.Left) { if (!down) arrowLHeld = false; else if (!arrowLHeld) (arrowLHeld, arrowLHit) = (true, true); }
+        else if (k == Keys.Right) { if (!down) arrowRHeld = false; else if (!arrowRHeld) (arrowRHeld, arrowRHit) = (true, true); }
+    }
+
     // 프레임마다 맨 처음에 한 번
     public void Tick()
     {
         Active = active();
         AxisX = Active ? (Key(Keys.Right) ? 1 : 0) - (Key(Keys.Left) ? 1 : 0) : 0;
         AxisY = Active ? (Key(Keys.Down) ? 1 : 0) - (Key(Keys.Up) ? 1 : 0) : 0;
+        ArrowLeft = Active && Key(Keys.Left);
+        ArrowRight = Active && Key(Keys.Right);
+        if (!Active) (arrowLHeld, arrowRHeld, arrowLHit, arrowRHit) = (false, false, false, false);
+        else if (!wasActive) (arrowLHeld, arrowRHeld, arrowLHit, arrowRHit) = (ArrowLeft, ArrowRight, false, false);   // 판이 막 앞 창이 됐다: 그때 이미 쥐고 있던 키는 누른 것으로 안 친다 (메뉴를 고르던 키)
+        else
+        {
+            if (ArrowLeft && !arrowLHeld) arrowLHit = true;    // 이벤트보다 먼저 키 상태로 본 누름 (뒤따라 오는 같은 누름의 KeyDown 은 Held 라 무시된다)
+            if (ArrowRight && !arrowRHeld) arrowRHit = true;
+            (arrowLHeld, arrowRHeld) = (ArrowLeft, ArrowRight);   // 이벤트는 눌렀다 뗐는데 키 상태로는 이미 뗀 짧은 누름도 Hit 는 남는다
+        }
+        wasActive = Active;
+        (ArrowLeftHit, ArrowRightHit) = (arrowLHit, arrowRHit);
+        arrowLHit = arrowRHit = false;
         (Ctrl, Shift) = (Key(Keys.ControlKey), Key(Keys.ShiftKey));
         var at = mouse();
         MouseMoved = started && at != Mouse; // 처음 자리는 움직인 걸로 치지 않는다 (메뉴를 고르던 커서 자리로 튀지 않게)

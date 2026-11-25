@@ -263,6 +263,18 @@
   "pt": "Ice Run",
   "ru": "Айс-ран"
  },
+ "menu.climb": {
+  "en": "Climbing",
+  "ko": "클라이밍",
+  "ja": "クライミング",
+  "zh-Hans": "攀爬",
+  "zh-Hant": "攀爬",
+  "es": "Escalada",
+  "de": "Klettern",
+  "fr": "Escalade",
+  "pt": "Escalada",
+  "ru": "Восхождение"
+ },
  "menu.gun": {
   "en": "{0} (HP {1})",
   "ko": "{0} (HP {1})",
@@ -514,6 +526,18 @@
   "fr": "Maj : Sprint",
   "pt": "Shift: Correr",
   "ru": "Shift: рывок"
+ },
+ "note.climb_hop": {
+  "en": "←→: Hop to the next leaf",
+  "ko": "←→: 다음 잎 쪽으로",
+  "ja": "←→: 次の葉っぱへ",
+  "zh-Hans": "←→:跳向下一片叶子",
+  "zh-Hant": "←→:跳向下一片葉子",
+  "es": "←→: Saltar a la hoja",
+  "de": "←→: Zum nächsten Blatt",
+  "fr": "←→ : Sauter vers la feuille",
+  "pt": "←→: Pular para a folha",
+  "ru": "←→: на следующий лист"
  },
  "note.shoot_aim": {
   "en": "Mouse: Aim",
@@ -2172,6 +2196,42 @@
   "ru": "Этап {0} · рекорд {1}"
  },
  "game.trail_none": {
+  "en": "Not played yet",
+  "ko": "아직 안 해 봤어요",
+  "ja": "まだ遊んでないよ",
+  "zh-Hans": "还没玩过",
+  "zh-Hant": "還沒玩過",
+  "es": "Aún sin jugar",
+  "de": "Noch nicht gespielt",
+  "fr": "Pas encore joué",
+  "pt": "Ainda não jogou",
+  "ru": "Ещё не играли"
+ },
+ "game.climb": {
+  "en": "Climbing",
+  "ko": "클라이밍",
+  "ja": "クライミング",
+  "zh-Hans": "攀爬",
+  "zh-Hant": "攀爬",
+  "es": "Escalada",
+  "de": "Klettern",
+  "fr": "Escalade",
+  "pt": "Escalada",
+  "ru": "Восхождение"
+ },
+ "game.climb_val": {
+  "en": "Best {0} · {1} plays",
+  "ko": "최고 {0} · {1}판",
+  "ja": "ベスト{0}・{1}回",
+  "zh-Hans": "最高 {0} · {1} 局",
+  "zh-Hant": "最高 {0} · {1} 局",
+  "es": "Récord {0} · {1} partidas",
+  "de": "Rekord {0} · {1} Spiele",
+  "fr": "Record {0} · {1} parties",
+  "pt": "Recorde {0} · {1} partidas",
+  "ru": "Рекорд {0} · игр: {1}"
+ },
+ "game.climb_none": {
   "en": "Not played yet",
   "ko": "아직 안 해 봤어요",
   "ja": "まだ遊んでないよ",

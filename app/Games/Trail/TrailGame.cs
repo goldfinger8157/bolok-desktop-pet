@@ -69,13 +69,13 @@ sealed partial class TrailGame : IGameMode
                 if (inside.Width >= w + 24 && inside.Height >= h + 48)
                 {
                     winH = wn.H;
-                    p = NearPet(inside, b.X, b.Y, w, h, f);
+                    p = PanelPlace.NearPet(inside, b.X, b.Y, w, h, f);
                     winOff = new Point(p.X - wn.R.X, p.Y - wn.R.Y);   // 창이 움직이면 창 안의 같은 자리로 따라간다
                 }
                 break;   // 볼록이 바로 밑 창만 본다 (그 아래 가려진 창은 쓰지 않는다)
             }
         }
-        if (winH == IntPtr.Zero) p = Around(area, b.X, b.Y, w, h, f);
+        if (winH == IntPtr.Zero) p = PanelPlace.Around(area, b.X, b.Y, w, h, f);
         int seed = forceSeed ?? Random.Shared.Next(1, 1 << 30);
         (practice, int play) = (forceStage != null, forceStage ?? stage);
         (forceStage, forceSeed) = (null, null);
@@ -93,16 +93,7 @@ sealed partial class TrailGame : IGameMode
     // 창 안 아래 가운데
     internal static Rectangle InWindow(Rectangle win, int w, int h, int k) => new(win.Left + (win.Width - w) / 2, win.Bottom - h - 6 * k, w, h);
 
-    // 창 안에서 볼록이 가까이: 볼록이가 판 아래 가운데쯤 오게, 창(모니터와 겹친 부분) 안으로 맞춘다 (아래는 6칸 띄운다)
-    internal static Rectangle NearPet(Rectangle inside, double petX, double petY, int w, int h, int k) =>
-        new((int)Math.Clamp(petX - w / 2.0, inside.Left, Math.Max(inside.Left, inside.Right - w)),
-            (int)Math.Clamp(petY + 8 * k - h, inside.Top, Math.Max(inside.Top, inside.Bottom - h - 6 * k)), w, h);
-
     Point winOff;   // 판이 창 왼쪽 위에서 떨어진 만큼 (창을 따라갈 때 같은 자리로)
-
-    // 볼록이 둘레: 볼록이가 판 아래 가운데쯤 오게 (모니터 안으로)
-    internal static Rectangle Around(Rectangle area, double petX, double petY, int w, int h, int k) =>
-        new((int)Math.Clamp(petX - w / 2.0, area.Left, area.Right - w), (int)Math.Clamp(petY + 8 * k - h, area.Top, area.Bottom - h), w, h);
 
     // 판을 건다 (처음이거나 장면에서 직접)
     internal void Begin(Trail t, Rectangle p, Session s)
@@ -206,13 +197,7 @@ sealed partial class TrailGame : IGameMode
     }
 
     readonly List<Rectangle> screens = new();
-    Rectangle MostOn(Rectangle r)
-    {
-        Rectangle best = host.Pet.Area;
-        long most = -1;
-        foreach (var sc in screens) { var i = Rectangle.Intersect(sc, r); long a = (long)i.Width * i.Height; if (a > most) (most, best) = (a, sc); }
-        return best;
-    }
+    Rectangle MostOn(Rectangle r) => PanelPlace.MostOn(screens, host.Pet.Area, r);   // 계산은 Kit/PanelPlace
 
     // 창이 움직이면 판이 따라가고, 닫히거나 작아지면 그 자리에 두고 바탕화면 판처럼 (놓친 판을 갑자기 옮기지 않는다)
     void FollowWindow()
@@ -224,7 +209,7 @@ sealed partial class TrailGame : IGameMode
         var inter = Rectangle.Intersect(st.R, MostOn(st.R));
         if (inter.Width < panel.Width + 24 || inter.Height < panel.Height + 48) { winH = IntPtr.Zero; Dbg.Log("trail-window-lost", ("reason", "offscreen")); return; }
         var want = new Rectangle(st.R.X + winOff.X, st.R.Y + winOff.Y, panel.Width, panel.Height);
-        var now = NearPet(inter, want.X + panel.Width / 2.0, want.Bottom - 8 * f, panel.Width, panel.Height, f);   // 창 안 같은 자리 (창이 잘리면 안쪽으로)
+        var now = PanelPlace.NearPet(inter, want.X + panel.Width / 2.0, want.Bottom - 8 * f, panel.Width, panel.Height, f);   // 창 안 같은 자리 (창이 잘리면 안쪽으로)
         if (now == panel) return;
         panel = now;
         guidePic?.Dispose(); guidePic = null;

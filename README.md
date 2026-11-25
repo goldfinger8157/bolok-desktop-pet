@@ -46,6 +46,7 @@ Get **`Bolok.exe`** from the [latest release](https://github.com/goldfinger8157/
 | Fortress (포트리스) | Turn-based artillery on window islands, with wind. Seven cannons (bouncing, cluster, drill and push shells among them) and a yellow power-up storm | Mouse to aim, hold left and release to fire, ← → to walk, ↑ to jump |
 | Volleyball (배구) | Bounce a fruit ball (tangerine, orange, apple, coconut, melon, sometimes a volleyball) over the net against a rival, inside the window you were using, or on a small grass court if there is none. Head a stem and you fumble; birds fly across; spikes are aimed over the net for you, jumping at the net blocks, and stones pop up to trip whoever runs into them. First to 5 | ← → to move, ↑ to jump, Ctrl in the air to spike |
 | Ice Run (아이스런) | Your pet runs into the screen along a snowy trail, seen from behind. Dodge snow piles, holes, snowmen and rolling snowballs, grab berries and hourglasses, and reach five campfires before time runs out — a friend you released waits at each one | ← → to steer, Ctrl to jump, Shift to dash, ↓ to slow down |
+| Climbing (클라이밍) | Your pet hops up an endless zigzag of steps — a beanstalk, stationery, sweets, balloons or toy blocks, picked at random — drawn right over the window it opens in. The step you stand on slowly gives way, so keep climbing; grab berries for time, a seed saves one slip, and a friend you released cheers every 100 steps | ← → step toward the next step |
 
 **Esc always quits instantly** (the boss key): whichever window has the focus, everything the game drew disappears at once, with no result screen, and your pet goes back to what it was doing. Games only use the mouse, the arrow keys, Ctrl, Shift and Esc — no letter keys.
 
@@ -112,6 +113,7 @@ out\Bolok.exe
 | 포트리스 | 창이 섬이 되는 턴제 포격전. 바람이 불어요. 대포 일곱 가지(튕김탄·집속탄·드릴탄·밀치기탄 포함)와 노란 파워업 폭풍 | 마우스로 조준, 왼쪽 누르고 있다 놓으면 쏘기, ← → 걷기, ↑ 점프 |
 | 배구 | 쓰던 창 안(없으면 작은 잔디 경기장)에서 라이벌과 과일 공(귤·오렌지·사과·야자열매·수박, 가끔 배구공)을 넘겨요. 꼭지에 헤딩하면 실수, 가끔 새가 날아가요. 스파이크는 네트를 넘게 도와 주고, 네트 앞에서 뛰면 블로킹, 달리다 돌부리에 걸리면 넘어져요. 5점 먼저 | ← → 이동, ↑ 점프, 공중에서 Ctrl 강스파이크 |
 | 아이스런 | 펫이 뒷모습으로 화면 안쪽 눈길을 달려요. 눈더미·물구멍·눈사람·굴러오는 눈덩이를 피하고 열매·모래시계를 주우며, 시간 안에 모닥불 쉼터 다섯 곳에 닿아요. 쉼터마다 떠나보낸 친구가 마중 나와요 | ← → 피하기, Ctrl 점프, Shift 질주, ↓ 천천히 |
+| 클라이밍 | 펫이 끝없이 지그재그로 이어진 발판을 폴짝폴짝 올라요. 콩나무·문구·과자·풍선·장난감 블록 중 하나가 무작위로 나오고, 열린 창 위에 그대로 그려져요. 밟고 선 발판이 점점 시들어서 계속 올라야 해요. 열매는 시간을 채우고, 홀씨는 한 번 살려 주고, 100칸마다 떠나보낸 친구가 응원해요 | ← → 다음 발판 쪽으로 |
 
 **Esc 는 언제나 바로 끝내기**(보스 키)예요. 어느 창을 쓰고 있든 게임이 그린 것이 한꺼번에 사라지고, 결과 화면 없이 볼록이는 하던 대로 돌아가요. 게임은 마우스·방향키·Ctrl·Shift·Esc 만 써요 (글자 키는 안 써요).
 

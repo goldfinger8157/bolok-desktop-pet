@@ -134,6 +134,64 @@ static class KitCheck
         Expect(ses.LeftUp && !ses.Left && ses.RightHit && ses.RightUp && !ses.Right, "뗀 프레임, 한 프레임 안에 눌렀다 뗀 것도 놓치지 않는다");
         ses.Tick();
         Expect(!ses.LeftUp && !ses.RightHit && !ses.RightUp, "다음 프레임엔 지워진다");
+        // ── ← → 키별 값: 쥐고 있나·이번 프레임에 눌렀나 (번갈아 두드리는 게임용). 합친 AxisX 와 달리 ← 를 쥔 채 → 를 두드려도 ← Hit 가 다시 안 뜬다 ──
+        {
+            var held = new HashSet<Keys>();
+            bool on = true;
+            var a2 = Session.Fake(new Rectangle(0, 0, 400, 300), k => held.Contains(k), () => on);
+            held.Add(Keys.Left);
+            a2.Tick();
+            Expect(a2.ArrowLeft && !a2.ArrowLeftHit, "판이 앞 창이 되는 때 이미 쥐고 있던 키는 누른 것으로 안 친다");
+            a2.Tick();
+            Expect(a2.ArrowLeft && !a2.ArrowLeftHit && !a2.ArrowRight && !a2.ArrowRightHit, "쥐고 있어도 Hit 는 다시 안 뜬다");
+            held.Add(Keys.Right); a2.Tick();
+            Expect(a2.ArrowRightHit && !a2.ArrowLeftHit && a2.ArrowLeft && a2.ArrowRight && a2.AxisX == 0, "← 를 쥔 채 → 를 누르면 → Hit 만");
+            held.Remove(Keys.Right); a2.Tick();
+            Expect(!a2.ArrowRightHit && !a2.ArrowLeftHit && a2.ArrowLeft && !a2.ArrowRight && a2.AxisX == -1, "→ 를 떼도 ← Hit 가 다시 뜨지 않는다 (AxisX 는 −1 로 돌아온다)");
+            held.Remove(Keys.Left); a2.Tick();
+            Expect(!a2.ArrowLeft && !a2.ArrowLeftHit, "뗐다");
+            held.Add(Keys.Left); a2.Tick();
+            Expect(a2.ArrowLeftHit, "뗐다 다시 누르면 Hit");
+            a2.Tick();
+            // 프레임 사이에 눌렀다 뗀 짧은 키: 키 상태로는 못 보지만 KeyDown·KeyUp 이벤트가 줄 세운다. 하나도 안 잃는다
+            held.Clear(); a2.Tick();
+            a2.KeyEvent(Keys.Right, true); a2.KeyEvent(Keys.Right, false);
+            a2.Tick();
+            Expect(a2.ArrowRightHit && !a2.ArrowRight && !a2.ArrowLeftHit, "프레임 사이에 눌렀다 뗀 → 도 한 번 센다");
+            a2.Tick();
+            Expect(!a2.ArrowRightHit, "한 번만");
+            a2.KeyEvent(Keys.Left, true); a2.KeyEvent(Keys.Left, true); a2.KeyEvent(Keys.Left, true);   // 쥐고 있어 KeyDown 이 되풀이돼도 한 번
+            held.Add(Keys.Left);
+            a2.Tick();
+            Expect(a2.ArrowLeftHit, "누르는 순간");
+            a2.KeyEvent(Keys.Left, true);
+            a2.Tick();
+            Expect(!a2.ArrowLeftHit && a2.ArrowLeft, "쥐고 있어 되풀이되는 KeyDown 은 다시 세지 않는다");
+            // 키 상태로 먼저 본 누름 + 뒤따라 온 KeyDown 은 한 번
+            held.Clear(); a2.KeyEvent(Keys.Left, false); a2.Tick();
+            held.Add(Keys.Right); a2.Tick();
+            Expect(a2.ArrowRightHit, "키 상태로 본 누름");
+            a2.KeyEvent(Keys.Right, true); a2.Tick();
+            Expect(!a2.ArrowRightHit, "같은 누름의 KeyDown 이 뒤따라 와도 두 번 세지 않는다");
+            // 다른 창을 쓰는 동안 오는 키는 안 센다
+            held.Clear(); a2.Tick();
+            on = false; a2.Tick();
+            a2.KeyEvent(Keys.Left, true); held.Add(Keys.Left); a2.Tick();
+            Expect(!a2.ArrowLeft && !a2.ArrowLeftHit && !a2.ArrowRightHit, "판이 앞 창이 아니면 ← → 는 안 읽는다");
+            on = true; a2.Tick();
+            Expect(a2.ArrowLeft && !a2.ArrowLeftHit, "다시 앞 창이 될 때 쥐고 있던 키는 누른 것으로 안 친다");
+            Expect(Session.Allowed.Length == 6 && Session.Allowed.Contains(Keys.Left) && Session.Allowed.Contains(Keys.Right), "읽는 키는 그대로 (방향키·Ctrl·Shift)");
+        }
+        // ── PanelPlace: 창(모니터와 겹친 부분)·모니터 안으로, 볼록이 가까이. 가장 많이 걸친 모니터 ──
+        {
+            var scrs = new[] { new Rectangle(0, 0, 1920, 1040), new Rectangle(1920, 0, 1280, 1000) };
+            Expect(PanelPlace.MostOn(scrs, scrs[0], new Rectangle(1700, 100, 600, 400)) == scrs[1] && PanelPlace.MostOn(scrs, scrs[0], new Rectangle(1000, 100, 600, 400)) == scrs[0], "창이 가장 많이 걸친 모니터");
+            Expect(PanelPlace.MostOn(Array.Empty<Rectangle>(), scrs[1], new Rectangle(0, 0, 10, 10)) == scrs[1], "모니터 목록이 비면 fallback");
+            var near = PanelPlace.NearPet(new Rectangle(300, 100, 1320, 860), 900, 700, 600, 360, 3);
+            Expect(near.X == 600 && near.Bottom == 700 + 24 && near.Width == 600 && near.Height == 360, $"창 안 볼록이 가까이 ({near})");
+            var around = PanelPlace.Around(new Rectangle(0, 0, 1920, 1040), 50, 40, 600, 360, 3);
+            Expect(around.X == 0 && around.Y == 0, $"볼록이 둘레는 모니터 안으로 ({around})");
+        }
         var was = L.Code;
         L.Use("ko");
         ses.Guide("note.raid_move", "note.esc");
