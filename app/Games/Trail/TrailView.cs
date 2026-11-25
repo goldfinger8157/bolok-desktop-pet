@@ -86,6 +86,11 @@ sealed class TrailView : IDisposable
         berry = new TrailPic[Steps], glass = new TrailPic[Steps], star = new TrailPic[Steps], post = new TrailPic[Steps], ballShadow = new TrailPic[Steps], glow = new TrailPic[Steps];
     readonly TrailPic[][] ball = { new TrailPic[Steps], new TrailPic[Steps], new TrailPic[Steps], new TrailPic[Steps] }, fire = { new TrailPic[Steps], new TrailPic[Steps] };
     readonly TrailPic[] petShadow = new TrailPic[3];
+    readonly TrailPic[][] bird = { new TrailPic[Steps], new TrailPic[Steps] };   // 새 (날갯짓 두 장 × 크기 12단계)
+    readonly TrailPic[] birdShadow = new TrailPic[Steps];                        // 새 그림자 (길에 어느 줄로 오는지 보인다)
+    readonly TrailPic featherA, featherB, minus;
+    const double BirdSize = 1.4;   // 새 그림 키우기 (펫보다 조금 넓게 — 멀리서도 읽히게)
+    const double Stripe = 21;   // 길 줄무늬 한 칸 (걸음). 빠르기 ×1.5 에 맞춰 14 → 21
     readonly TrailPic fireOn, fireOff, fireOnBig, fireOffBig, flag, flagBig, clock, arrow;
     readonly Bitmap band;     // 산 띠 + 지평선 안개 (가로 400칸: 굽이에서 옆으로 민다)
     public readonly TrailFriend?[] Friends;
@@ -117,6 +122,8 @@ sealed class TrailView : IDisposable
             post[i] = Pic(TrailArt.Post(s, false));
             for (int k = 0; k < 4; k++) ball[k][i] = Pic(far ? TrailArt.Dot(false) : TrailArt.Snowball(s, k));
             for (int k = 0; k < 2; k++) fire[k][i] = Pic(s < .3 ? TrailArt.FarFire(s) : TrailArt.Campfire(s, k));
+            for (int k = 0; k < 2; k++) bird[k][i] = Pic(far ? TrailArt.BirdFar(k) : TrailArt.Bird(s * BirdSize, k));
+            birdShadow[i] = DottedColor(Math.Max(18 * s, 3.2), Math.Max(3.4 * s, 1.3), TrailArt.Mix(TrailArt.A1.Shadow, TrailArt.Line, .45), false);
             ballShadow[i] = Dotted(7 * s, 1.6 * s);
             glow[i] = s < .3 ? ballShadow[i] : DottedColor(26 * s, 6.5 * s, TrailArt.A1.Glow, true);
         }
@@ -125,6 +132,7 @@ sealed class TrailView : IDisposable
         int sm = GameHud.Small(f);
         fireOn = Glyph(TrailArt.FireIcon, sm); fireOff = Glyph(TrailArt.FireOff, sm); fireOnBig = Glyph(TrailArt.FireIcon, f); fireOffBig = Glyph(TrailArt.FireOff, f);
         flag = Glyph(TrailArt.FlagRows, sm); flagBig = Glyph(TrailArt.FlagRows, f); clock = Glyph(TrailArt.ClockIcon, sm); arrow = Glyph(TrailArt.ArrowRows, f);
+        featherA = GlyphP(TrailArt.FeatherA, TrailArt.FP, f); featherB = GlyphP(TrailArt.FeatherB, TrailArt.FP, f); minus = Glyph(TrailArt.MinusRows, sm);
         band = MakeBand();
         for (int n = 0; n < marks.Length; n++)
         {
@@ -140,7 +148,8 @@ sealed class TrailView : IDisposable
     static ulong Hash(int a, int b) { ulong h = (ulong)(a * 73856093 ^ b * 19349663); h ^= h >> 13; h *= 0x5bd1e995; h ^= h >> 15; return h; }
 
     TrailPic Pic(TPx g, bool half = false) => new(g, f, g.W / 2.0, g.H - 1 - (half ? (int)Math.Round(g.H * .5) : 0));
-    TrailPic Glyph(string[] rows, int scale) { var g = TrailArt.Glyph(rows, TrailArt.GP); return new TrailPic(g, scale, g.W / 2.0, g.H / 2); }
+    TrailPic Glyph(string[] rows, int scale) => GlyphP(rows, TrailArt.GP, scale);
+    static TrailPic GlyphP(string[] rows, Func<char, uint> pal, int scale) { var g = TrailArt.Glyph(rows, pal); return new TrailPic(g, scale, g.W / 2.0, g.H / 2); }
     static TPx Scaled(TPx src, double k)
     {
         int w = Math.Max(1, (int)Math.Round(src.W * k)), h = Math.Max(1, (int)Math.Round(src.H * k));
@@ -187,8 +196,9 @@ sealed class TrailView : IDisposable
 
     public void Dispose()
     {
-        foreach (var set in new[] { pile, hole, snowman, fallen, ice, berry, glass, star, post, ballShadow, glow, petShadow }) foreach (var p in set) p.Dispose();
-        foreach (var set in ball.Concat(fire)) foreach (var p in set) p.Dispose();
+        foreach (var set in new[] { pile, hole, snowman, fallen, ice, berry, glass, star, post, ballShadow, glow, petShadow, birdShadow }) foreach (var p in set) p.Dispose();
+        foreach (var set in ball.Concat(fire).Concat(bird)) foreach (var p in set) p.Dispose();
+        foreach (var p in new[] { featherA, featherB, minus }) p.Dispose();
         foreach (var br in new[] { brField, brField2, brRoad, brRoad2, brEdge, brBank, brShade, brDash, brMark, brWhite, brRed, brCream, brLine, brGold, brWind }) br.Dispose();   // 판을 열 때마다 붓 핸들이 남지 않게
         foreach (var p in new[] { fireOn, fireOff, fireOnBig, fireOffBig, flag, flagBig, clock, arrow }) p.Dispose();
         band.Dispose();
@@ -199,11 +209,15 @@ sealed class TrailView : IDisposable
     public static int StepFor(double s) => Math.Clamp((int)Math.Round(Math.Log(s / SMin) * InvLog), 0, Steps - 1);
     double CwAt(double d) { double u = (Rows - d) / Rows; return u * u * HalfRoad; }
 
-    bool Proj(Trail t, double ahead, double u, out double x, out int y, out double s, out int step)
+    // 보이는 줄 d (지평선 아래 몇 번째): 앞 거리 ahead 에서. 보이기 시작하는 거리(SeeDist) 에서도 1 이상이어야 한다 (자가 검사)
+    internal static double RowAt(double ahead) => Z0 * Mid / (Z0 + ahead);
+
+    // maxD: 새는 볼록이 곁을 지나 조금 더 아래까지 그린다 (76 = 그림 크기 단계 맨 끝)
+    bool Proj(Trail t, double ahead, double u, out double x, out int y, out double s, out int step, double maxD = 72.5)
     {
         double d = Z0 * Mid / (Z0 + ahead);
         (x, y, s, step) = (0, 0, 0, 0);
-        if (d < 1 || d > 72.5 || ahead > t.T.SeeDist + 8) return false;
+        if (d < 1 || d > maxD || ahead > t.T.SeeDist + 8) return false;
         s = d / Mid;
         x = 100 + t.Curve * CwAt(d) + u * HalfRoad * s;
         y = (int)Math.Round(Hz - 1 + d);
@@ -232,7 +246,8 @@ sealed class TrailView : IDisposable
     {
         yield return ("눈더미", pile); yield return ("물구멍", hole); yield return ("눈사람", snowman); yield return ("무너진 눈사람", fallen); yield return ("빙판", ice);
         yield return ("열매", berry); yield return ("모래시계", glass); yield return ("별", star); yield return ("등불 기둥", post); yield return ("눈덩이 그림자", ballShadow);
-        yield return ("모닥불 둘레", glow);
+        yield return ("모닥불 둘레", glow); yield return ("새 그림자", birdShadow);
+        for (int k = 0; k < 2; k++) yield return ($"새 {k}", bird[k]);
         for (int k = 0; k < 4; k++) yield return ($"눈덩이 {k}", ball[k]);
         for (int k = 0; k < 2; k++) yield return ($"모닥불 {k}", fire[k]);
     }
@@ -245,6 +260,7 @@ sealed class TrailView : IDisposable
         g.DrawImage(band, new Rectangle(ox, oy + (Hz - 12) * f, PW * f, 17 * f), (PW + (int)Math.Round(t.Curve * 14)) * f, 0, PW * f, 17 * f, GraphicsUnit.Pixel);
         Marks(g, ox, oy, t);
         if (t.WindLeft > 0 || WindWarning(t, out _)) Wind(g, ox, oy, t, sh.Clock);
+        BirdShadows(g, ox, oy, t);
         World(o, g, ox, oy, panel, t, sh);
         Hud(o, g, panel, t, sh);
         if (sh.Count > 0) GameHud.Count(o, g, panel, f, sh.Count);
@@ -259,7 +275,7 @@ sealed class TrailView : IDisposable
         {
             int y = Hz - 1 + d;
             double z = rowZ[d], s = rowS[d];
-            bool on = ((int)Math.Floor((z + dist) / 14) & 1) == 0;
+            bool on = ((int)Math.Floor((z + dist) / Stripe) & 1) == 0;
             Rect(g, on ? brField : brField2, ox, oy, 0, y, PW);
             double cx = 100 + curve * rowCw[d], hw = rowHw[d];
             int x0 = (int)Math.Round(cx - hw), x1 = (int)Math.Round(cx + hw);
@@ -272,7 +288,7 @@ sealed class TrailView : IDisposable
                 Rect(g, brShade, ox, oy, x0 - bw, y, 1); Rect(g, brBank, ox, oy, x0 - bw + 1, y, bw - 1);
                 Rect(g, brBank, ox, oy, x1, y, bw - 1); Rect(g, brShade, ox, oy, x1 + bw - 1, y, 1);
             }
-            if (d > 2 && ((int)Math.Floor((z + dist) / 7) & 3) == 0)
+            if (d > 2 && ((int)Math.Floor((z + dist) / (Stripe / 2)) & 3) == 0)
             {
                 int dw = Math.Max(1, (int)Math.Round(1.6 * s));
                 Rect(g, brDash, ox, oy, (int)Math.Round(cx - dw / 2.0), y, dw);
@@ -333,17 +349,43 @@ sealed class TrailView : IDisposable
         int prevGate = t.Leg > 0 ? t.Leg - 1 : -1;
         double prevD = prevGate >= 0 ? t.Gates[prevGate] - t.Pos : double.MinValue;
         bool prevDone = prevGate < 0 || prevD < -7;
+        int bj = t.Birds.Length - 1;   // 새는 먼 것부터 깊이 순서에 끼워 그린다
+        while (bj >= t.BirdLo && t.BirdAhead(t.Birds[bj]) > t.T.SeeDist + 8) bj--;
         for (int i = hi; i >= t.Lo - 1; i--)
         {
             double ahead = i >= t.Lo ? t.Ahead(t.Things[i]) : double.MinValue;
-            if (!gateDone && ahead < gateD) { Gate(o, g, ox, oy, t, sh, gate, gateD); gateDone = true; }
-            if (!petDone && ahead < 0) { Pet(o, g, ox, oy, panel, t, sh); petDone = true; }
-            if (!prevDone && ahead < prevD) { Gate(o, g, ox, oy, t, sh, prevGate, prevD); prevDone = true; }
-            if (i >= t.Lo) Thing(g, ox, oy, t, ref t.Things[i]);
+            if (!gateDone && ahead < gateD) { BirdsBefore(g, ox, oy, t, sh, ref bj, gateD); Gate(o, g, ox, oy, t, sh, gate, gateD); gateDone = true; }
+            if (!petDone && ahead < 0) { BirdsBefore(g, ox, oy, t, sh, ref bj, 0); Pet(o, g, ox, oy, panel, t, sh); petDone = true; }
+            if (!prevDone && ahead < prevD) { BirdsBefore(g, ox, oy, t, sh, ref bj, prevD); Gate(o, g, ox, oy, t, sh, prevGate, prevD); prevDone = true; }
+            if (i >= t.Lo) { BirdsBefore(g, ox, oy, t, sh, ref bj, ahead); Thing(g, ox, oy, t, ref t.Things[i]); }
         }
-        if (!gateDone) Gate(o, g, ox, oy, t, sh, gate, gateD);
-        if (!petDone) Pet(o, g, ox, oy, panel, t, sh);
-        if (!prevDone) Gate(o, g, ox, oy, t, sh, prevGate, prevD);
+        if (!gateDone) { BirdsBefore(g, ox, oy, t, sh, ref bj, gateD); Gate(o, g, ox, oy, t, sh, gate, gateD); }
+        if (!petDone) { BirdsBefore(g, ox, oy, t, sh, ref bj, 0); Pet(o, g, ox, oy, panel, t, sh); }
+        if (!prevDone) { BirdsBefore(g, ox, oy, t, sh, ref bj, prevD); Gate(o, g, ox, oy, t, sh, prevGate, prevD); }
+        BirdsBefore(g, ox, oy, t, sh, ref bj, double.MinValue);
+    }
+
+    // 새 그림자: 길 위 땅에 (모든 것 아래). 어느 줄로 오는지 미리 보인다
+    void BirdShadows(Graphics g, int ox, int oy, Trail t)
+    {
+        for (int i = t.BirdLo; i < t.Birds.Length; i++)
+        {
+            ref var b = ref t.Birds[i];
+            double vis = t.BirdAhead(b);
+            if (vis > t.T.SeeDist + 8) break;
+            if (!b.Gone && Proj(t, vis, b.U, out double x, out int y, out _, out int st, 76)) Put(g, ox, oy, birdShadow[st], x, y);
+        }
+    }
+
+    // 깊이가 depth 보다 먼 새를 (남은 것 가운데) 그린다
+    void BirdsBefore(Graphics g, int ox, int oy, Trail t, TrailShow sh, ref int bj, double depth)
+    {
+        while (bj >= t.BirdLo && t.BirdAhead(t.Birds[bj]) > depth)
+        {
+            ref var b = ref t.Birds[bj--];
+            if (b.Gone || !Proj(t, t.BirdAhead(b), b.U, out double x, out int y, out double s, out int st, 76)) continue;
+            Put(g, ox, oy, bird[(int)(sh.Clock * t.T.BirdFlap) & 1][st], x, y - (int)Math.Round(t.T.BirdHeight * s));
+        }
     }
 
     void Thing(Graphics g, int ox, int oy, Trail t, ref TrailThing th)
@@ -419,7 +461,7 @@ sealed class TrailView : IDisposable
         Put(g, ox, oy, petShadow[air > 14 ? 2 : air > 3 ? 1 : 0], x, PetRow + 1);
         if (t.State == Trail.Phase.Run && air == 0 && t.Speed > 4 && !t.Halted)   // 발밑 눈 튀김
         {
-            int fr = (int)(t.Pos / 7) & 1;
+            int fr = (int)(t.Pos / TrailGame.StepLen) & 1;
             foreach (var (dx, dy, white) in Spray)
                 Rect(g, white ? brWhite : brBank, ox, oy, (int)x + dx + fr, PetRow + dy - fr, 1);
         }
@@ -432,6 +474,7 @@ sealed class TrailView : IDisposable
                 row[sh.PetFrame % row.Length].DrawCell(g, ox + ((int)Math.Round(x) - 20) * f, oy + (PetRow - 37 - air) * f, cellPx);
             }
         }
+        BirdHitFx(o, g, panel, t, x, air);
         if (sh.Bang && BangStamp() is { } bang)
             bang.Put(o, g, panel.X + (int)Math.Round(x) * f, panel.Y + (PetRow - 37 - air - 14) * f);
         if (t.StarLeft > 0)   // 별: 몸 둘레에 반짝
@@ -443,6 +486,28 @@ sealed class TrailView : IDisposable
                 spark.Put(o, g, panel.X + (int)(x * f + Math.Cos(a) * 13 * f), panel.Y + (int)((PetRow - 20 - air) * f + Math.Sin(a) * 11 * f));
             }
         }
+    }
+
+    // 새에 맞은 순간: 깃털이 흩날리고 (0.7초) 머리 위로 빼기 + 깎인 점수가 떠올랐다 사라진다 (1.2초). 글자 없이 그림·도트 숫자만
+    static readonly (double Vx, double Vy, int Shape)[] Puff = { (-34, -30, 0), (30, -36, 1), (-18, -50, 1), (14, -54, 0), (-46, -14, 0), (44, -10, 1), (2, -62, 0), (-8, -24, 1) };
+
+    void BirdHitFx(Overlay o, Graphics g, Rectangle panel, Trail t, double x, int air)
+    {
+        double age = t.Clock - t.BirdAt;
+        if (age < 0 || age > 1.2) return;
+        double cy = PetRow - 26 - air;
+        if (age < .7)
+            foreach (var (vx, vy, shape) in Puff)
+            {
+                double a = Math.Min(age, .7);
+                Put(g, panel.X - o.Left, panel.Y - o.Top, shape == 0 ? featherA : featherB, x + vx * a, (int)Math.Round(cy + vy * a + 60 * a * a));
+            }
+        int sm = GameHud.Small(f), n = Math.Max(1, GameHud.Digits(t.BirdLastLost));
+        double rise = Math.Min(age, .8) * 14;
+        int top = panel.Y + (int)Math.Round((PetRow - 40 - air - rise) * f);
+        int width = 7 * sm + n * 5 * sm, left = panel.X + (int)Math.Round(x * f) - width / 2;
+        DrawGlyph(o, g, minus, left + 3 * sm, top);
+        GameHud.Number(o, g, t.BirdLastLost, left + 7 * sm + 5 * sm / 2, top, sm, -1);
     }
 
     Stamp? BangStamp() => Stamps.Of(art).Has("emo/bang") ? Stamps.Of(art).Get("emo/bang", 0, GameHud.Small(f)) : null;

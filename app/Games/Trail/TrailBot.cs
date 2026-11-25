@@ -3,10 +3,11 @@ namespace Bolok;
 // 눈길 마중 자동 조종 (docs/ice-run.md 7장): 규칙이 주는 값만 본다 (화면을 보지 않는다).
 // 몇 틱마다 「지금부터 Look 초 안에 어느 줄이 막혔나」를 보고 가려는 자리·뛸지를 정하고, React 초 늦게 그대로 한다.
 // 자가 검사·속도 재기·봇 표·디버그 auto 가 쓴다.
-readonly record struct TrailSkill(string Name, double Look, double React, double Noise, bool Dash, bool Glass)
+// Bird: 새를 알아보는 몫 (새마다 한 번 정한다 — 못 알아본 새는 그냥 맞는다). 2026-11-25
+readonly record struct TrailSkill(string Name, double Look, double React, double Noise, bool Dash, bool Glass, double Bird)
 {
-    public static readonly TrailSkill Easy = new("느긋한 봇", .9, .45, .12, false, false);   // 처음 해 보는 사람
-    public static readonly TrailSkill Good = new("잘하는 봇", 2.5, .15, .02, true, true);     // 익숙한 사람
+    public static readonly TrailSkill Easy = new("느긋한 봇", .9, .45, .12, false, false, .4);   // 처음 해 보는 사람
+    public static readonly TrailSkill Good = new("잘하는 봇", 2.5, .15, .02, true, true, .92);     // 익숙한 사람
 }
 
 sealed class TrailBotState
@@ -19,6 +20,7 @@ sealed class TrailBotState
     public bool Jumping, Dashing;
     public int LastLane = -99;
     public readonly Random Rng;
+    public byte[] Noticed = Array.Empty<byte>();   // 새마다: 0 아직, 1 알아봤다, 2 못 알아봤다
     public TrailBotState(int seed) => Rng = new Random(seed);
 
     public void Push(double at, double x, bool j) { due[head % Room] = at; target[head % Room] = x; jump[head % Room] = j; head++; }
@@ -81,6 +83,21 @@ static class TrailBot
                 if (Math.Abs(x - th.U) >= (th.W + bw) / 2 + margin) continue;
                 if (tb < first[j]) { first[j] = tb; soft[j] = th.Kind != TrailKind.Snowman; }
             }
+        }
+        // 새: 날아오는 줄이 만나는 때(tb)에 막힌다. 어떤 새는 못 알아본다 (그냥 맞는다)
+        if (s.Noticed.Length != t.Birds.Length) s.Noticed = new byte[t.Birds.Length];
+        double bhw = (tune.BirdW + bw) / 2 + margin;
+        for (int i = t.BirdLo; i < t.Birds.Length; i++)
+        {
+            ref var b = ref t.Birds[i];
+            double a = b.M - t.Pos;
+            if (a > t.BirdSeen || a / sp > look) break;
+            if (b.Gone || a < -tune.BirdNear) continue;
+            if (s.Noticed[i] == 0) s.Noticed[i] = (byte)(s.Rng.NextDouble() < k.Bird ? 1 : 2);
+            if (s.Noticed[i] == 2) continue;
+            double tb = Math.Max(0, a - tune.BirdNear) / sp;
+            for (int j = 0; j < Lanes; j++)
+                if (Math.Abs(-1 + j * .1 - b.U) < bhw && tb < first[j]) { first[j] = tb; soft[j] = false; }
         }
         int cur = Math.Clamp((int)Math.Round((t.X + 1) / .1), 0, Lanes - 1);
         int best = -1; double cost = double.MaxValue;

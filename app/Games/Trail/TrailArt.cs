@@ -390,6 +390,51 @@ static class TrailArt
         return g;
     }
 
+    // 새 (2026-11-25): 앞에서 본 모습 — 날개를 펼치고 이쪽으로 날아온다. 푸른 회색 몸·크림 배·주황 부리, 날갯짓 두 장 (0 위로, 1 아래로).
+    // 발(앵커) 이 아래 가운데. 배구의 옆모습 새와 달리 정면이고 우리 그림이다
+    internal static readonly uint BirdBody = C("#5B7BA3"), BirdWing = C("#46618A"), BirdWingHi = C("#8FB0D6");
+
+    internal static TPx Bird(double s, int frame)
+    {
+        double k = Math.Max(.4, s);
+        int W0 = (int)Math.Ceiling(30 * k) + 4, H0 = (int)Math.Ceiling(20 * k) + 4;
+        var g = new TPx(W0, H0);
+        double cx = W0 / 2.0, by = H0 - 8.5 * k;   // 몸 가운데 높이
+        for (int side = -1; side <= 1; side += 2)
+        {
+            double X(double dx) => cx + side * dx * k;
+            var wing = frame == 0
+                ? new[] { (X(2), by - 1.5 * k), (X(8), by - 6.5 * k), (X(14), by - 10 * k), (X(13), by - 4 * k), (X(9), by + 1.5 * k), (X(2), by + 2 * k) }
+                : new[] { (X(2), by - 2.5 * k), (X(8), by - 1.5 * k), (X(14), by + 3 * k), (X(11.5), by + 5.5 * k), (X(6.5), by + 4 * k), (X(2), by + 2.5 * k) };
+            g.Poly(wing, BirdWing);
+            if (k > .45) g.Poly(wing.Select(p => (p.Item1 + (cx - p.Item1) * .12, p.Item2 + (frame == 0 ? 1.2 : -1.2) * k * .5)).ToArray(), BirdWingHi, true);
+            if (k > .6) for (int i = 0; i < 3; i++)   // 날개 끝 깃
+                g.Put((int)(X(10 + i * 1.4)) , (int)(by + (frame == 0 ? -7.5 + i * 2.2 : 1.5 + i * 1.3) * k), Line);
+        }
+        g.Ell(cx, by + .4 * k, 4.4 * k, 5 * k, BirdBody);
+        g.Ell(cx, by + 1.5 * k, 2.9 * k, 3.6 * k, Cream, true);
+        g.Ell(cx, by - 5 * k, 3.5 * k, 3.1 * k, BirdBody);
+        if (k > .5) { g.Fill((int)(cx - 2.4 * k), (int)(by - 5.6 * k), 1, 1, Line); g.Fill((int)(cx + 1.6 * k), (int)(by - 5.6 * k), 1, 1, Line); }
+        g.Poly(new[] { (cx - 1.1 * k, by - 4.3 * k), (cx + 1.1 * k, by - 4.3 * k), (cx, by - 2 * k) }, F1);   // 부리
+        g.Fill((int)(cx - 2 * k), (int)(by + 5.4 * k), 1, Math.Max(1, (int)(1.4 * k)), F1);              // 발톱
+        g.Fill((int)(cx + 1.4 * k), (int)(by + 5.4 * k), 1, Math.Max(1, (int)(1.4 * k)), F1);
+        g.Outline(Line);
+        if (k > .7) { g.Put((int)(cx - 2.4 * k), (int)(by - 6.4 * k), White); g.Put((int)(cx + 1.6 * k), (int)(by - 6.4 * k), White); }
+        return g;
+    }
+
+    // 먼 새: 뭉개지지 않게 손으로 찍은 작은 점 (날개를 편 어두운 V)
+    internal static TPx BirdFar(int frame) => Glyph(frame == 0
+        ? new[] { "o...o", "odbdo", ".obo." }
+        : new[] { ".obo.", "odbdo", "o...o" }, ch => ch == 'o' ? Line : ch == 'd' ? BirdWing : BirdBody);
+
+    // 새 깃털 (맞았을 때 흩날림) 두 모양
+    public static readonly string[] FeatherA = { "...oo", "..owo", ".owbo", "owbo.", "oo..." };
+    public static readonly string[] FeatherB = { "oo...", "owo..", "obwo.", ".obwo", "...oo" };
+    internal static uint FP(char ch) => ch switch { 'o' => Line, 'w' => White, 'b' => BirdWingHi, _ => C("#FF00FF") };
+    // 점수 깎임 표시의 빼기 (빨강 막대)
+    public static readonly string[] MinusRows = { "oooooo", "oRRRRo", "oooooo" };
+
     internal static TPx FarFire(double s)
     {
         if (s > .3) return Campfire(s, 0);

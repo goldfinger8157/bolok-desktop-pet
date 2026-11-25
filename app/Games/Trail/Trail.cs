@@ -25,6 +25,14 @@ struct TrailBundle
     public bool Fresh;                         // 이 판에서 처음 보이는 종류 (혼자 가운데에)
 }
 
+// 새 하나 (2026-11-25): M 은 볼록이와 만나는 걸음 자리 (박혀 있다), U 는 날아오는 줄. 그림에서는 (M − Pos) × BirdRush 만큼 앞에 보인다
+struct TrailBird
+{
+    public double M;
+    public float U;
+    public bool Seen, Hit, Gone;
+}
+
 sealed class Trail
 {
     public enum Phase { Count, Run, Win, Over }
@@ -36,7 +44,9 @@ sealed class Trail
     public TrailThing[] Things = Array.Empty<TrailThing>();
     public List<TrailBundle> Bundles = new();
     public readonly double[] Gates;              // 쉼터 걸음 자리
+    public TrailBird[] Birds = Array.Empty<TrailBird>();   // 새 (자리 순, 판을 만들 때 한 번)
     double[] knotAt = Array.Empty<double>(), knotV = Array.Empty<double>();
+    const double Knot = 330;                     // 굽이 값이 새로 정해지는 간격 (걸음)
 
     // 지금
     public Phase State = Phase.Count;
@@ -49,9 +59,12 @@ sealed class Trail
     public int Score, Berries, Hits, Glasses, Stars, Smashes;
     public double DashSec, RunSec;               // 질주한 시간, 달린 시간 (질주 비율)
     public TrailKind LastHit;
+    public int BirdHits, BirdLost, BirdLastLost; // 새에 맞은 수, 깎인 점수 합, 마지막에 깎인 점수
+    public double BirdAt = -9;                   // 새에 맞은 때 (Clock)
+    public double BirdU;                         // 새에 맞은 자리 (좌우)
     public double Curve;                         // 지금 길의 굽이 (그림용, -0.6~0.6)
     public Action<string>? OnEvent;
-    int lo;                                      // 아직 지나지 않은 첫 것
+    int lo, birdLo;                              // 아직 지나지 않은 첫 것, 첫 새
     double acc;
     int axis; bool jumpPress, dash, slow;
 
@@ -131,6 +144,7 @@ sealed class Trail
         X = Math.Clamp(X + (Vx + push) * Tick, -T.OffLimit, T.OffLimit);
         Curve = CurveAt(Pos);
         Things_();
+        Birds_();
         Gate_();
         if (Time <= 0 && State == Phase.Run && !Airborne && HaltLeft <= 0) { TimeOut = true; State = Phase.Over; EndedFor = 0; Fire("over"); }
     }
@@ -178,6 +192,41 @@ sealed class Trail
             Strike(ref t);
         }
     }
+
+    // 새: 만나는 자리 M 앞뒤 BirdNear 안에서 줄이 겹치면 점수만 깎는다 (점프로는 못 피한다 — 머리 높이로 난다). 별이면 부수고 지나가고, 방금 넘어졌으면(깜빡) 봐준다
+    public double BirdSeen => T.SeeDist / T.BirdRush;       // 이 거리(걸음) 안에 들어오면 보이기 시작
+    public double BirdAhead(in TrailBird b) => (b.M - Pos) * T.BirdRush;   // 그림에서 보이는 앞 거리
+
+    void Birds_()
+    {
+        while (birdLo < Birds.Length && Birds[birdLo].M < Pos - T.BirdNear - 12) birdLo++;
+        double seen = BirdSeen;
+        for (int i = birdLo; i < Birds.Length; i++)
+        {
+            ref var b = ref Birds[i];
+            double a = b.M - Pos;
+            if (a > seen) break;
+            if (b.Gone) continue;
+            if (!b.Seen) { b.Seen = true; Fire("cry"); }   // 멀리서 나타날 때 한 번 운다
+            if (b.Hit || Math.Abs(a) >= T.BirdNear) continue;
+            if (Math.Abs(X - b.U) >= (T.BirdW + Body) / 2) continue;
+            if (StarLeft > 0) { b.Gone = true; Smashes++; Fire("smash"); continue; }
+            if (Safe) continue;
+            BirdStrike(ref b);
+        }
+    }
+
+    void BirdStrike(ref TrailBird b)
+    {
+        b.Hit = b.Gone = true;
+        BirdHits++;
+        int lost = Math.Min(Math.Max(0, Score), T.BirdPenalty);   // 0 밑으로는 안 내려간다
+        Score -= lost;
+        (BirdLost, BirdLastLost, BirdAt, BirdU) = (BirdLost + lost, lost, Clock, b.U);
+        Fire("bird");
+    }
+
+    public int BirdLo => birdLo;
 
     void Collect(ref TrailThing t)
     {
@@ -302,17 +351,74 @@ sealed class Trail
             for (int leg = 0; leg < T.Legs; leg++)
                 for (int tries = 0; tries < 30; tries++)
                 {
-                    double z = leg * T.LegLen + 250 + rng.NextDouble() * (T.LegLen - 500);
-                    if (Bundles.Any(b => z > b.Start - 160 && z < b.End + 90)) continue;
+                    double z = leg * T.LegLen + 375 + rng.NextDouble() * (T.LegLen - 750);
+                    if (Bundles.Any(b => z > b.Start - 240 && z < b.End + 135)) continue;
                     list.Add(new TrailThing { Kind = TrailKind.Wind, U = rng.Next(2) == 0 ? -1 : 1, P = z, P0 = z });
                     break;
                 }
         Things = list.OrderBy(t => t.P0).ToArray();
-        // 굽이: 220 걸음마다 새 값, 쉼터 가까이에서는 곧게
-        int knots = (int)(T.LegLen * T.Legs / 220) + 3;
+        // 굽이: 330 걸음마다 새 값, 쉼터 가까이에서는 곧게
+        int knots = (int)(T.LegLen * T.Legs / Knot) + 3;
         knotAt = new double[knots]; knotV = new double[knots];
         var cr = new Random(Seed * 104729 + 7);
-        for (int i = 0; i < knots; i++) (knotAt[i], knotV[i]) = (i * 220.0, i < 1 ? 0 : (cr.NextDouble() * 2 - 1) * .55);
+        for (int i = 0; i < knots; i++) (knotAt[i], knotV[i]) = (i * Knot, i < 1 ? 0 : (cr.NextDouble() * 2 - 1) * .55);
+        PlaceBirds();
+    }
+
+    // ── 새 놓기: 길(묶음)을 다 짠 뒤 따로 (다른 난수라 장애물 배치는 그대로). 묶음과 묶음 사이 빈 자리에서만, 쉼터·옆바람과는 떨어지고, 피할 수 있는 줄만 ──
+    public double AfterOf(in TrailBundle a) => a.End + (a.Kind == TrailKind.Ball ? T.BallPad : 0) + (a.Fresh ? T.NewKindClear : 0);
+    public double BeforeOf(in TrailBundle b) => b.Start - (b.Fresh ? T.NewKindClear : 0) - (b.Kind == TrailKind.Ball ? T.BallPad : 0);
+    public double BirdHalf => (T.BirdW + Body) / 2;
+
+    void PlaceBirds()
+    {
+        var rng = new Random(Seed * 15485863 + 29);
+        var list = new List<TrailBird>(24);
+        double lo = Math.Max(6, T.BirdGapLo - T.BirdGapStep * (Stage - 1)), hi = Math.Max(lo + 4, T.BirdGapHi - T.BirdGapStep * 2 * (Stage - 1));
+        var winds = Things.Where(t => t.Kind == TrailKind.Wind).Select(t => t.P0).ToArray();
+        double next = T.BirdFirst, last = Gates[^1], seen = BirdSeen, hw = BirdHalf + T.BirdMargin;
+        while (next < last)
+        {
+            TrailBird? got = null;
+            for (double at = next; at < next + T.BirdScan && at < last && got == null; at += 10)
+            {
+                int bi = BirdSpot(at, seen, winds);
+                if (bi < 0) continue;
+                for (int tr = 0; tr < 6 && got == null; tr++)
+                {
+                    var (a, b) = (Bundles[bi], Bundles[bi + 1]);
+                    // 줄: 대개 볼록이가 가고 있을 줄(다음 묶음의 틈) 근처 — 안 피하면 맞는다. 가끔 방금 지난 틈 근처나 그 사이
+                    double pick = rng.NextDouble(), mix = pick < .55 ? 1 : pick < .75 ? 0 : .2 + rng.NextDouble() * .6;
+                    double u = Math.Clamp(a.Gap + (b.Gap - a.Gap) * mix + (rng.NextDouble() * 2 - 1) * (pick < .75 ? .14 : .3), -.85, .85);
+                    if (BirdDodgeable(a, b, at, u, hw, T.Dash)) got = new TrailBird { M = at, U = (float)u };
+                }
+            }
+            if (got is { } bd) { list.Add(bd); next = bd.M + (lo + rng.NextDouble() * (hi - lo)) * T.Speed; }
+            else next += T.BirdScan;
+        }
+        Birds = list.ToArray();
+    }
+
+    // at 에서 만나도 되는 자리인가: 쉼터·옆바람과 떨어지고 앞뒤 묶음 사이 빈 자리 안이면 앞 묶음의 번호, 아니면 -1
+    int BirdSpot(double at, double seen, double[] winds)
+    {
+        foreach (double g in Gates) if (g > at - seen - T.BirdGateClear && g < at + T.BirdGateClear) return -1;
+        foreach (double z in winds) if (z > at - seen - 100 && z < at + T.WindSec * T.Dash + 100) return -1;
+        for (int i = 0; i + 1 < Bundles.Count; i++)
+            if (at - AfterOf(Bundles[i]) >= T.BirdPad && BeforeOf(Bundles[i + 1]) - at >= T.BirdPad) return i;
+        return -1;
+    }
+
+    // 앞 묶음의 틈에서 나와 새를 피하고 다음 묶음의 틈에 들어갈 수 있나 (가장 빠른 빠르기 v 로 달려도, 알아채는 BirdReact 초를 빼고도)
+    public bool BirdDodgeable(in TrailBundle a, in TrailBundle b, double at, double u, double hw, double v)
+    {
+        double e = AfterOf(a) + 4, s = BeforeOf(b) - 4, k = T.Steer * .9, lim = T.OffLimit - .2;
+        double ta = (at - e) / v - T.BirdReact, tb = (s - at) / v;
+        if (ta < 0 || tb < 0) return false;
+        Span<double> xs = stackalloc double[4] { a.Gap, b.Gap, u - hw, u + hw };
+        foreach (double x in xs)
+            if (Math.Abs(x - u) >= hw - 1e-9 && Math.Abs(x) <= lim && Math.Abs(a.Gap - x) <= k * ta && Math.Abs(x - b.Gap) <= k * tb) return true;
+        return false;
     }
 
     int LegOf(double p) => Math.Min(T.Legs - 1, (int)(p / T.LegLen));
@@ -374,16 +480,24 @@ sealed class Trail
     // 굽이: 매끄럽게 이어지는 값, 쉼터 가까이는 곧게 (그림만 — 볼록이는 안 밀린다)
     public double CurveAt(double pos)
     {
-        int i = Math.Clamp((int)(pos / 220), 0, knotAt.Length - 2);
-        double u = Math.Clamp((pos - knotAt[i]) / 220, 0, 1), s = u * u * (3 - 2 * u);
+        int i = Math.Clamp((int)(pos / Knot), 0, knotAt.Length - 2);
+        double u = Math.Clamp((pos - knotAt[i]) / Knot, 0, 1), s = u * u * (3 - 2 * u);
         double v = knotV[i] + (knotV[i + 1] - knotV[i]) * s;
         double near = double.MaxValue;
         foreach (double gt in Gates) near = Math.Min(near, Math.Abs(pos - gt));
-        return v * Math.Clamp((near - 40) / 160, 0, 1) * Math.Clamp(pos / 160, 0, 1);
+        return v * Math.Clamp((near - 60) / 240, 0, 1) * Math.Clamp(pos / 240, 0, 1);
     }
 
     // 디버그: 다음 쉼터 before 걸음 앞으로 · 2초 앞에 그 종류 하나 (눈덩이는 바로 구른다)
     public void SkipToGate(double before) { if (Leg < Gates.Length) Pos = Math.Max(Pos, Gates[Leg] - before); }
+
+    // 디버그: 볼록이가 있는 줄로 곧장 날아오는 새 하나 (3초 앞에서 만난다)
+    public void PutBird()
+    {
+        var list = new List<TrailBird>(Birds) { new TrailBird { M = Pos + T.Speed * 3, U = (float)X } };
+        Birds = list.OrderBy(b => b.M).ToArray();
+        birdLo = 0;
+    }
 
     public void Put(TrailKind k)
     {

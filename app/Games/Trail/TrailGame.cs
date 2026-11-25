@@ -32,7 +32,9 @@ sealed partial class TrailGame : IGameMode
     {
         ["count"] = Sound.Tap, ["go"] = Sound.Pick, ["jump"] = Sound.Tap, ["hit"] = Sound.Hurt, ["smash"] = Sound.Hit, ["gate"] = Sound.Pick,
         ["item"] = Sound.Pick, ["win"] = Sound.Pick, ["over"] = Sound.Hurt,
+        ["cry"] = Sound.Hit, ["bird"] = Sound.Hurt,   // 새가 멀리서 나타날 때 삐약 (지금 있는 소리), 맞으면 다친 소리
     };
+    internal const double StepLen = 10.5;   // 달리기 두 자세가 바뀌는 걸음 (빠르기 ×1.5 에 맞춰 7 → 10.5)
     // 시작 안내 (줄 순서 규칙: 마우스 → 키 → Esc)
     static readonly string[] GuideKeys = { "note.trail_steer", "note.trail_jump", "note.trail_dash", "note.esc" };
 
@@ -124,8 +126,8 @@ sealed partial class TrailGame : IGameMode
         t.OnEvent = e =>
         {
             Snd.Play(Sounds, e);
-            if (e is "hit" or "gate" or "item" or "over" or "win" or "smash")
-                Dbg.Log("trail", ("event", e), ("kind", e == "hit" ? t.LastHit.ToString() : ""), ("leg", t.Leg), ("sec", (int)t.Time), ("score", t.Score));
+            if (e is "hit" or "gate" or "item" or "over" or "win" or "smash" or "bird")
+                Dbg.Log("trail", ("event", e), ("kind", e == "hit" ? t.LastHit.ToString() : e == "bird" ? "Bird" : ""), ("leg", t.Leg), ("sec", (int)t.Time), ("score", t.Score));
         };
         Pose(t);
         Track(t);
@@ -238,6 +240,7 @@ sealed partial class TrailGame : IGameMode
         sh.Result = t.Done;
         sh.Blink = t.State == Trail.Phase.Run && t.Safe && !t.Halted && t.StarLeft <= 0 && ((int)(t.RunClock * 10) & 1) == 0;
         sh.Bang = t.State == Trail.Phase.Run && t.Clock - t.HurtAt < .6 && t.LastHit != TrailKind.Hole;
+        bool flinch = t.State == Trail.Phase.Run && t.Clock - t.BirdAt < .3 && t.Clock - t.HurtAt >= .35 && !t.Halted;   // 새에 맞아 움찔 (멈추지는 않는다)
         (sh.PetRow, sh.PetFrame) = t.State switch
         {
             Trail.Phase.Win => (rowHappy, (int)(t.Clock * 4) & 1),
@@ -246,7 +249,8 @@ sealed partial class TrailGame : IGameMode
             _ => t.Clock - t.HurtAt < .35 ? (rowHurt, t.Clock - t.HurtAt < .18 ? 0 : 1)
                : t.Halted ? t.LastHit == TrailKind.Hole ? (rowFreeze, (int)(t.Clock * 4) % 3) : (rowDizzy, (int)(t.Clock * 6) & 3)
                : t.Clock - t.GateAt < .6 ? (rowHappy, (int)(t.Clock * 6) & 1)
-               : t.Airborne ? (rowAway, 1) : (rowAway, (int)(t.Pos / 7) & 1),
+               : flinch ? (rowHurt, t.Clock - t.BirdAt < .15 ? 0 : 1)
+               : t.Airborne ? (rowAway, 1) : (rowAway, (int)(t.Pos / StepLen) & 1),
         };
         if (t.Done)
         {
@@ -263,7 +267,7 @@ sealed partial class TrailGame : IGameMode
         run = null;
         if (!auto && !practice && (r.Done || !quit)) Keep(r);
         var won = r.State == Trail.Phase.Win;
-        var log = new (string, object?)[] { ("score", r.Score), ("legs", r.Leg), ("stage", r.Stage), ("sec", (int)r.RunClock), ("falls", r.Hits), ("dash", (int)(100 * r.DashSec / Math.Max(1, r.RunSec))), ("esc", quit), ("practice", practice || auto) };
+        var log = new (string, object?)[] { ("score", r.Score), ("legs", r.Leg), ("stage", r.Stage), ("sec", (int)r.RunClock), ("falls", r.Hits), ("birds", r.BirdHits), ("lost", r.BirdLost), ("dash", (int)(100 * r.DashSec / Math.Max(1, r.RunSec))), ("esc", quit), ("practice", practice || auto) };
         ses?.Close(host.Pet, quit, won, "trail", log);
         ses = null;
         Close();
@@ -309,7 +313,7 @@ sealed partial class TrailGame : IGameMode
 
     // ── 디버그 ──
     //   trail / trail stop (바로 끝, 기록 안 남김) / trail auto (봇이 달린다, 기록 안 남김) / trail stage N (다음 판 N단계, 연습 판) / trail seed N (다음 판 씨)
-    //   trail gate (다음 쉼터 30 걸음 앞으로) / trail time N (남은 시간) / trail put <종류> (2초 앞에 하나) / trail desktop (창이 있어도 바탕화면 판)
+    //   trail gate (다음 쉼터 30 걸음 앞으로) / trail time N (남은 시간) / trail put <종류|bird> (2초 앞에 하나, 새는 3초 앞에서 만난다) / trail desktop (창이 있어도 바탕화면 판)
     public bool Command(string[] a)
     {
         if (a.Length == 0 || a[0] != Id) return false;
@@ -323,7 +327,10 @@ sealed partial class TrailGame : IGameMode
             case "desktop": desktopOnly = !desktopOnly; break;
             case "gate": run?.SkipToGate(30); break;
             case "time": if (run != null && n >= 0) run.Time = n; break;
-            case "put": if (run != null && a.Length > 2 && Enum.TryParse<TrailKind>(a[2], true, out var k)) run.Put(k); break;
+            case "put":
+                if (run != null && a.Length > 2 && a[2].Equals("bird", StringComparison.OrdinalIgnoreCase)) run.PutBird();
+                else if (run != null && a.Length > 2 && Enum.TryParse<TrailKind>(a[2], true, out var k)) run.Put(k);
+                break;
             default:
                 if (run == null && !host.Busy) { auto = sub == "auto"; Start(); if (run == null) auto = false; }
                 else if (run != null && sub == "auto") { auto = true; bot ??= new TrailBotState(run.Seed + 99); }

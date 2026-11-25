@@ -30,6 +30,7 @@ static partial class TrailCheck
             return;
         }
         L.Use("ko");
+        if (arg is { } da && da.StartsWith("dodge:")) { Console.WriteLine(Dodges(da.Split(':'))); return; }   // 디버그: dodge:<씨>:<단계>:<dash|slow> 새까지 피하며 틈 따라가기에서 어디서 맞는지
         if (arg is { } fa && fa.StartsWith("follow:")) { Console.WriteLine(Follows(fa.Split(':'))); return; }   // 디버그: follow:<씨>:<단계>:<dash|slow> 틈 따라가기에서 어디서 닿는지
         var host = new SceneHost(scale: k);
         if (arg == "art") { ArtSheet(path, host, Math.Min(k, 4)); return; }
@@ -44,6 +45,22 @@ static partial class TrailCheck
             sg.Begin(st, panel, Session.Fake(panel));
             using var sov = host.Overlay(sg);
             Shots(path, sov, view, win, 1, _ => { sg.Frame(1 / 60.0); return st.Clock > .5; }, "start");
+            return;
+        }
+        if (arg == "bird")   // 새: 멀리서 그림자와 함께 · 가까이 · 맞은 순간 (깃털 + 점수 깎임). 길을 비워 새만 보이게
+        {
+            var bg = NewGame(host, false, TrailSkill.Good);
+            var bt = new Trail(4, 1, Rx) { Things = Array.Empty<TrailThing>(), Score = 420 };
+            bt.Birds = new[] { new TrailBird { M = 900, U = .25f } };
+            bg.Begin(bt, panel, Session.Fake(panel));
+            using var bov = host.Overlay(bg);
+            double Left() => bt.Birds[0].M - bt.Pos;
+            Shots(path, bov, view, win, 3, shot =>
+            {
+                bt.X = shot < 2 ? -.4 : (Left() < 70 ? .25 : -.4);
+                bg.Frame(1 / 60.0);
+                return shot switch { 0 => Left() < 360, 1 => Left() < 46, _ => bt.BirdHits == 1 && bt.Clock - bt.BirdAt > .28 };
+            }, "bird");
             return;
         }
         Trail t = null!;
@@ -80,6 +97,30 @@ static partial class TrailCheck
         using var ov = host.Overlay(game);
         Shots(path, ov, view, win, 3, s => Ready(s, 0), "play");
         Shots(two, ov, view, win, 3, s => Ready(s, 3), "play2");
+    }
+
+    static string Dodges(string[] a)
+    {
+        var t = new Trail(int.Parse(a[1]), int.Parse(a[2]), Rx);
+        bool dash = a.Length > 3 && a[3] == "dash";
+        var sb = new StringBuilder();
+        t.OnEvent = e => { if (e is "bird" or "hit") sb.AppendLine($"  {e} 자리 {t.Pos:0} X {t.X:0.00} 빠르기 {t.Speed:0}"); };
+        bool trace = a.Length > 4 && double.TryParse(a[4], out _);
+        double tm = trace ? double.Parse(a[4]) : -1;
+        for (int i = 0; i < 60 * 300 && !t.Done; i++)
+        {
+            FollowDodge(t, dash); t.Update(Trail.Tick);
+            if (trace && Math.Abs(t.Pos - tm) < 220 && i % 6 == 0) sb.AppendLine($"    자리 {t.Pos:0} X {t.X:0.00} Vx {t.Vx:0.00}");
+        }
+        sb.AppendLine($"끝 {t.State} 넘어짐 {t.Hits} 새 {t.BirdHits}");
+        for (int i = 0; i < t.Birds.Length; i++)
+        {
+            var b = t.Birds[i];
+            int bi = -1;
+            for (int k = 0; k + 1 < t.Bundles.Count; k++) if (t.AfterOf(t.Bundles[k]) <= b.M && b.M <= t.BeforeOf(t.Bundles[k + 1])) bi = k;
+            sb.AppendLine($"  새 {i} M {b.M:0} 줄 {b.U:0.00} {(b.Hit ? "맞음" : "")} 앞 묶음 {(bi >= 0 ? $"{t.AfterOf(t.Bundles[bi]):0} 틈 {t.Bundles[bi].Gap:0.00}" : "-")} 뒤 묶음 {(bi >= 0 ? $"{t.BeforeOf(t.Bundles[bi + 1]):0} 틈 {t.Bundles[bi + 1].Gap:0.00}" : "-")}");
+        }
+        return sb.ToString();
     }
 
     static string Follows(string[] a)

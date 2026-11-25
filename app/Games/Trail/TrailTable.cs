@@ -9,7 +9,7 @@ static partial class TrailCheck
 
     internal sealed class Tally
     {
-        public int N, Wins, HitSum, LegAttempts;
+        public int N, Wins, HitSum, LegAttempts, BirdSum, BirdLostSum, BirdMet;
         public double WinSec, DashShare, GatesSum;
         public int Timeouts;
         public void Add(Trail t)
@@ -19,6 +19,7 @@ static partial class TrailCheck
             if (t.TimeOut) Timeouts++;
             GatesSum += t.Leg;
             HitSum += t.Hits;
+            BirdSum += t.BirdHits; BirdLostSum += t.BirdLost; BirdMet += t.Birds.Count(b => b.M <= t.Pos);
             LegAttempts += t.State == Trail.Phase.Win ? t.T.Legs : t.Leg + 1;
             DashShare += t.RunSec > 0 ? t.DashSec / t.RunSec : 0;
         }
@@ -27,6 +28,9 @@ static partial class TrailCheck
         public double HitsPerLeg => HitSum / (double)Math.Max(1, LegAttempts);
         public double AvgWinSec => WinSec / Math.Max(1, Wins);
         public double Dash => DashShare / Math.Max(1, N);
+        public double MetPerRun => BirdMet / (double)Math.Max(1, N);
+        public double BirdsPerRun => BirdSum / (double)Math.Max(1, N);
+        public double LostPerRun => BirdLostSum / (double)Math.Max(1, N);
     }
 
     // 몸 크기: 어린이(rx 9.8). 형태를 바꿔 견줄 때 rx 를 넘긴다
@@ -65,8 +69,8 @@ static partial class TrailCheck
             foreach (var kv in spec.Split(',', StringSplitOptions.RemoveEmptyEntries))
             {
                 var (k, v) = (kv.Split('=')[0], double.Parse(kv.Split('=')[1], System.Globalization.CultureInfo.InvariantCulture));
-                if (k.StartsWith("e.")) e0 = k[2..] switch { "look" => e0 with { Look = v }, "react" => e0 with { React = v }, "noise" => e0 with { Noise = v }, _ => e0 };
-                if (k.StartsWith("g.")) g0 = k[2..] switch { "look" => g0 with { Look = v }, "react" => g0 with { React = v }, "noise" => g0 with { Noise = v }, _ => g0 };
+                if (k.StartsWith("e.")) e0 = k[2..] switch { "look" => e0 with { Look = v }, "react" => e0 with { React = v }, "noise" => e0 with { Noise = v }, "bird" => e0 with { Bird = v }, _ => e0 };
+                if (k.StartsWith("g.")) g0 = k[2..] switch { "look" => g0 with { Look = v }, "react" => g0 with { React = v }, "noise" => g0 with { Noise = v }, "bird" => g0 with { Bird = v }, _ => g0 };
             }
         return ((TrailTune)tune, e0, g0);
     }
@@ -79,11 +83,11 @@ static partial class TrailCheck
         sb.AppendLine($"아이스런 봇 표 — 씨 {seeds}개, 어린이 몸");
         foreach (var skill in new[] { easy, good })
         {
-            sb.AppendLine($"[{skill.Name}] 단계 | 완주 | 평균 닿은 쉼터 | 구간당 넘어짐 | 완주 판 길이 | 질주 비율");
+            sb.AppendLine($"[{skill.Name}] 단계 | 완주 | 평균 닿은 쉼터 | 구간당 넘어짐 | 완주 판 길이 | 질주 비율 | 새 만남/판 | 새 맞음/판 | 깎인 점/판");
             foreach (int st in stages)
             {
                 var t = Run(seeds, st, skill, 9.8, tune);
-                sb.AppendLine($"  {st,2}단계 | {t.WinRate * 100,5:0.0}% | {t.AvgGates,4:0.00} | {t.HitsPerLeg,4:0.00} | {(t.Wins > 0 ? t.AvgWinSec.ToString("0") + "초" : "-"),5} | {t.Dash * 100,3:0}%");
+                sb.AppendLine($"  {st,2}단계 | {t.WinRate * 100,5:0.0}% | {t.AvgGates,4:0.00} | {t.HitsPerLeg,4:0.00} | {(t.Wins > 0 ? t.AvgWinSec.ToString("0") + "초" : "-"),5} | {t.Dash * 100,3:0}% | {t.MetPerRun,4:0.0} | {t.BirdsPerRun,4:0.0} | {t.LostPerRun,4:0}");
             }
         }
         if (full)
