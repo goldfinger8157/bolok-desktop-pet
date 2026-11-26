@@ -214,14 +214,19 @@ sealed class BalloonSkin : ClimbSkin
         return g;
     }
 
-    // 친구 자리: 큰 분홍 풍선 (탑으로 끈이 이어진다)
+    // 친구 자리: 큰 진주빛 풍선에 분홍 하트 (탑으로 끈이 이어진다). 발판 풍선(일곱 색·무늬 없음)과 같은 색·모양이면 길의 한 칸으로 읽혀 틀리게 눌린다 (2026-11-26) — 발판에 없는 색과 하트 무늬로 다르게 보이게
     public override void Perch(Px g, int bx, int by, int side, int tx, int ty)
     {
-        var t = SkinKit.Tone("#FF94C2", .5, .28);
+        var t = SkinKit.Tone("#EEF2FA", .4, .3);
         var b = new Px(50, 44);
         double cx = 25, cy = 2 + 14;
         Body(b, cx, cy, 17, 14, 2.6, t);
-        b.Ell(cx - 8, cy - 6, 2, 3, White); b.Put((int)cx - 8, (int)cy - 2, White);
+        // 분홍 하트: 동그라미 둘 + 아래로 뾰족
+        uint pk = C("#FF5C8A"), pkh = C("#FFA0BC");
+        b.Ell(cx - 4.2, cy - 2.2, 4.6, 4.2, pk); b.Ell(cx + 4.2, cy - 2.2, 4.6, 4.2, pk);
+        b.Poly(new[] { (cx - 8.6, cy - .6), (cx + 8.6, cy - .6), (cx, cy + 8.6) }, pk);
+        b.Put((int)cx - 6, (int)cy - 4, pkh); b.Put((int)cx - 5, (int)cy - 5, pkh);
+        b.Ell(cx - 8, cy - 8, 2, 2.4, White);
         Knot(b, cx, cy + 14, t);
         b.Outline(SkinKit.Line);
         g.Blit(b, tx - 25, ty - 2);

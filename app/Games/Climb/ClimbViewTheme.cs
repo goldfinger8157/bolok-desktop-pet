@@ -265,6 +265,36 @@ sealed partial class ClimbView
     }
 
     // ── 자가 검사 ──
+    // 볼록이를 얹기 전 세계 (검사가 StepSeen 을 부르기 전에 켠다)
+    uint[]? worldCells;
+    internal void ProbeOn() { worldCells ??= new uint[cells.Length]; ForceCompose(); }
+
+    // 발판 j 의 그림 중 판 안에 든 비율(Inside)과 그 가운데 다른 그림에 안 덮이고 보이는 비율(Seen). 구름에 가린 발판은 (0, 0).
+    // 장식(열매·홀씨·덩굴손·꽃)과 이웃 발판이 덮는 만큼이 빠진다 (볼록이는 뺀다 — 늘 같은 자리에 선다). ProbeOn 뒤 한 프레임 그려진 다음에 부른다
+    internal (double Inside, double Seen) StepSeen(Climb c, int j)
+    {
+        var sk = Skin!;
+        if (j >= 0 && c.Hidden(j)) return (0, 0);
+        var (_, _, kind, _, _) = Info(c, j);
+        int ndir = Info(c, j + 1).Dir;
+        var (x, y) = LeafAt(c, j, vN);
+        bool stand = j == c.N;
+        var sp = kind == ClimbKind.Wilt ? sk.Weakp(ndir, stand ? WeakStage(c) : 0) : sk.Step(VarOf(j), ndir, stand ? StandStage(c) : 0);
+        int total = 0, inside = 0, seen = 0;
+        for (int yy = 0; yy < sp.P.H; yy++)
+            for (int xx = 0; xx < sp.P.W; xx++)
+            {
+                uint col = sp.P.P[yy * sp.P.W + xx];
+                if (col >> 24 == 0) continue;
+                total++;
+                int cx = x - sp.Ax + xx, cy = y - sp.Ay + yy;
+                if (cx < 0 || cy < 0 || cx >= CW || cy >= PH) continue;
+                inside++;
+                if (worldCells![cy * CW + cx] == col) seen++;
+            }
+        return total == 0 ? (0, 0) : (inside / (double)total, seen / (double)total);
+    }
+
     internal (double X, double FootY) PetDrawn(Climb c, ClimbShow s)
     {
         PetNow(c, s, out double x, out double fy, out _, out _);

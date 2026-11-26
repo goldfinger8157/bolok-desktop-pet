@@ -63,7 +63,9 @@ static partial class ClimbCheck
         string lifts = CheckLift();
         string friends = CheckFriend();
         string qt = CheckCurlQuiet();
-        return $"고르기 {string.Join("/", count)} · 그리기({draws}) · 가라앉음({sinks}) · 건너뛰기({lifts}) · 친구({friends}) · 덩굴손 조용({qt})";
+        string path = CheckPath();
+        string ring = CheckRing();
+        return $"고르기 {string.Join("/", count)} · 그리기({draws}) · 가라앉음({sinks}) · 건너뛰기({lifts}) · 친구({friends}) · 덩굴손 조용({qt}) · 길 읽기({path}) · 잎 고리({ring})";
     }
 
     // ── 모든 테마가 모든 모습을 예외 없이 그리고, 판 밖에 안 그린다 ──
@@ -229,7 +231,7 @@ static partial class ClimbCheck
                     {
                         visible++;
                         Expect(!fr.IntersectsWith(pb), $"{look}/{th} 친구 {fr} 가 볼록이 {pb} 와 겹침 (잎 {t.N})");
-                        Expect(fr.Right > 0 && fr.Left < game.View.CW + 40, $"{look}/{th} 친구가 판 한참 밖");
+                        Expect(fr.Right > 0 && fr.Left < game.View.CW + 40, $"{look}/{th} 친구가 판 한참 밖 ({fr}, 판 너비 {game.View.CW}, 잎 {t.N}, 친구 잎 {s.FriendLeaf} 쪽 {s.FriendSide} 길이 {s.FriendLen}, 나이 {s.FriendAge:0.0})");
                     }
                 }
                 Expect(ev >= 3 && visible >= 10, $"{look}/{th} 씨 {seed}: 100·200·300잎 친구가 온다 (온 횟수 {ev}, 보인 프레임 {visible})");
@@ -257,5 +259,105 @@ static partial class ClimbCheck
         }
         Expect(curls > 500, $"덩굴손이 나온다 ({curls})");
         return $"500씨×1000잎 덩굴손 {curls}개, 이정표 뒤 가장 가까운 {nearest}잎 (≥{T.CurlQuiet})";
+    }
+
+    // ── 길 읽기 (YELL 2026-11-26 「풍선쪽에 버그있는것 같은데? 중간에 길이 끊겼었어」): 테마 판(문구·과자·풍선·블록)에서 볼록이 앞 잎이 늘 보이고, 길이 아닌 것이 발판처럼 안 보인다 ──
+    // 앞 세 잎은 판 안에 다 들고(발판 그림 전부) 이웃 발판·장식에 덮이지 않고 보이며(볼록이는 뺀다), 넷째 잎도 대부분 판 안이다.
+    // 친구 받침은 발판과 다른 색·무늬여야 하고(발판 그림에 없는 색이 25% 이상), 친구 몸이 앞 네 잎의 발판 위에 안 놓인다. 씨 549356045(그 판) 포함
+    static string CheckPath()
+    {
+        var panel = new Rectangle(660, 300, 450, 528);
+        int shots = 0;
+        double minSeen = 9, minIn4 = 9;
+        foreach (var th in AllThemes.Skip(1))
+        {
+            // 친구 받침: 발판과 같은 색 풍선이면 발판으로 읽힌다
+            var sk = ClimbSkin.Make(th)!;
+            var stepCols = new HashSet<uint>();
+            for (int v = 0; v < sk.Variants; v++) for (int st = 0; st < ClimbSkin.Stages; st++) foreach (uint c0 in sk.Step(v, 1, st).P.P) if (c0 >> 24 != 0) stepCols.Add(c0);
+            foreach (int side in new[] { -1, 1 })
+            {
+                var pg = new ClimbArt.Px(110, 70);
+                sk.Perch(pg, side > 0 ? 10 : 100, 40, side, side > 0 ? 50 : 60, 26);
+                int on = 0, fresh = 0;
+                foreach (uint c0 in pg.P) if (c0 >> 24 != 0) { on++; if (!stepCols.Contains(c0)) fresh++; }
+                Expect(fresh >= on * .25, $"{th}: 친구 받침이 발판과 너무 닮음 (발판에 없는 색 {fresh}/{on}점)");
+            }
+            foreach (int seed in new[] { 549356045, 1, 2, 3, 4, 5 })
+            {
+                var host = new SceneHost("adult_sweet", 3);
+                var game = NewGame(host);
+                var t = new Climb(seed);
+                game.Begin(t, ClimbLook.A2, panel, Session.Fake(panel, null, () => true), host.Pet.P.Stage, th);
+                var v = game.View!;
+                v.ProbeOn();
+                using var ov = host.Overlay(game);
+                using var bmp = new Bitmap(1920, 1080); using var fg = Graphics.FromImage(bmp);
+                var rr = new List<Rectangle>(8);
+                for (int i = 0; i < 20; i++) game.Frame(1 / 60.0);
+                while (t.N < 230 && !t.Done)
+                {
+                    t.Bar = 1; t.GraceLeft = 99; t.Steps = Math.Max(t.Steps, 5);
+                    t.Press(t.At(t.N + 1).Dir);
+                    for (int i = 0; i < 14 || t.LiftLeft > 0 || t.SaveLeft > 0 || v.VN < t.N - 1e-6; i++) game.Frame(1 / 60.0);
+                    rr.Clear(); game.Dirty(ov, rr); ov.Render(fg);
+                    for (int k = 1; k <= 4; k++)
+                    {
+                        if (t.Hidden(t.N + k)) { Expect(k >= t.T.CloudHide, $"{th}: 앞 {k}잎이 구름에 가렸다"); continue; }
+                        var (inside, seenFrac) = v.StepSeen(t, t.N + k);
+                        if (k <= 3)
+                        {
+                            Expect(inside >= .999, $"{th} 씨 {seed} 잎 {t.N}: 앞 {k}잎 발판이 판 밖으로 나감 (판 안 {inside:0.00})");
+                            Expect(seenFrac >= .8, $"{th} 씨 {seed} 잎 {t.N}: 앞 {k}잎 발판이 가려짐 (보이는 {seenFrac:0.00})");
+                            minSeen = Math.Min(minSeen, seenFrac);
+                        }
+                        else { Expect(inside >= .7, $"{th} 씨 {seed} 잎 {t.N}: 앞 4잎 발판이 판 밖 (판 안 {inside:0.00})"); minIn4 = Math.Min(minIn4, inside); }
+                    }
+                    shots++;
+                }
+                Expect(t.RingTrips == 0, $"{th} 씨 {seed}: 먼 잎을 읽어 고리를 건드렸다 ({t.RingTrips}번)");
+                game.Stop(true);
+            }
+        }
+        return $"4테마 × 6씨 {shots}장면: 앞 세 잎 판 안·가려짐 없음(가장 낮은 보임 {minSeen:0.00}) · 넷째 잎 판 안 {minIn4:0.00} 이상 · 친구 받침은 발판과 다른 색";
+    }
+
+    // ── 잎 고리: 멀리 앞·뒤 잎을 읽어도(최고 기록 잎·먼 자리) 길이 안 바뀐다. 바뀌면 잎 108 이 잎 300 처럼 보인다 (이정표 108, 열매 사라짐) ──
+    static string CheckRing()
+    {
+        int checks = 0, trips = 0;
+        foreach (int seed in new[] { 549356045, 11, 12, 13, 14 })
+        {
+            var re = new Climb(seed);
+            var want = new (sbyte, ClimbKind, bool, int)[800];
+            for (int i = 1; i < 800; i++) { ref var l = ref re.At(i); want[i] = (l.Dir, l.Kind, l.Fog, l.Col); }
+            var t = new Climb(seed) { Best = 349, Guard = true };
+            var rn = new Random(seed ^ 9);
+            for (int step = 0; step < 60000 && !t.Done && t.N < 600; step++)
+            {
+                int r = rn.Next(12);
+                if (r < 3) t.Update(rn.NextDouble() * .05);
+                else if (r < 11) t.Press(t.At(t.N + 1).Dir);
+                else { t.Puff = true; t.Press(-t.At(t.N + 1).Dir); }
+                t.Bar = 1; t.WiltLeft = -1;
+                t.At(349); t.At(t.N + 300); t.At(t.N - 300); t.At(t.N + 57);   // 최고 기록 잎·먼 앞·먼 뒤: 막혀야 한다
+                for (int i = Math.Max(1, t.N - 3); i <= t.N + 19; i++)
+                {
+                    ref var l = ref t.At(i);
+                    Expect((l.Dir, l.Kind, l.Fog, l.Col) == want[i], $"씨 {seed}: 먼 잎을 읽고 잎 {i} 이 바뀜 (N={t.N})");
+                    checks++;
+                }
+            }
+            Expect(t.RingTrips > 0, "먼 읽기가 막힌 적이 없다 (Guard 가 안 켜졌다)");
+            trips += t.RingTrips;
+            Expect(t.N >= 300, $"씨 {seed}: 300잎까지 오르지 못함 ({t.N})");
+        }
+        // Guard 가 꺼져 있으면 고리가 실제로 덮인다 (이 검사가 그 버그를 잡는지)
+        var bad = new Climb(549356045);
+        for (int i = 1; i <= 100; i++) { bad.Press(bad.At(bad.N + 1).Dir); bad.Bar = 1; }
+        var before = bad.At(108).Kind;
+        bad.At(349);
+        Expect(before != ClimbKind.Flower && bad.At(108).Kind == ClimbKind.Flower, "Guard 없이 먼 잎을 읽으면 잎 108 이 잎 300(이정표)이 된다 (고리 덮임 재현)");
+        return $"5씨 × 먼 읽기 {trips}번 막힘 · 잎 {checks} 개가 늘 같음 · Guard 없이는 잎 108 이 잎 300 처럼 바뀜";
     }
 }

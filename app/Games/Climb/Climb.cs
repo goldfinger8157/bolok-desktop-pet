@@ -77,8 +77,20 @@ sealed class Climb
     }
 
     // ── 덩굴 만들기 ──
+    // 고리는 64칸이라 지금 잎에서 멀리 앞(N+56 넘게)·뒤(만든 끝에서 62칸 넘게)를 읽으면 다른 잎 자리를 덮어쓴다 (잎 108 이 잎 300 으로 바뀐다: 길이 끊겨 보이고 틀린 쪽으로 눌린다).
+    // Guard 를 켜 두면(게임) 그런 읽기는 고리를 안 건드리고 빈 잎을 주며, 처음 한 번 어디서 불렀는지 로그에 남긴다 (RingTrips). 검사·도구는 처음부터 끝까지 읽어야 해서 끈다
+    public bool Guard;
+    public int RingTrips;
+    static ClimbLeaf stray;
+
     public ref ClimbLeaf At(int i)
     {
+        if (Guard && (i > N + Ring - 8 || i < genTo - (Ring - 2)))
+        {
+            if (RingTrips++ == 0) Dbg.Log("climb-ring", ("leaf", i), ("n", N), ("gen", genTo), ("seed", Seed), ("from", new System.Diagnostics.StackTrace(1, false).ToString().Replace("\r", "").Replace("\n", " | ")));
+            stray = default;
+            return ref stray;
+        }
         if (i > genTo) Ensure(i);
         return ref ring[i & (Ring - 1)];
     }

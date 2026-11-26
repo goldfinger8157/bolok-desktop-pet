@@ -7,6 +7,7 @@ namespace Bolok;
 //   값 check: 자가 검사만 · 값 table[:씨 수[:full[:손잡이]]]: 봇 표 · 값 art: 만든 그림 모음
 //   값 theme[:덩굴|desk|sweet|balloon|block]: 테마마다 theme-<이름>-window.png (오르는 중·친구·떨어짐·결과) · -dark.png · -moments.png (서 있는 발판 셋·시간 다 돼 떨어짐·결과)
 //   값 skip[:테마]: 건너뛰기(덩굴손) 장면 띠 skip-<이름>.png (한 칸 폴짝 → 5잎 → 내려섬, 위아래 두 줄)
+//   값 replay:씨:테마:처음:끝[:한 줄 장 수[:지난 최고[:틀리게 한 번 누를 잎]]]: 그 씨의 판을 바르게 올라가며 잎 처음~끝마다 한 장씩 (친구·건너뛰기·구름 띠·시든 잎 그대로, 어른 볼록이) 그림.png 한 장에 잇고, 사건·앞 발판 보임 비율을 적는다. 버그 재현용
 static partial class ClimbCheck
 {
     static readonly string[] Friends = { "fox", "cat", "shiba", "redpanda", "corgi" };
@@ -25,7 +26,7 @@ static partial class ClimbCheck
         string? arg = GameModes.SceneArg;
         L.Use("ko");
         if (arg == "check") { Console.WriteLine(Check()); return; }
-        if (arg == "themecheck") { Console.WriteLine(CheckTheme()); return; }   // 테마·건너뛰기·친구 검사만
+        if (arg == "themecheck") { try { Console.WriteLine(CheckTheme()); } catch (Exception e) { Console.WriteLine(e.Message); Environment.ExitCode = 1; } return; }   // 테마·건너뛰기·친구 검사만
         if (arg is { } ta && ta.StartsWith("table"))
         {
             var p = ta.Split(':');
@@ -62,6 +63,7 @@ static partial class ClimbCheck
         string dir = Path.GetDirectoryName(path) ?? "", stem = Path.GetFileNameWithoutExtension(path), ext = Path.GetExtension(path);
         if (arg is { } ta2 && (ta2 == "theme" || ta2.StartsWith("theme:"))) { ThemeScenes(dir, f, ta2.Length > 6 ? ta2[6..] : null); return; }
         if (arg is { } sa && (sa == "skip" || sa.StartsWith("skip:"))) { SkipScenes(dir, f, sa.Length > 5 ? sa[5..] : null); return; }
+        if (arg is { } ra && ra.StartsWith("replay:")) { ReplayScenes(path, f, ra[7..]); return; }
         var rows = new List<Bitmap>();
         foreach (var look in new[] { ClimbLook.A2, ClimbLook.A4 })
             foreach (var bg in new[] { "window", "desktop" })
@@ -185,6 +187,61 @@ static partial class ClimbCheck
             using (var c = Row(ClimbLook.A2, "window", f, false, new[] { Shot.Stand1, Shot.Stand2, Shot.Stand3, Shot.FallTime, Shot.ResultTime }, th, true)) c.Save(Path.Combine(dir, $"theme-{name}-moments.png"));
             Console.WriteLine($"{name}: theme-{name}-window.png · -dark.png · -moments.png");
         }
+    }
+
+    // 한 판을 바르게 올라가며 잎 처음~끝마다 한 장 (그 씨의 친구·기믹 그대로, 검사용 어른 모습). 잎 번호를 덧쓴다
+    static void ReplayScenes(string path, int f, string spec)
+    {
+        var p = spec.Split(':');
+        int seed = int.Parse(p[0]);
+        var th = ThemeNames.First(x => x.Name.Equals(p.Length > 1 ? p[1] : "vine", StringComparison.OrdinalIgnoreCase)).T;
+        int from = p.Length > 2 ? int.Parse(p[2]) : 95, to = p.Length > 3 ? int.Parse(p[3]) : 115;
+        var win = new Rectangle(160, 40, 1560, 1000);
+        int pw = ClimbPlace.Width(ClimbLook.A2) * f, ph = ClimbView.PH * f;
+        var panel = new Rectangle(win.Right - 80 - pw, win.Bottom - 60 - ph, pw, ph);
+        var view = Rectangle.Inflate(panel, 16, 16);
+        var host = new SceneHost("adult_grumpy", f);
+        var game = NewGame(host);
+        var t = new Climb(seed) { Best = p.Length > 5 ? int.Parse(p[5]) : 0 };
+        game.Begin(t, ClimbLook.A2, panel, Session.Fake(panel, null, () => true), host.Pet.P.Stage, th);
+        using var ov = host.Overlay(game);
+        if (game.View!.Skin != null) game.View.ProbeOn();
+        var prev = t.OnEvent;
+        t.OnEvent = e => { prev?.Invoke(e); if (e != "hop") Console.WriteLine($"  사건 {e} 잎 {t.N}"); };
+        int cols = p.Length > 4 ? int.Parse(p[4]) : 7, n = to - from + 1, rows = (n + cols - 1) / cols;
+        using var strip = new Bitmap(cols * (view.Width + 6) + 6, rows * (view.Height + 6) + 6);
+        using var sg = Graphics.FromImage(strip);
+        sg.Clear(Color.FromArgb(244, 241, 236));
+        using var frame = new Bitmap(1920, 1080);
+        using var fg = Graphics.FromImage(frame);
+        using var font = new Font("Arial", 11, FontStyle.Bold);
+        for (int i = 0; i < 30; i++) game.Frame(1 / 60.0);
+        int shot = 0;
+        void Snap()
+        {
+            ClimbDesk.Wallpaper(fg, new Rectangle(0, 0, 1920, 1080));
+            ClimbDesk.DocWindow(fg, win, false);
+            ov.Render(fg);
+            int x = 6 + shot % cols * (view.Width + 6), y = 6 + shot / cols * (view.Height + 6);
+            sg.DrawImage(frame, new Rectangle(x, y, view.Width, view.Height), view, GraphicsUnit.Pixel);
+            string kinds = string.Concat(Enumerable.Range(t.N + 1, 9).Select(j => t.At(j).Kind switch { ClimbKind.Flower => 'F', ClimbKind.Curl => 'C', ClimbKind.Wilt => 'W', ClimbKind.Berry => 'b', ClimbKind.Puff => 'p', _ => '.' }));
+            sg.DrawString($"{t.N} {kinds}", font, Brushes.Black, x + 4, y + 2);
+            shot++;
+            if (game.View!.Skin != null) Console.WriteLine($"{t.N}: 앞 발판 (판 안/보임) " + string.Join("  ", Enumerable.Range(t.N + 1, 6).Select(j => { var (a, b) = game.View!.StepSeen(t, j); return $"{j}:{a:0.00}/{b:0.00}"; })));
+        }
+        while (t.N < to && !t.Done)
+        {
+            t.Bar = 1; t.GraceLeft = 99; t.Steps = Math.Max(t.Steps, 5);
+            if (p.Length > 6 && t.N == int.Parse(p[6]) && t.Puff) t.Press(-t.At(t.N + 1).Dir);   // 틀리게 한 번 눌러 홀씨로 살아나 본다
+            for (int i = 0; i < 90 && t.SaveLeft > 0 || i < 1; i++) game.Frame(1 / 60.0);
+            t.Press(t.At(t.N + 1).Dir);
+            var rr = new List<Rectangle>(8);
+            for (int i = 0; i < 24 || t.LiftLeft > 0 || t.SaveLeft > 0; i++) { game.Frame(1 / 60.0); rr.Clear(); game.Dirty(ov, rr); ov.Render(fg); }   // 올라서 가만히 설 때까지 (프레임마다 실제처럼 다시 칠할 자리·그리기도)
+            if (t.N >= from && shot < n) Snap();
+        }
+        strip.Save(path);
+        game.Stop(true);
+        Console.WriteLine($"replay {seed} {th} {from}~{to}: {shot}장 → {path}");
     }
 
     // 건너뛰기 장면 띠: 덩굴손을 밟는 순간 → 5잎을 지나는 동안 → 내려선 뒤 (잎 N+1 의 덩굴손, 지그재그로 꺾이는 줄기)

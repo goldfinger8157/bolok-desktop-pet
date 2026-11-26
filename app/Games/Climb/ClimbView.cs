@@ -415,6 +415,7 @@ sealed partial class ClimbView : IDisposable
         if (s.FriendAt >= 0 && s.FriendSide != 0 && Math.Abs(s.FriendLeaf - vN) < 8) FriendPaint(c, s);
         if (Skin != null) ComposeSkin(c, s, lo, hi, grow);
         else ComposeVine(c, s, lo, hi, n0, grow);
+        if (worldCells != null) Array.Copy(cells, worldCells, cells.Length);   // 검사: 볼록이를 얹기 전의 세계
         // 볼록이 (건너뛰는 중 나르는 것은 볼록이 밑·위에)
         var pp = PetNow(c, s, out double px, out double footY, out _, out _);
         if (Skin != null) CarrierPaint(c, s, px, footY);

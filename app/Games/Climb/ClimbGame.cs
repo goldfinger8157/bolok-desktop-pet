@@ -91,6 +91,7 @@ sealed partial class ClimbGame : IGameMode
     internal void Begin(Climb t, ClimbLook lk, Rectangle p, Session s, string stage, ClimbTheme th = ClimbTheme.Vine)
     {
         Close();
+        t.Guard = true;   // 먼 잎을 읽어 고리가 덮이는 일을 막는다 (Climb.At)
         (run, ses, panel, look) = (t, s, p, lk);
         theme = lk == ClimbLook.A4 ? ClimbTheme.Vine : th;
         f = Math.Max(2, p.Width / ClimbPlace.Width(lk));
