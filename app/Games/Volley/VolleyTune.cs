@@ -39,12 +39,29 @@ sealed record VolleyTune
     public double BlockVy { get; init; } = 240;          // 막은 공이 가는 아래 방향 세기 (×ScaleRatio)
     public bool BlockMissOnlySpike { get; init; }        // 켜면 어긋난 블로킹의 벌은 상대 스파이크일 때만 (YELL 2026-11-18)
 
+    // 뛰면 스파이크 (docs/volley-slide.md 2장, YELL 2026-11-26): 공중에서 공에 닿으면 저절로 스파이크 (Ctrl 은 읽지 않는다). 못 넘길 낮은 공은 머리로 받는다.
+    // 블로킹 점프 중 상대 스파이크가 닿으면 블로킹이 먼저
+    public bool AutoSpike { get; init; }
+
+    // 슬라이딩 수비·디그 (3장): 땅에서 방향키를 쥔 쪽으로 걸어서는 못 닿을 낮은 공이면 저절로 몸을 던져 받아 올린다 (모두 ×ScaleRatio)
+    public bool Slides { get; init; }
+    public double SlideSpeed { get; init; } = 520;       // 던지는 빠르기 (걷기의 2.17배), 처음부터 끝까지 같다
+    public double SlideBodies { get; init; } = 1.5;      // 가는 거리 (몸 크기 단위)
+    public double SlideSpan { get; init; } = .5;         // 좁은 코트 상한: 한쪽 코트를 걸어 건너는 거리 × 이 값
+    public double SlideRecoverSec { get; init; } = .30;  // 던진 뒤 누워 있는 시간
+    public double SlideEarlySec { get; init; } = .10;    // 공이 낮은 높이에 닿기 이만큼 일찍까지만 던진다
+    public double SlideCatchCells { get; init; } = 2;    // 받는 높이: 바닥 위 공 아래쪽이 이만큼(칸)
+    public double DigVy { get; init; } = 430;            // 디그한 공이 뜨는 세기 (×ScaleRatio)
+    public double DigVx { get; init; } = 70;             // 네트 쪽으로 살짝
+    public double DigSpikeK { get; init; } = 1.0;        // 상대 스파이크를 받을 때 DigVy 에 곱함
+
     // 라이벌 (오른쪽)
     public BotSkill Rival { get; init; } = BotSkill.Old;
 
     public static readonly VolleyTune Old = new();
 
-    public static readonly VolleyTune Now = new()
+    // 슬라이딩·자동 스파이크 전의 지금 판 (표의 「전」, 같은 씨의 판이 늘 같아야 한다)
+    public static readonly VolleyTune Before = new()
     {
         JumpV = 435,
         NetRatio = .30,
@@ -56,23 +73,30 @@ sealed record VolleyTune
         Stones = true,
         Blocks = true,
         BlockMissOnlySpike = true,
-        Rival = BotSkill.Rival,
+        Rival = BotSkill.RivalBefore,
     };
 
+    public static readonly VolleyTune Now = Before with { AutoSpike = true, Slides = true, Rival = BotSkill.Rival };
+
     // 고치기 전부터 하나씩 넣어 가며 견주는 표용 (VolleyCheck.Table 의 steps)
-    public static VolleyTune Numbers => Old with { JumpV = Now.JumpV, NetRatio = Now.NetRatio, NetMaxCells = Now.NetMaxCells, StemFumbleDeg = Now.StemFumbleDeg, Rival = BotSkill.Rival with { StoneHopProb = 0, BlockProb = 0 } };
+    public static VolleyTune Numbers => Old with { JumpV = Now.JumpV, NetRatio = Now.NetRatio, NetMaxCells = Now.NetMaxCells, StemFumbleDeg = Now.StemFumbleDeg, Rival = BotSkill.RivalBefore with { StoneHopProb = 0, BlockProb = 0 } };
     public static VolleyTune WithAssist => Numbers with { SpikeAssist = true };
-    public static VolleyTune WithBlocks => WithAssist with { Blocks = true, BlockMissOnlySpike = true, Rival = BotSkill.Rival with { StoneHopProb = 0 } };
+    public static VolleyTune WithBlocks => WithAssist with { Blocks = true, BlockMissOnlySpike = true, Rival = BotSkill.RivalBefore with { StoneHopProb = 0 } };
+    public static VolleyTune WithAutoSpike => Before with { AutoSpike = true };                  // 표의 「+자동 스파이크」
+    public static VolleyTune WithSlides => WithAutoSpike with { Slides = true, Rival = BotSkill.RivalBefore with { SlideProb = BotSkill.Rival.SlideProb } };                  // 표의 「+슬라이드」
 }
 
 // 봇 실력 (8장). 오른쪽 라이벌과 표의 왼쪽 봇이 같은 함수(VolleySim.BotInput)로 움직이고, 실력 숫자만 다르다
 // Legacy: 고치기 전 방식 (스파이크를 닿는 프레임마다 뽑는다 · 돌·블로킹 없음) — VolleyTune.Old 를 그대로 되살리는 용도
 // SmartSpike: 공이 네트 위에 있고 캡을 넘길 수 있을 때만 Ctrl (낮은 공을 네트에 꽂지 않는다) · JumpCells: 공이 네트 꼭대기 위 이만큼(칸) 안으로 내려오면 뛴다
-readonly record struct BotSkill(double ErrorCells, double ReactionSec, double SpikeProb, double StoneHopProb, double BlockProb, double BlockLateSec, bool Legacy = false, bool SmartSpike = false, double JumpCells = 15)
+// SlideProb: 상대가 공을 칠 때마다 「이 공에 몸을 던질지」 한 번 뽑는 확률 (슬라이드가 켜진 판에서만 뽑는다). 사람 플레이어는 늘 1
+readonly record struct BotSkill(double ErrorCells, double ReactionSec, double SpikeProb, double StoneHopProb, double BlockProb, double BlockLateSec, bool Legacy = false, bool SmartSpike = false, double JumpCells = 15, double SlideProb = 0)
 {
     public static readonly BotSkill Old = new(8, .06, .30, 0, 0, 0, true);
-    public static readonly BotSkill Rival = new(14, 1.0, .45, .5, .6, .25, false, true, 40);
-    public static readonly BotSkill Human = Rival with { SpikeProb = .55, StoneHopProb = .9, BlockProb = .6, BlockLateSec = 0 }; // 표의 왼쪽 「사람」
+    public static readonly BotSkill RivalBefore = new(14, 1.0, .45, .5, .6, .25, false, true, 40);                                              // 슬라이드·자동 스파이크 전의 라이벌 (표의 「전」)
+    public static readonly BotSkill Rival = RivalBefore with { SpikeProb = .6, SlideProb = .5 };                                               // 지금 라이벌: 뛸 때 스파이크 .6 (.45 → 자동 스파이크 판은 랠리가 늘어져 3분 미완이 늘었다), 슬라이드 .5
+    public static readonly BotSkill HumanBefore = RivalBefore with { SpikeProb = .55, StoneHopProb = .9, BlockProb = .6, BlockLateSec = 0 };    // 표의 왼쪽 「사람」 (전: Ctrl 을 .55 로)
+    public static readonly BotSkill Human = Rival with { SpikeProb = .7, StoneHopProb = .9, BlockProb = .6, BlockLateSec = 0 };               // 후: 뛰면 거의 늘 스파이크 (.7 — 1.0 이면 800 창에서 70% 이긴다, 실제 사람은 이보다 못 맞춘다)
 }
 
 // 봇의 기억 (값 형식: 프레임마다 새로 잡는 메모리 없음). 경기마다 새것으로
@@ -82,4 +106,5 @@ struct BotState
     public bool WasAir, SpikePlan;     // SpikePlan: 이번 점프에서 스파이크를 하기로 했나 (뛰는 순간 한 번만 뽑는다)
     public int StoneSeen, ServeSeen; public bool Hop;
     public int BlockSeen; public bool BlockPlan; public double BlockJumpAt;
+    public int TouchSeen; public bool SlidePlan; // 슬라이드: 마지막으로 본 닿음 번호 · 이 공에 몸을 던질지
 }

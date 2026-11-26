@@ -6,7 +6,6 @@ namespace Bolok;
 sealed class BalloonSkin : ClimbSkin
 {
     public override ClimbTheme Theme => ClimbTheme.Balloon;
-    public override ClimbLift Lift => ClimbLift.Hang;    // 풍선 묶음을 쥐고 아래에 매달려 둥실
     public override int Variants => 7;
 
     static uint C(string h) => SkinKit.C(h);
@@ -145,9 +144,6 @@ sealed class BalloonSkin : ClimbSkin
 
         Save = SkinKit.Base(Star(true));
         SaveHead = new SkinPx(Star(false), 10, 10);
-        Skip = SkinKit.Base(Bunch(false));
-        SkipOpen = SkinKit.Base(Bunch(true));
-        SetCarrier(Bunch(false), 16, 33);           // 끈 묶인 자리 = 볼록이 손
         for (int i = 0; i < 2; i++) Band[i] = ClimbArt.Cloud(i == 0 ? 44 : 40, 12, 31 + i * 7, White, C("#E4ECF5"), C("#A9BCD2"));
         Pip[0] = PipBal(0); Pip[1] = PipBal(1); Pip[2] = PipBal(2); Pip[3] = PipBal(3);
     }
@@ -164,36 +160,6 @@ sealed class BalloonSkin : ClimbSkin
         g.Put(10, 6, White); g.Put(10, 7, White); g.Put(9, 8, White);
         g = SkinKit.Pad(g, 1); g.Outline(SkinKit.Line);
         if (stalk) { Str(g, 12, 25, 11, 1); } else Str(g, 12, 24, 4);
-        return g;
-    }
-
-    static Px Bunch(bool gone)
-    {
-        if (gone)
-        {
-            var g0 = new Px(11, 12);
-            g0.Fill(3, 3, 5, 2, C("#F0566E")); g0.Fill(2, 4, 2, 2, C("#F0566E")); g0.Fill(7, 4, 2, 2, C("#F0566E"));
-            g0.Outline(SkinKit.Line);
-            g0.LineTo(5, 7, 5, 11, StringC);
-            return g0;
-        }
-        var g = new Px(30, 40);
-        var cols = new[] { Col[0], Col[1], Col[2] };
-        var pos = new[] { (9.0, 12.0), (20.0, 11.0), (14.5, 5.5) };
-        // 끈 먼저
-        foreach (var (x, y) in pos) g.LineTo(x, y + 6, 15, 31, StringC);
-        for (int i = 0; i < 3; i++)
-        {
-            var (x, y) = pos[i];
-            Body(g, x, y, 6.2, 6.6, 2.3, cols[i]);
-            g.Put((int)x - 3, (int)y - 3, White); g.Put((int)x - 3, (int)y - 2, White);
-            Knot(g, x, y + 6.4, cols[i]);
-        }
-        g = SkinKit.Pad(g, 1); g.Outline(SkinKit.Line);
-        // 끈과 리본
-        foreach (var (x, y) in pos) g.LineTo(x + 1, y + 11, 16, 32, StringC);
-        g.Poly(new[] { (16.0, 32.0), (11.0, 30.0), (12.0, 35.0) }, C("#F0566E")); g.Poly(new[] { (16.0, 32.0), (21.0, 30.0), (20.0, 35.0) }, C("#F0566E"));
-        g.Fill(15, 32, 2, 2, C("#B72E4A"));
         return g;
     }
 
@@ -214,30 +180,4 @@ sealed class BalloonSkin : ClimbSkin
         return g;
     }
 
-    // 친구 자리: 큰 진주빛 풍선에 분홍 하트 (탑으로 끈이 이어진다). 발판 풍선(일곱 색·무늬 없음)과 같은 색·모양이면 길의 한 칸으로 읽혀 틀리게 눌린다 (2026-11-26) — 발판에 없는 색과 하트 무늬로 다르게 보이게
-    public override void Perch(Px g, int bx, int by, int side, int tx, int ty)
-    {
-        var t = SkinKit.Tone("#EEF2FA", .4, .3);
-        var b = new Px(50, 44);
-        double cx = 25, cy = 2 + 14;
-        Body(b, cx, cy, 17, 14, 2.6, t);
-        // 분홍 하트: 동그라미 둘 + 아래로 뾰족
-        uint pk = C("#FF5C8A"), pkh = C("#FFA0BC");
-        b.Ell(cx - 4.2, cy - 2.2, 4.6, 4.2, pk); b.Ell(cx + 4.2, cy - 2.2, 4.6, 4.2, pk);
-        b.Poly(new[] { (cx - 8.6, cy - .6), (cx + 8.6, cy - .6), (cx, cy + 8.6) }, pk);
-        b.Put((int)cx - 6, (int)cy - 4, pkh); b.Put((int)cx - 5, (int)cy - 5, pkh);
-        b.Ell(cx - 8, cy - 8, 2, 2.4, White);
-        Knot(b, cx, cy + 14, t);
-        b.Outline(SkinKit.Line);
-        g.Blit(b, tx - 25, ty - 2);
-        // 끈: 풍선 매듭에서 탑으로
-        double kx = tx, ky = ty - 2 + cy + 14 + 4;
-        int n = 60;
-        for (int i = 0; i < n; i++)
-        {
-            double u = i / (double)(n - 1);
-            double x = kx + (bx - kx) * u, y = ky + (by - 2 - ky) * u + Math.Sin(u * Math.PI) * 7;
-            g.Put((int)Math.Round(x), (int)Math.Round(y), StringC);
-        }
-    }
 }

@@ -25,7 +25,7 @@ public sealed class PetArt
     static readonly string[] ColorKeys = { "fur", "shade", "cream", "ear", "paw", "blush", "eye" }; // eye: 렉돌 파란 눈
     static readonly string[] FrameKeys =
     {
-        "sq", "sqk", "dy", "lie", "dangle", "turn", "step", "puff", "eye", "mouth", "hold", "belly", "tear", "heart", "z", "blushy", "cover",
+        "sq", "sqk", "dy", "lie", "dangle", "turn", "step", "puff", "eye", "mouth", "hold", "cup", "steam", "empty", "belly", "tear", "heart", "z", "blushy", "cover",
         "sweat", "hands", "up", "hammer", "dirt", "mark", "vein", "stars", "rot", "back",
     };
 
@@ -706,6 +706,29 @@ public sealed class PetArt
             g.Pix(c["stripe"], (fx, my + 5), (fx, my + 7));
             foreach (int s in new[] { -1, 1 }) g.Ell(fx + .5 + s * 3.2, my + 6, 1.8, 1.6, c["paw"]);
         }
+        if (f.T("cup")) // 앞발 둘로 컵을 쥐고 홀짝 (sip: eat 뼈대의 씨앗 자리에 컵. 클라이밍 카페: docs/climb-combo.md 5-6)
+        {
+            uint cl = c["line"], cf = c["white"], band = c["blue"], cof = Mix(c["seed"], c["red"], .12);
+            for (int y = my + 3; y <= my + 9; y++)
+                for (int x = fx - 3; x <= fx + 4; x++)
+                {
+                    bool corner = (x == fx - 3 || x == fx + 4) && (y == my + 3 || y == my + 9);
+                    if (!corner) g.Put(x, y, cl);
+                }
+            for (int y = my + 4; y <= my + 8; y++)
+                for (int x = fx - 2; x <= fx + 3; x++) g.Put(x, y, y == my + 4 ? (f.T("empty") ? c["stripe"] : cof) : y == my + 6 ? band : cf);
+            if (!f.T("empty")) g.Pix(Mix(cof, c["white"], .45), (fx - 1, my + 4), (fx, my + 4));
+            g.Pix(c["stripe"], (fx + 3, my + 7), (fx + 3, my + 8));
+            g.Pix(cl, (fx + 5, my + 5), (fx + 6, my + 5), (fx + 6, my + 6), (fx + 6, my + 7), (fx + 5, my + 8)); // 손잡이
+            foreach (int s in new[] { -1, 1 }) g.Ell(fx + .5 + s * 3.9, my + 6.6, 1.8, 1.6, c["paw"]);
+            int st = (int)f.N("steam");
+            if (st > 0) // 김: 컵 위에서 두 가닥이 번갈아 피어오른다 (두 점 폭 흰 점 위에 파란 점: 밝은 바탕에서도 보이게. 입을 컵이 가리는 자리라 얼굴은 안 가린다)
+            {
+                uint sw = c["white"], se = c["blue"];
+                int o = st == 1 ? 0 : 1;
+                foreach (int sx in new[] { fx - 1 + o, fx + 2 - o }) { g.Pix(sw, (sx, my + 2), (sx + 1, my + 2)); g.Pix(se, (sx, my + 1), (sx + 1, my + 1)); }
+            }
+        }
         if (f.T("belly")) g.Pix(c["shade"], (fx - 1, my + 6), (fx, my + 5), (fx + 1, my + 6)); // 꼬르륵
         if (f.T("tear")) g.Pix(c["blue"], (fx - gap - 2, ey + 3), (fx - gap - 2, ey + 4), (fx - gap - 2, ey + 5));
         if (f.T("heart")) Heart(g, 32, 2, c["red"]);
@@ -786,7 +809,7 @@ public sealed class PetArt
             foreach (var (dx, dy) in new[] { (-1, 0), (1, 0), (0, -1), (0, 1) }) g.Put(x + dx, y + dy, Rgb(255, 120, 170));
             g.Put(x, y, Rgb(255, 236, 110));
         }
-        if (F.Has("mark_final")) FinalMark(g, S, F.S("mark_final", ""), c, b, fx, ey, gap, lying, sqk, f.T("hold"), f.T("belly"));
+        if (F.Has("mark_final")) FinalMark(g, S, F.S("mark_final", ""), c, b, fx, ey, gap, lying, sqk, f.T("hold") || f.T("cup"), f.T("belly"));
         for (int i = 0; i < (int)f.N("rot"); i++) g.Rotate(); // 90도씩 돌리기
         return g;
     }

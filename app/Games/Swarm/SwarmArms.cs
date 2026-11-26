@@ -74,17 +74,17 @@ sealed class Arm
         // 쌍검: 가장 빠르고 가장 짧다. 좌·우 번갈아 벤다
         Id.Twin => new Arm { Which = id, Kind = Sort.Melee, Dmg = 16, Cool = .30, Range = 46, ArcHalf = 55 * Deg, Knock = 7, Stun = .10, BotGap = 26, Every = Spec.EveryTwin },
         // 장검: 크고 느린 한 번. 맞은 놈은 멀리 밀려난다
-        Id.Long => new Arm { Which = id, Kind = Sort.Melee, Dmg = 40, Cool = .86, Range = 66, ArcHalf = 70 * Deg, Knock = 28, Stun = .20, BotGap = 44 },
+        Id.Long => new Arm { Which = id, Kind = Sort.Melee, Dmg = 40, Cool = .78, Range = 66, ArcHalf = 70 * Deg, Knock = 28, Stun = .20, BotGap = 44 },
         // 쌍권총: 가까운 둘에게 한 발씩
-        Id.Pistols => new Arm { Which = id, Kind = Sort.Bullets, Dmg = 10, Cool = .59, Range = 230, Count = 2, Knock = 3, Speed = 520, BotGap = 90, Every = Spec.EveryPistols, caps = new[] { 5, 2, 5 } },
+        Id.Pistols => new Arm { Which = id, Kind = Sort.Bullets, Dmg = 10, Cool = .62, Range = 230, Count = 2, Knock = 3, Speed = 520, BotGap = 90, Every = Spec.EveryPistols, caps = new[] { 5, 2, 5 } },
         // 산탄총: 가까운 놈 쪽 부채꼴로 알 다섯
-        Id.Shotgun => new Arm { Which = id, Kind = Sort.Bullets, Dmg = 10, Cool = .85, Range = 150, ArcHalf = 20 * Deg, Count = 5, Pierce = 1, Knock = 12, Speed = 480, BotGap = 55, Every = Spec.EveryShotgun, caps = new[] { 5, 4, 5 } },
+        Id.Shotgun => new Arm { Which = id, Kind = Sort.Bullets, Dmg = 10, Cool = .70, Range = 150, ArcHalf = 20 * Deg, Count = 5, Pierce = 0, Knock = 12, Speed = 480, BotGap = 55, Every = Spec.EveryShotgun, caps = new[] { 5, 4, 5 } },
         // 돌격소총: 끊김 없는 연사, 하나를 뚫고 둘째까지
         Id.Rifle => new Arm { Which = id, Kind = Sort.Bullets, Dmg = 6, Cool = .12, Range = 290, ArcHalf = 3 * Deg, Pierce = 1, Knock = 1, Stun = .03, Speed = 620, BotGap = 90, caps = new[] { 5, 3, 5 } },
         // 바주카포: 벌레가 가장 몰린 곳으로 느린 로켓
-        Id.Bazooka => new Arm { Which = id, Kind = Sort.Rocket, Dmg = 60, Cool = 2.00, Range = 300, Blast = 48, Knock = 22, Stun = .25, Speed = 330, BotGap = 90, Every = Spec.EveryBazooka },
+        Id.Bazooka => new Arm { Which = id, Kind = Sort.Rocket, Dmg = 60, Cool = 1.40, Range = 300, Blast = 48, Knock = 22, Stun = .25, Speed = 330, BotGap = 90, Every = Spec.EveryBazooka },
         // 화염방사기: 끊기지 않는 불길과 불붙음. 밀침·멈칫이 없다
-        _ => new Arm { Which = Id.Flame, Kind = Sort.Flame, Dmg = 6, Cool = .11, Range = 100, ArcHalf = 24 * Deg, BurnDmg = 3, BurnSec = 2, BotGap = 60, Every = Spec.EveryFlame },
+        _ => new Arm { Which = Id.Flame, Kind = Sort.Flame, Dmg = 6, Cool = .11, Range = 112, ArcHalf = 26 * Deg, BurnDmg = 3, BurnSec = 2, BotGap = 60, Every = Spec.EveryFlame },
     };
 
     // ── 레벨 업: 그 갈래를 한 단계 키운다 (다 찼으면 false) ──

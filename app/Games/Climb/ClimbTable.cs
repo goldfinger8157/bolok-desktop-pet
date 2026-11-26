@@ -24,17 +24,24 @@ static partial class ClimbCheck
     {
         public readonly List<int> Leaves = new();
         public readonly List<double> Secs = new();
-        public int Wrong, Time, Wilt, Berries, Saves, Lifts;
+        public readonly List<int> Combos = new();
+        public int Wrong, Time, Wilt, Berries, Saves, Cafes, Steps;
+        public double CafeSec;
+        public readonly long[] Tier = new long[4];
         public void Add(Climb t)
         {
-            Leaves.Add(t.N); Secs.Add(t.RunClock);
+            Leaves.Add(t.N); Secs.Add(t.RunClock); Combos.Add(t.MaxCombo);
             switch (t.Why) { case Climb.Cause.Wrong: Wrong++; break; case Climb.Cause.Time: Time++; break; case Climb.Cause.Wilt: Wilt++; break; }
-            Berries += t.Berries; Saves += t.Saves; Lifts += t.Lifts;
+            Berries += t.Berries; Saves += t.Saves; Cafes += t.Cafes; CafeSec += t.CafeSec; Steps += t.Steps;
+            for (int i = 0; i < 4; i++) Tier[i] += t.TierSteps[i];
         }
+        public double MedianCombo => Median(Combos.Select(x => (double)x));
+        public double TierShare(int i) => Tier[i] / (double)Math.Max(1, Tier.Sum());
         public int N => Leaves.Count;
         public double Avg => Leaves.Average();
         public double MedianLeaves => Median(Leaves.Select(x => (double)x));
         public double MedianSec => Median(Secs);
+        public double Pct(int n) => n * 100.0 / Math.Max(1, N);
         public double Past(int n) => Leaves.Count(x => x >= n) / (double)Math.Max(1, N);
         public double SecP95 => Secs.OrderBy(x => x).ElementAt((int)(Secs.Count * .95));
         static double Median(IEnumerable<double> v) { var a = v.OrderBy(x => x).ToArray(); return a.Length == 0 ? 0 : a[a.Length / 2]; }
@@ -71,37 +78,38 @@ static partial class ClimbCheck
         var (tune, easy, good) = Overrides(spec);
         var sb = new StringBuilder();
         sb.AppendLine($"클라이밍 봇 표 — 씨 {seeds}개");
-        sb.AppendLine("봇 | 평균 잎 | 가운데 값 | 가운데 판 길이 | 20잎 넘김 | 100잎 넘김 | 끝난 까닭 (틀림·시간·시든 잎) | 열매/판 | 홀씨 살아남/판 | 덩굴손/판 | 95% 길이");
+        sb.AppendLine("봇 | 평균 잎 | 가운데 값 | 가운데 판 길이 | 20잎 넘김 | 100잎 넘김 | 끝난 까닭 (틀림·시간·시든 잎) | 열매/판 | 홀씨 살아남/판 | 카페/판 | 쉰 시간/판 | 가장 긴 콤보(가운데) | 단계 몫 0·1·2·3 | 95% 길이");
         foreach (var skill in new[] { easy, good }) sb.AppendLine(Row(skill.Name, Run(seeds, skill, tune)));
-        sb.AppendLine("꺾임 비율 (구간 0~29 · 30~149 · 150~299 · 300~): " + string.Join(" · ", FlipRatios(tune).Select(x => $"{x * 100:0.0}%")));
+        sb.AppendLine("꺾임 비율 (구간 0~29 · 30~149 · 150~299 · 300~599 · 600~): " + string.Join(" · ", FlipRatios(tune).Select(x => $"{x * 100:0.0}%")));
         if (full)   // 기믹을 끄고 켠 표를 나란히: 기믹 하나가 가운데 값을 15% 넘게 깎으면 그 기믹을 누그러뜨린다
         {
-            sb.AppendLine("[기믹 하나씩 끄기] 가운데 값 (켠 것 대비)");
-            var all = new[] { easy, good }.Select(sk => Run(seeds, sk, tune).MedianLeaves).ToArray();
-            foreach (var (name, off) in new (string, ClimbTune)[] { ("모두 끔", tune with { Gimmicks = false }), ("열매 끔", tune with { BerryFrom = 99999 }), ("홀씨 끔", tune with { PuffFrom = 99999 }), ("시든 잎 끔", tune with { WiltFrom = 99999 }), ("덩굴손 끔", tune with { CurlFrom = 99999 }), ("구름 띠 끔", tune with { CloudFrom = 99999 }) })
+            sb.AppendLine("[기믹 하나씩 끄기] 가운데 값 (켠 것 대비) · 평균 · 시간으로 끝난 몫");
+            var all = new[] { easy, good }.Select(sk => Run(seeds, sk, tune)).ToArray();
+            foreach (var (name, off) in new (string, ClimbTune)[] { ("모두 끔", tune with { Gimmicks = false }), ("열매 끔", tune with { BerryFrom = 99999 }), ("홀씨 끔", tune with { PuffFrom = 99999 }), ("시든 잎 끔", tune with { WiltFrom = 99999 }), ("카페 끔", tune with { CafeFrom = 99999 }), ("구름 띠 끔", tune with { CloudFrom = 99999 }), ("콤보 보상 끔", tune with { ComboBar = new[] { 0.0, 0, 0 } }) })
             {
-                var m = new[] { easy, good }.Select(sk => Run(seeds, sk, off).MedianLeaves).ToArray();
-                sb.AppendLine($"  {name}: {easy.Name} {m[0]:0} ({(m[0] / all[0] - 1) * 100:+0;-0;0}%) · {good.Name} {m[1]:0} ({(m[1] / all[1] - 1) * 100:+0;-0;0}%)");
+                var m = new[] { easy, good }.Select(sk => Run(seeds, sk, off)).ToArray();
+                string One(int i) => $"{m[i].MedianLeaves:0} ({(m[i].MedianLeaves / all[i].MedianLeaves - 1) * 100:+0;-0;0}%) 평균 {m[i].Avg:0} 시간 {m[i].Pct(m[i].Time):0}%";
+                sb.AppendLine($"  {name}: {easy.Name} {One(0)} · {good.Name} {One(1)}");
             }
         }
         return sb.ToString().TrimEnd();
     }
 
     static string Row(string name, Tally t) =>
-        $"{name} | {t.Avg,5:0.0} | {t.MedianLeaves,4:0} | {t.MedianSec,5:0.0}초 | {t.Past(20) * 100,5:0.0}% | {t.Past(100) * 100,5:0.0}% | {t.Wrong * 100.0 / t.N:0}% · {t.Time * 100.0 / t.N:0}% · {t.Wilt * 100.0 / t.N:0}% | {t.Berries / (double)t.N,4:0.0} | {t.Saves / (double)t.N,4:0.00} | {t.Lifts / (double)t.N,4:0.00} | {t.SecP95:0}초";
+        $"{name} | {t.Avg,5:0.0} | {t.MedianLeaves,4:0} | {t.MedianSec,5:0.0}초 | {t.Past(20) * 100,5:0.0}% | {t.Past(100) * 100,5:0.0}% | {t.Wrong * 100.0 / t.N:0}% · {t.Time * 100.0 / t.N:0}% · {t.Wilt * 100.0 / t.N:0}% | {t.Berries / (double)t.N,4:0.0} | {t.Saves / (double)t.N,4:0.00} | {t.Cafes / (double)t.N,4:0.00} | {t.CafeSec / t.N,4:0.0}초 | {t.MedianCombo,3:0} | {t.TierShare(0) * 100:0}·{t.TierShare(1) * 100:0}·{t.TierShare(2) * 100:0}·{t.TierShare(3) * 100:0}% | {t.SecP95:0}초";
 
-    // 구간별 꺾임 비율 (잎 하나가 앞 잎과 반대 쪽이 될 몫): 씨 300개 × 400잎
+    // 구간별 꺾임 비율 (잎 하나가 앞 잎과 반대 쪽이 될 몫): 씨 300개 × 1000잎
     internal static double[] FlipRatios(ClimbTune? tune = null)
     {
-        int[] lo = { 1, 30, 150, 300 }, hi = { 29, 149, 299, 399 };
-        var flips = new double[4]; var count = new double[4];
+        int[] lo = { 1, 30, 150, 300, 600 }, hi = { 29, 149, 299, 599, 999 };
+        var flips = new double[5]; var count = new double[5];
         for (int seed = 1; seed <= 300; seed++)
         {
             var t = new Climb(seed, tune);
-            for (int i = 1; i < 400; i++)
-                for (int z = 0; z < 4; z++)
+            for (int i = 1; i < 1000; i++)
+                for (int z = 0; z < 5; z++)
                     if (i >= lo[z] && i <= hi[z]) { count[z]++; if (t.At(i + 1).Dir != t.At(i).Dir) flips[z]++; }
         }
-        return Enumerable.Range(0, 4).Select(z => flips[z] / count[z]).ToArray();
+        return Enumerable.Range(0, 5).Select(z => flips[z] / count[z]).ToArray();
     }
 }

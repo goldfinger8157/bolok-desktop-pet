@@ -6,7 +6,6 @@ namespace Bolok;
 sealed class DeskSkin : ClimbSkin
 {
     public override ClimbTheme Theme => ClimbTheme.Desk;
-    public override ClimbLift Lift => ClimbLift.Glide;   // 종이비행기를 타고 줄기를 따라 미끄러진다
     public override int Variants => 6;
 
     static uint C(string h) => SkinKit.C(h);
@@ -178,10 +177,6 @@ sealed class DeskSkin : ClimbSkin
         Save = SkinKit.Base(UndoBadge(true));
         SaveHead = new SkinPx(UndoBadge(false), 10, 20);
 
-        // 덩굴손 대신 종이비행기: 위로 5칸 날려 올린다
-        Skip = SkinKit.Base(Plane(false));
-        SkipOpen = SkinKit.Base(Plane(true));
-        SetCarrier(Plane(false), 15, 4);            // 볼록이 발이 닿는 날개 윗면 (날개는 발 밑에 보이게)
 
         // 구름 띠: 겹친 흰 종이 뭉치
         for (int i = 0; i < 2; i++) Band[i] = Papers(i);
@@ -209,27 +204,6 @@ sealed class DeskSkin : ClimbSkin
         g.Poly(new[] { (ex - 3.2, ey - .4), (ex + 3.4, ey - .4), (ex + .2, ey + 3.6) }, w);
         g.Outline(SkinKit.Line);
         if (stalk) { for (int i = 0; i < 10; i++) g.Put(10 + (int)Math.Round(Math.Sin(i * .8)), 22 + i, C("#8E7B6B")); }
-        return g;
-    }
-
-    static Px Plane(bool gone)
-    {
-        if (gone)
-        {
-            var c = new Px(12, 10);
-            c.Ell(6, 5, 3.8, 3.2, C("#F2F5FB")); c.Put(4, 3, White); c.Put(7, 5, C("#C9D5EC")); c.Put(6, 7, C("#C9D5EC"));
-            c.Outline(SkinKit.Line);
-            return c;
-        }
-        var g = new Px(30, 20);
-        uint w = White, s = C("#C9D5EC"), b = C("#8DB3EC"), l = C("#EEF3FC");
-        // 종이비행기 (오른쪽 위를 향한다): 날개 둘 + 가운데 접힌 선
-        g.Poly(new[] { (3.0, 6.0), (26.0, 3.0), (13.0, 10.5) }, w);
-        g.Poly(new[] { (3.0, 6.0), (26.0, 3.0), (13.0, 10.5) }, w);
-        g.Poly(new[] { (3.0, 6.0), (13.0, 10.5), (9.5, 8.0) }, l);
-        g.Poly(new[] { (13.0, 10.5), (26.0, 3.0), (10.0, 15.5) }, s);
-        g.Poly(new[] { (13.0, 10.5), (10.0, 15.5), (9.0, 11.0) }, b);
-        g.Outline(SkinKit.Line);
         return g;
     }
 
@@ -272,17 +246,4 @@ sealed class DeskSkin : ClimbSkin
         return g;
     }
 
-    // 친구 자리: 탑 뒤에서 옆으로 쑥 나온 노란 자 (눈금), 끝에서 친구가 논다
-    public override void Perch(Px g, int bx, int by, int side, int tx, int ty)
-    {
-        uint yel = C("#F2B84B"), yelH = C("#FFD98A"), yelS = C("#C98A2E"), tick = C("#8A5A2E");
-        int xa = side > 0 ? bx : tx - 9, xb = side > 0 ? tx + 9 : bx;
-        var r = new Px(xb - xa + 3, 10);
-        int w = xb - xa + 1;
-        r.Fill(1, 1, w, 7, yel); SkinKit.Row(r, 1, w, 1, yelH); SkinKit.Row(r, 1, w, 7, yelS);
-        for (int i = 2; i < w - 1; i += 3) { r.Put(1 + i, 2, tick); if ((i / 3) % 3 == 0) r.Put(1 + i, 3, tick); }
-        r.Put(side > 0 ? w - 3 : 4, 5, yelS); r.Put(side > 0 ? w - 4 : 5, 5, yelS);
-        r.Outline(SkinKit.Line);
-        g.Blit(r, xa - 1, ty - 1);
-    }
 }

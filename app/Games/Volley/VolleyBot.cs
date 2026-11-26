@@ -12,6 +12,14 @@ sealed partial class VolleySim
         int d = Dir(who);
         bool right = who == Actor.Rival;
         b.SmartSpike = sk.SmartSpike && !sk.Legacy;
+        b.Bot = true;
+        // 슬라이드: 공이 몸에 닿을 때마다 「이 공에 몸을 던질지」 한 번 뽑는다 (켜진 판에서만 — 꺼 두면 Rnd 를 안 써서 옛 판이 그대로)
+        if (T.Slides && !sk.Legacy)
+        {
+            if (st.TouchSeen != TouchSerial) (st.TouchSeen, st.SlidePlan) = (TouchSerial, rng.NextDouble() < sk.SlideProb);
+            b.SlideOk = st.SlidePlan;
+        }
+        else b.SlideOk = true;
         jump = false;
         spike = false;
         // 새 랠리가 시작되면 반응 시계를 비운다: 득점 뒤 쉬는 동안 한쪽 봇만 시계가 돌아 새 랠리를 늦게(또는 먼저) 시작하는 일이 없게

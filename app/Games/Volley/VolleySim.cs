@@ -11,7 +11,7 @@ sealed partial class VolleySim
     public enum Actor { Player, Rival }
 
     // 마지막으로 공에 닿은 방식 · 득점 종류 (득점 표용, VolleyTune 5장)
-    public enum Touch { None, Normal, Spike, Block, BlockMiss, Fumble }
+    public enum Touch { None, Normal, Spike, Block, BlockMiss, Fumble, Dig }
     public enum PointKind { Spike, Block, Normal, Fumble, BlockMiss, Trip, Bird, Own }
     public const int PointKinds = 8;
 
@@ -38,8 +38,13 @@ sealed partial class VolleySim
         public bool SpikeWas, SpikeReq, SmartSpike;  // SmartSpike: 봇이 「넘길 수 있을 때만」 스파이크한다고 알림 (닿는 순간 다시 계산)
         public int Axis, JumpSerial;
         public bool BlockJump;                       // 이번 점프가 네트 가까이에서 뛴 블로킹 점프인가
+        public int BlockedSerial = -1;               // 이 점프(JumpSerial)에서 이미 막았다 (자동 스파이크 판: 한 점프에 한 번만 — 막고 치고 막고 치는 네트 실랑이를 끊는다)
         public double RunSec; public int RunDir; public bool RunRolled; // 땅에서 같은 방향으로 달린 시간, 이 달리기에서 돌을 뽑았나
         public double TripUntil = -9, TripDustX, TripDustTimer;          // 넘어져 있는 동안 · 먼지
+        public bool Bot, SlideOk = true;             // Bot: 봇이 움직이는 몸 (BotInput 이 알린다 — 사람·검사용은 뛰면 늘 스파이크). SlideOk: 봇이 「이 공에는 몸을 던진다」고 한 것 (사람은 늘 참)
+        public double SlideLeft, SlideRecoverUntil = -9;                 // 슬라이드: 더 갈 거리(>0 이면 미끄러지는 중) · 누워 있는 때까지
+        public int SlideDir;                                             // 던진 방향 (+1 오른쪽 · -1 왼쪽)
+        public double SlideX0, SlideX1, SlideTrailLeft;                  // 먼지 꼬리: 던진 자리 · 멈춘 자리(미끄러지는 동안은 지금 자리) · 남은 시간
     }
     readonly Body P = new(), R = new();
     Body Of(Actor a) => a == Actor.Player ? P : R;
@@ -188,12 +193,15 @@ sealed partial class VolleySim
     public PointKind LastPoint { get; private set; }
     public readonly int[] Points = new int[2 * PointKinds];
     public readonly int[] StoneCount = new int[2], TripCount = new int[2], BlockHit = new int[2], BlockMissCount = new int[2], SpikeCount = new int[2], SpikeOver = new int[2];
+    public readonly int[] SlideCount = new int[2], DigCount = new int[2], DigOver = new int[2];   // 슬라이드 · 디그 · 디그한 공이 상대 코트로 넘어간 것
     public int PointTotal, HitSum;       // 지금까지 난 점수 · 그 랠리들의 타구 수 합 (0.25초 안에 같은 선수가 몸에 계속 닿은 것은 한 번)
     int RallyTouches;
     double lastTouchAt = -9;
     public double RallySecSum;           // 랠리 길이(초) 합: 첫 타구부터 바닥에 닿을 때까지
     double rallyStart;
     int spikeWatchBy = -1;               // 방금 친 스파이크가 네트를 넘었나 지켜보는 중 (치는 쪽, 아니면 -1)
+    int digWatchBy = -1;                 // 방금 디그한 공이 같은 편 손으로 네트를 넘었나 지켜보는 중 (디그한 쪽, 아니면 -1)
+    public int TouchSerial { get; private set; }   // 공이 몸에 닿을 때마다 +1 (봇이 새 공을 알아본다)
 
     public double Clock { get; set; }
     public double PauseUntil { get; set; }
@@ -263,6 +271,7 @@ sealed partial class VolleySim
         TotalRallies = 0;
         lastStoneSide = -1;
         Array.Clear(Points); Array.Clear(StoneCount); Array.Clear(TripCount); Array.Clear(BlockHit); Array.Clear(BlockMissCount); Array.Clear(SpikeCount); Array.Clear(SpikeOver);
+        Array.Clear(SlideCount); Array.Clear(DigCount); Array.Clear(DigOver);
         PointTotal = HitSum = 0;
         RallySecSum = 0;
 
@@ -277,6 +286,7 @@ sealed partial class VolleySim
         LastTouch = Touch.None;
         birdSinceTouch = false;
         spikeWatchBy = -1;
+        digWatchBy = -1;
         RallyHits = 0;
         RallyTouches = 0;
         ServeSerial++;
@@ -321,6 +331,7 @@ sealed partial class VolleySim
         b.BlockJump = false;
         b.RunSec = 0; b.RunDir = 0; b.RunRolled = false;
         b.TripUntil = -9; b.TripDustTimer = 0;
+        b.SlideLeft = 0; b.SlideRecoverUntil = -9; b.SlideTrailLeft = 0;
     }
 
     public void ForceEnd(bool win)
@@ -365,6 +376,8 @@ sealed partial class VolleySim
         }
         if (P.TripDustTimer > 0) P.TripDustTimer -= dt;
         if (R.TripDustTimer > 0) R.TripDustTimer -= dt;
+        if (P.SlideTrailLeft > 0) P.SlideTrailLeft -= dt;
+        if (R.SlideTrailLeft > 0) R.SlideTrailLeft -= dt;
 
         // 득점 후 서브 대기 일시 정지
         if (Stage == Phase.PointScored)
@@ -382,17 +395,22 @@ sealed partial class VolleySim
             return;
         }
 
-        // 1. 플레이어 조작 & 물리 (Ctrl 은 누른 순간부터 SpikeGraceSec 동안 유효)
-        if (inputSpike && !P.SpikeWas) P.SpikePressedAt = Clock;
-        P.SpikeWas = inputSpike;
-        P.SpikeReq = inputSpike || Clock - P.SpikePressedAt <= SpikeGraceSec;
+        // 1. 플레이어 조작 & 물리 (Ctrl 은 누른 순간부터 SpikeGraceSec 동안 유효). 자동 스파이크면 사람은 공중에 있는 동안 늘 스파이크하려 하고 Ctrl 은 읽지 않는다
+        if (T.AutoSpike && !P.Bot) (P.SpikeReq, P.SmartSpike) = (true, true);
+        else
+        {
+            if (inputSpike && !P.SpikeWas) P.SpikePressedAt = Clock;
+            P.SpikeWas = inputSpike;
+            P.SpikeReq = inputSpike || Clock - P.SpikePressedAt <= SpikeGraceSec;
+        }
         MoveActor(Actor.Player, inputAxisX, inputJump, dt);
 
         // 2. 라이벌 봇 & 물리: 플레이어와 같은 이동·점프 함수. 보조가 켜져 있으면 Ctrl 너그러움도 같다
         int axis = 0; bool jump = false, spike = false;
         if (!BotsOff) BotInput(Actor.Rival, T.Rival, ref rivalBot, Rnd, out axis, out jump, out spike);
-        else (axis, jump, spike) = (ForceAxis, ForceJump, false);
-        if (T.SpikeAssist)
+        else (R.Bot, axis, jump, spike) = (false, ForceAxis, ForceJump, false);
+        if (T.AutoSpike && !R.Bot) (R.SpikeReq, R.SmartSpike) = (true, true);   // 봇이 아닌 라이벌(검사용)도 사람과 같다
+        else if (T.SpikeAssist)
         {
             if (spike && !R.SpikeWas) R.SpikePressedAt = Clock;
             R.SpikeWas = spike;
@@ -429,11 +447,32 @@ sealed partial class VolleySim
     {
         var b = Of(who);
         if (Clock < b.TripUntil) (axis, jump) = (0, false);
-        b.Axis = axis;
-        b.Vx = axis * WalkSpeed;
-        b.X += b.Vx * dt;
 
-        // 달린 시간 (돌부리 뽑기용): 땅에서 같은 방향으로 움직이면 쌓이고, 멈춤·방향 바꿈·점프·넘어짐이면 0
+        // 슬라이드 (docs/volley-slide.md 3장): 미끄러지는 중이거나 누워 있으면 입력을 버린다. 그렇지 않고 WantSlide 면 지금 던진다
+        bool sliding = false;
+        if (T.Slides)
+        {
+            if (b.SlideLeft > 0) (axis, jump, sliding) = (0, false, true);
+            else if (Clock < b.SlideRecoverUntil) (axis, jump) = (0, false);
+            else if (WantSlide(who, b, axis, jump)) { StartSlide(who, b, axis); (axis, jump, sliding) = (0, false, true); }
+        }
+        b.Axis = axis;
+        double slideEdge = 0;
+        if (sliding)
+        {
+            double step = Math.Min(b.SlideLeft, SlideSpeed * dt);
+            b.Vx = b.SlideDir * SlideSpeed;
+            b.X += b.SlideDir * step;
+            b.SlideLeft -= step;
+            slideEdge = b.X;
+        }
+        else
+        {
+            b.Vx = axis * WalkSpeed;
+            b.X += b.Vx * dt;
+        }
+
+        // 달린 시간 (돌부리 뽑기용): 땅에서 같은 방향으로 움직이면 쌓이고, 멈춤·방향 바꿈·점프·넘어짐·슬라이드면 0
         if (b.OnGround && axis != 0 && !jump)
         {
             if (axis == b.RunDir) b.RunSec += dt;
@@ -461,6 +500,14 @@ sealed partial class VolleySim
 
         // 코트 경계 제한 (그물을 넘을 수 없음)
         b.X = who == Actor.Player ? Math.Clamp(b.X, WallLeft + PetR, NetX - PetR - 2) : Math.Clamp(b.X, NetX + PetR + 2, WallRight - PetR);
+
+        if (sliding)
+        {
+            if (b.X != slideEdge) b.SlideLeft = 0;                     // 벽·네트에 닿으면 거기서 멈춘다
+            b.SlideX1 = b.X;
+            b.SlideTrailLeft = SlideTrailSec;
+            if (b.SlideLeft <= 1e-9) (b.SlideLeft, b.SlideRecoverUntil, b.Vx) = (0, Clock + T.SlideRecoverSec, 0);   // 다 갔다: 누워 있기로
+        }
     }
 
     public double PredictBallLandingX(double targetY, bool isRightSide)
@@ -533,6 +580,13 @@ sealed partial class VolleySim
         {
             SpikeOver[spikeWatchBy]++;
             spikeWatchBy = -1;
+        }
+
+        // 방금 디그한 공이 네트 가운데를 지났나
+        if (digWatchBy >= 0 && (BallX - NetX) * (digWatchBy == 0 ? 1 : -1) > 0)
+        {
+            DigOver[digWatchBy]++;
+            digWatchBy = -1;
         }
 
         // 1. 벽 충돌 (좌/우)
@@ -637,12 +691,15 @@ sealed partial class VolleySim
     {
         var b = Of(who);
         int d = Dir(who);
-        double bodyCx = b.X;
-        double bodyCy = b.Y - PetR;
+        // 슬라이드·누워 있는 몸은 서 있는 원 대신 낮고 앞으로 나간 원 (그림의 납작한 몸과 맞춘다)
+        bool low = T.Slides && (b.SlideLeft > 0 || Clock < b.SlideRecoverUntil);
+        double bodyR = low ? SlideBodyR : PetR;
+        double bodyCx = low ? b.X + b.SlideDir * .5 * PetR : b.X;
+        double bodyCy = low ? b.Y - bodyR : b.Y - PetR;
         double dx = BallX - bodyCx;
         double dy = BallY - bodyCy;
         double distSq = dx * dx + dy * dy;
-        double minDist = BallR + PetR;
+        double minDist = BallR + bodyR;
 
         if (distSq > minDist * minDist) return;
 
@@ -656,17 +713,21 @@ sealed partial class VolleySim
         // 스파이크·블로킹 직후 0.15초는 같은 선수와 다시 겹쳐도 밀어내기만 (계산한 길이 깨지지 않게)
         if (T.SpikeAssist && lastStrikeBy == who && Clock - lastStrikeAt < StrikeGuardSec) return;
 
+        if (low) { Dig(who, b, d); return; }                         // 몸을 던져 받아 올린다 (꼭지 실수 없음)
+
         if (StemHitsHead(nx, ny)) { Fumble(who); return; }
 
         bool spikeReq = b.SpikeReq && !b.OnGround && !(T.SpikeAssist && nx * d < -0.35); // 공이 몸 뒤에 있으면 스파이크가 아니다
         if (spikeReq && b.SmartSpike && !(BallY <= NetTopY && AimOver(BallX, BallY, d, SpikeSpeed, T.SpikeMinSpeed * ScaleRatio, SpikeVy, out _, out _))) spikeReq = false; // 봇은 못 넘길 공을 네트에 꽂지 않는다
-        if (spikeReq)
-        {
-            ExecuteSpike(who);
-        }
-        else if (T.Blocks && IsBlocking(who) && !b.SpikeReq && LastHitActor is { } last && last != who && ny <= 0.3)
+        // 블로킹: 블로킹 점프로 상대 공에 닿았다. 스파이크 하려 하지 않았거나, 자동 스파이크일 때는 상대의 스파이크를 막는다 (그 밖의 공은 스파이크가 먼저)
+        bool blockOk = T.Blocks && IsBlocking(who) && LastHitActor is { } last && last != who && ny <= 0.3 && !(T.AutoSpike && b.BlockedSerial == b.JumpSerial);
+        if (blockOk && (!b.SpikeReq || (T.AutoSpike && LastTouch == Touch.Spike)))
         {
             Block(who, b, d, nx, ny);
+        }
+        else if (spikeReq)
+        {
+            ExecuteSpike(who);
         }
         else
         {
@@ -691,6 +752,8 @@ sealed partial class VolleySim
     // 공에 닿았음을 적는다 (마지막 닿음·랠리 타구 수·새·스파이크 지켜보기)
     void Touched(Actor who, Touch how)
     {
+        TouchSerial++;
+        if (digWatchBy >= 0 && digWatchBy != (int)who) digWatchBy = -1;      // 다른 쪽이 만졌으면 그 디그는 이미 넘어간 것
         if (LastHitActor != who || Clock - lastTouchAt > .25) RallyTouches++; // 한 번 닿은 것을 프레임마다 세지 않는다 (표의 타구 수)
         lastTouchAt = Clock;
         LastHitActor = who;
@@ -828,6 +891,7 @@ sealed partial class VolleySim
         DustY = FloorY;
         DustTimer = 0.5;
 
+        digWatchBy = -1;
         if (StoneOn) stoneEndAt = Math.Min(stoneEndAt, Clock + StoneSinkAfterTripSec); // 득점 뒤에는 돌도 가라앉는다
         OnEvent?.Invoke("score", scorer);
 
@@ -848,10 +912,12 @@ sealed partial class VolleySim
     // 넘어진 자세 (YELL 2026-11-18: slide — 앞으로 엎어짐)
     public const string TripPose = "slide";
     public const string BlockPose = "block";
+    public const string DivePose = "dive";   // 몸을 던진 자세 (YELL 2026-11-26: 넘어짐 slide 와 구분되게 눈 뜨고 납작 — 던질 때 wide·o, 누워 있을 때 ^^ 큰 웃음)
 
     string PoseOf(Actor who, Body b)
     {
         if (Clock < b.TripUntil) return TripPose;
+        if (T.Slides && (b.SlideLeft > 0 || Clock < b.SlideRecoverUntil)) return DivePose;
         if (Clock < b.FumbleUntil) return "shock";
         if (SpikeTimer > 0 && LastHitActor == who && LastTouch == Touch.Spike) return "angry";
         if (T.Blocks && IsBlocking(who)) return BlockPose;
@@ -883,7 +949,7 @@ sealed partial class VolleySim
             return;
         }
 
-        // 경기 중 포즈: 넘어짐 > 꼭지 움찔(shock) > 스파이크 직후 angry > 블로킹 > 공중 hop > 걷기
+        // 경기 중 포즈: 넘어짐 > 슬라이드·누움(dive) > 꼭지 움찔(shock) > 스파이크 직후 angry > 블로킹 > 공중 hop > 걷기
         P.Pose = PoseOf(Actor.Player, P);
         R.Pose = PoseOf(Actor.Rival, R);
     }

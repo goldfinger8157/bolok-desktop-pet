@@ -18,7 +18,10 @@ static class Snd
 {
     static readonly string[] names = { "empty", "pistol", "mg", "shotgun", "hit", "pick", "hurt", "boom", "reload" };
 
+    static readonly string[] popNames = { "pop0", "pop1", "pop2", "pop3", "pop4", "pop5" };   // 팡 (버그 떼): 번호가 오를수록 반음 둘씩 높다
+
     public static string Name(Sound s) => names[(int)s];
+    public static void Pop(int step, bool big = false) => Sfx.Play(big ? "popbig" : popNames[Math.Clamp(step, 0, 5)]);   // 짧은 「톡+뽁」 (한 소리에 미리 섞어 넣는다: 한 번에 한 소리뿐이라)
     public static void Play(Sound s) => Sfx.Play(names[(int)s]);
 
     // 게임의 사건 이름표로: Snd.Play(table, "kill"). 표에 없는 사건은 소리가 없다

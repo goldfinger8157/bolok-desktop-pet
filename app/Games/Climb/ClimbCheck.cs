@@ -21,7 +21,15 @@ static partial class ClimbCheck
         string draw = CheckDraw();
         string bots = CheckBots();
         string theme = CheckTheme();
-        return $"클라이밍: 같은 씨 같은 판({determinism}) · 덩굴 공정함({fair}) · 늘 보인다({seen}) · 막대({bar}) · 떨어짐({fall}) · 조작·기록·Esc({game}) · 판 자리({place}) · 그림({art}) · 그리기({draw}) · 봇 표({bots}) · 테마({theme}) 모두 통과 ({sw.Elapsed.TotalSeconds:0.0}초)";
+        string combo = CheckCombo();
+        string comboDet = CheckComboDeterminism();
+        string removed = CheckRemoved();
+        string cafePlace = CheckCafePlace();
+        string cafeGeo = CheckCafeGeometry();
+        string cafeRules = CheckCafeRules();
+        string cafeGame = CheckCafeGame();
+        string comboFx = CheckComboFx();
+        return $"클라이밍: 같은 씨 같은 판({determinism}) · 덩굴 공정함({fair}) · 늘 보인다({seen}) · 막대({bar}) · 떨어짐({fall}) · 조작·기록·Esc({game}) · 판 자리({place}) · 그림({art}) · 그리기({draw}) · 봇 표({bots}) · 테마({theme}) · 콤보({combo}) · 콤보 같은 씨({comboDet}) · 없앤 것({removed}) · 카페 자리({cafePlace}) · 카페 그림 자리({cafeGeo}) · 카페 드나들기({cafeRules}) · 카페 게임({cafeGame}) · 콤보 효과({comboFx}) 모두 통과 ({sw.Elapsed.TotalSeconds:0.0}초)";
     }
 
     // ── 같은 씨 = 같은 판 ──
@@ -95,6 +103,7 @@ static partial class ClimbCheck
             for (int i = 2; i <= N + 1; i++)
             {
                 if (i <= N && dir[i] == dir[i - 1]) { run++; continue; }
+                if (i > N) break;   // 마지막 줄은 N 에서 잘렸을 수 있다 (더 이어질 줄을 한 칸으로 세지 않는다)
                 longest = Math.Max(longest, run);
                 Expect(run <= T.MaxRun, $"가장 긴 줄 {run} (씨 {seed}, 잎 {start})");
                 if (start < T.EasyLeaves) Expect(run >= 2, $"처음 20잎은 L≥2 (씨 {seed}, 잎 {start})");
@@ -117,10 +126,8 @@ static partial class ClimbCheck
                 kinds++;
                 Expect(i - last >= 3, $"기믹 잎 사이 3칸 이상 (씨 {seed}, 잎 {last}·{i})");
                 last = i;
-                int from = kind[i] switch { ClimbKind.Berry => T.BerryFrom, ClimbKind.Puff => T.PuffFrom, ClimbKind.Wilt => T.WiltFrom, ClimbKind.Curl => T.CurlFrom, _ => 0 };
+                int from = kind[i] switch { ClimbKind.Berry => T.BerryFrom, ClimbKind.Puff => T.PuffFrom, ClimbKind.Wilt => T.WiltFrom, _ => 0 };
                 Expect(i >= from, $"{kind[i]} 는 {from}잎부터 (잎 {i})");
-                if (kind[i] == ClimbKind.Curl)
-                    for (int j = i + 1; j <= Math.Min(N, i + T.CurlUp + 3); j++) Expect(kind[j] == ClimbKind.Leaf, $"덩굴손이 내려놓는 잎과 그 뒤 3잎은 보통 잎 (씨 {seed}, 잎 {i}·{j})");
             }
             // 구름 띠 길이 8~12
             for (int i = 1; i <= N; i++)
@@ -132,7 +139,7 @@ static partial class ClimbCheck
                 Expect(len >= T.CloudLenLo && len <= T.CloudLenHi, $"구름 띠 길이 {len} (씨 {seed}, 잎 {i})");
             }
         }
-        double[] want = { .30, .35, .45, .50 };
+        double[] want = { .28, .35, .45, .57 };   // 0~29 · 30~149 · 150~299 · 300~ (300~599 는 40 → 55% 로 올라 평균 49%, 600~ 은 55%)
         var got = Enumerable.Range(0, 4).Select(z => flips[z] / counts[z]).ToArray();
         for (int z = 0; z < 4; z++) Expect(Math.Abs(got[z] - want[z]) <= .05, $"구간 {z} 꺾임 비율 {got[z] * 100:0.0}% (표 {want[z] * 100:0}% ±5%p)");
         return $"500씨×1000잎: 가장 긴 줄 {longest}·번갈아 {zigMax}·꺾임 {string.Join("/", got.Select(x => (x * 100).ToString("0")))}%·기믹 {kinds}개";
@@ -183,7 +190,7 @@ static partial class ClimbCheck
         Run(t, 1);
         double want = 1 - T.Gain * t.Pace(1) * 1;
         Expect(Math.Abs(t.Bar - want) < 1e-6, $"Pace 대로 준다 ({t.Bar:0.0000} / {want:0.0000})");
-        Expect(Math.Abs(t.Pace(0) - 1.4) < 1e-9 && Math.Abs(t.Pace(10000) - T.PaceMax) < 1e-9 && t.Pace(200) > t.Pace(100), "Pace 는 1.4 에서 올라 6.5 에서 멈춘다");
+        Expect(Math.Abs(t.Pace(0) - 1.4) < 1e-9 && Math.Abs(t.Pace(10000) - T.PaceMax) < 1e-9 && t.Pace(200) > t.Pace(100) && T.PaceMax == 6.8, "Pace 는 1.4 에서 올라 6.8 에서 멈춘다");
         double b0 = t.Bar; Hop(t);
         Expect(Math.Abs(t.Bar - Math.Min(1, b0 + T.Gain)) < 1e-9, "한 칸 오르면 Gain 만큼 찬다");
         var t2 = Fresh(); Hop(t2);
@@ -201,7 +208,7 @@ static partial class ClimbCheck
         Expect(Math.Abs(t4.Bar - (.3 + T.Gain + T.BerryBar)) < 1e-9 && t4.Berries == 1, "열매는 막대 +0.2");
         var t5 = Fresh(); Hop(t5); t5.At(2).Kind = ClimbKind.Flower; t5.Bar = .2; Hop(t5);
         Expect(t5.Bar == 1, "이정표(큰 꽃잎)에서 막대가 가득");
-        // 멈춤: 홀씨로 돌아오는 동안·덩굴손이 던져 올리는 동안·내려선 뒤 잠깐
+        // 멈춤: 홀씨로 돌아오는 동안
         var t6 = Fresh(); Hop(t6); t6.Puff = true; t6.Bar = .5;
         t6.Press(-t6.At(2).Dir);
         Expect(t6.Saves == 1 && !t6.Puff && !t6.Done && t6.N == 1, "틀린 쪽을 밟아도 홀씨가 있으면 한 번 산다");
@@ -211,15 +218,6 @@ static partial class ClimbCheck
         Expect(t6.N == n6, "홀씨로 돌아오는 동안 조작은 안 먹는다");
         Run(t6, .1); Hop(t6);
         Expect(t6.N == n6 + 1, "돌아온 뒤에는 다시 오른다");
-        var t7 = Fresh(); Hop(t7); t7.At(2).Kind = ClimbKind.Curl; t7.Bar = .8; Hop(t7);
-        Expect(t7.N == 2 + T.CurlUp && t7.Lifts == 1, $"덩굴손은 {T.CurlUp}잎 위로 던져 올린다 (점수 +{T.CurlUp})");
-        double lift0 = t7.Bar;
-        Run(t7, T.LiftSec - .05);
-        Expect(t7.Bar == lift0, "던져 올리는 동안 막대가 안 준다");
-        Run(t7, .05 + T.CleanGrace - .05);
-        Expect(t7.Bar == lift0, "내려선 뒤 0.4초도 안 준다");
-        Run(t7, .2);
-        Expect(t7.Bar < lift0, "그 뒤에는 다시 준다");
         // 홀씨는 막대 0 을 못 살린다
         var t8 = Fresh(); Hop(t8); t8.Puff = true; t8.Bar = .002;
         Run(t8, .2);
@@ -230,7 +228,7 @@ static partial class ClimbCheck
             var p = Play(seed, ClimbSkill.Probe, maxLeaves: 600);
             Expect(p.N >= 600 && !p.Done, $"검사용 봇은 600잎까지 산다 (씨 {seed}: {p.N}잎 {p.Why})");
         }
-        return "첫 키 전 · Pace · 1에서 멈춤 · 0 이면 끝 · 열매·이정표 · 멈춤 셋 · 검사용 봇 600잎";
+        return "첫 키 전 · Pace · 1에서 멈춤 · 0 이면 끝 · 열매·이정표 · 홀씨 멈춤 · 검사용 봇 600잎";
     }
 
     // ── 떨어짐 ──
@@ -364,7 +362,7 @@ static partial class ClimbCheck
         var a = Play(11, ClimbSkill.Good); var b = Play(12, ClimbSkill.Easy);
         rg.KeepForCheck(a);
         var st = rg.State;
-        Expect(st.Best == a.N && st.Plays == 1 && st.Last == a.N && st.Berries == a.Berries && st.Friends == a.Friends, $"기록: 최고·판 수·마지막 ({st})");
+        Expect(st.Best == a.N && st.Plays == 1 && st.Last == a.N && st.Berries == a.Berries && st.MaxCombo == a.MaxCombo && st.Cafes == a.Cafes, $"기록: 최고·판 수·마지막·가장 긴 콤보·카페 ({st})");
         rg.KeepForCheck(b);
         Expect(rg.State.Best == Math.Max(a.N, b.N) && rg.State.Plays == 2 && rg.State.Last == b.N, "더 낮은 판은 최고를 안 낮춘다");
         var before = rg.State;
@@ -375,8 +373,11 @@ static partial class ClimbCheck
         Expect(rg2.State == rg.State, "저장했다 읽으면 같은 값");
         var broken = new ClimbGame(host); broken.LoadState("{깨진");
         Expect(broken.State.Plays == 0 && broken.SaveState() == null, "깨진 기록은 버린다");
-        var neg = new ClimbGame(host); neg.LoadState("{\"Best\":-5,\"Plays\":-1,\"Last\":0,\"Berries\":0,\"Friends\":0}");
-        Expect(neg.State.Best == 0 && neg.State.Plays == 0, "음수 기록은 0 으로");
+        var neg = new ClimbGame(host); neg.LoadState("{\"Best\":-5,\"Plays\":-1,\"Last\":0,\"Berries\":0,\"MaxCombo\":-3,\"Cafes\":-1}");
+        Expect(neg.State.Best == 0 && neg.State.Plays == 0 && neg.State.MaxCombo == 0 && neg.State.Cafes == 0, "음수 기록은 0 으로");
+        var old = new ClimbGame(host); old.LoadState("{\"Best\":210,\"Plays\":14,\"Last\":88,\"Berries\":120,\"Friends\":2}");   // 옛 저장: Friends 는 버려지고 최고·판 수는 그대로
+        Expect(old.State == (210, 14, 88, 120, 0, 0), $"옛 저장(Friends 있음)을 읽어도 최고·판 수가 그대로 ({old.State})");
+        Expect(old.SaveState()!.Contains("MaxCombo") && !old.SaveState()!.Contains("Friends"), "새로 저장하면 Friends 없이 MaxCombo·Cafes");
         Expect(rg.Stats().Single().Played && rg.Stats().Single().Value.Contains(rg.State.Best.ToString("N0", L.Culture)), "설정 → 상태 줄");
         // 왕관 잎 = 지난 최고 자리
         var cg = new ClimbGame(host); cg.LoadState(json);
@@ -421,7 +422,7 @@ static partial class ClimbCheck
         dg.Command(new[] { "climb" });
         Expect(dg.Running, "디버그 climb 으로 시작");
         var dt = dg.Ses; _ = dt;
-        dg.Command(new[] { "climb", "bar", "40" }); dg.Command(new[] { "climb", "put", "berry" });
+        dg.Command(new[] { "climb", "bar", "40" }); dg.Command(new[] { "climb", "put", "berry" }); dg.Command(new[] { "climb", "combo", "7" }); dg.Command(new[] { "climb", "put", "cafe" });
         dg.Frame(1 / 60.0);
         dg.Command(new[] { "climb", "stop" });
         Expect(!dg.Running && dg.State.Plays == 0, "climb stop: 바로 끝, 기록 안 남김 (연습 판)");
@@ -452,8 +453,10 @@ static partial class ClimbCheck
             foreach (var file in Directory.GetFiles(src, "*.cs"))
             {
                 string name = Path.GetFileName(file);
-                if (name is "ClimbCheck.cs" or "ClimbScenes.cs" or "ClimbDesk.cs") continue;
+                if (name is "ClimbCheck.cs" or "ClimbScenes.cs" or "ClimbDesk.cs" or "ClimbCheckCombo.cs" or "ClimbScenesFx.cs") continue;
                 string body = File.ReadAllText(file);
+                foreach (string gone in new[] { "Curl", "Lift", "Friend", "Perch", "Bird", "SkipOpen", "CarrierPaint" })   // 없앤 것(건너뛰기·친구)이 소스에 안 남았다
+                    Expect(!body.Contains(gone), $"{name} 에 없앤 것 {gone} 이 남았다");
                 foreach (string bad in new[] { "DrawString", "TextRenderer", "DrawText", "AddString", "MeasureString" })
                     Expect(!body.Contains(bad), $"{name} 에 글자 그리기 {bad}");
                 foreach (string bad in new[] { "무한", "Infinite", "Stairs" }) Expect(!body.Contains(bad), $"{name} 에 {bad}");
@@ -676,23 +679,32 @@ static partial class ClimbCheck
         return $"두 모양·다섯 테마 다시 칠하기 모자람 0·기다리는 동안 멈춤·창 따라가며 지움·프레임 메모리 {worstBytes}B";
     }
 
-    // ── 봇 표: 계획 7장의 목표 ──
+    // ── 봇 표: docs/climb-combo.md 2-2 의 새 목표 (씨 500) ──
     static string CheckBots()
     {
         var easy = Run(DefaultSeeds, ClimbSkill.Easy);
         var good = Run(DefaultSeeds, ClimbSkill.Good);
-        double E(double a) => a * 100.0 / DefaultSeeds;
-        Expect(easy.Avg is >= 60 and <= 100, $"느긋한 봇 평균 {easy.Avg:0} (60~100)");
-        Expect(easy.MedianLeaves is >= 50 and <= 80, $"느긋한 봇 가운데 값 {easy.MedianLeaves:0} (50~80)");
-        Expect(easy.MedianSec is >= 20 and <= 40, $"느긋한 봇 한 판 {easy.MedianSec:0.0}초 (20~40)");
+        BotTargets(easy, good);
+        return $"느긋한 평균 {easy.Avg:0}잎·{easy.MedianSec:0}초 틀림+시든 잎 {easy.Pct(easy.Wrong + easy.Wilt):0}% / 잘하는 평균 {good.Avg:0}잎·{good.MedianSec:0}초 틀림 {good.Pct(good.Wrong):0}% (씨 {DefaultSeeds})";
+    }
+
+    static void BotTargets(Tally easy, Tally good)
+    {
+        Expect(easy.Avg is >= 90 and <= 125, $"느긋한 봇 평균 {easy.Avg:0} (90~125)");
+        Expect(easy.MedianLeaves is >= 80 and <= 110, $"느긋한 봇 가운데 값 {easy.MedianLeaves:0} (80~110)");
+        Expect(easy.MedianSec is >= 30 and <= 45, $"느긋한 봇 한 판 {easy.MedianSec:0.0}초 (30~45)");
         Expect(easy.Past(20) >= .85, $"느긋한 봇 20잎 넘김 {easy.Past(20) * 100:0}% (85% 이상)");
-        Expect(E(easy.Wrong) is >= 55 and <= 75, $"느긋한 봇 틀림으로 끝남 {E(easy.Wrong):0}% (55~75)");
-        Expect(good.Avg is >= 300 and <= 450, $"잘하는 봇 평균 {good.Avg:0} (300~450)");
-        Expect(good.MedianLeaves is >= 280 and <= 420, $"잘하는 봇 가운데 값 {good.MedianLeaves:0} (280~420)");
-        Expect(good.MedianSec is >= 60 and <= 100, $"잘하는 봇 한 판 {good.MedianSec:0.0}초 (60~100)");
+        Expect(easy.Pct(easy.Wrong + easy.Wilt) >= 75 && easy.Pct(easy.Time) <= 25, $"느긋한 봇 틀림+시든 잎 {easy.Pct(easy.Wrong + easy.Wilt):0}%·시간 {easy.Pct(easy.Time):0}% (틀림+시든 잎 ≥ 75·시간 ≤ 25)");
+        Expect(easy.Pct(easy.Wrong) >= 70, $"느긋한 봇 틀린 쪽으로 끝남 {easy.Pct(easy.Wrong):0}% (≥ 70)");
+        Expect(easy.SecP95 <= 120, $"느긋한 봇 95%가 120초 안 ({easy.SecP95:0}초)");
+        Expect(good.Avg is >= 400 and <= 540, $"잘하는 봇 평균 {good.Avg:0} (400~540)");
+        Expect(good.MedianLeaves is >= 400 and <= 520, $"잘하는 봇 가운데 값 {good.MedianLeaves:0} (400~520)");
+        Expect(good.MedianSec is >= 75 and <= 100, $"잘하는 봇 한 판 {good.MedianSec:0.0}초 (75~100)");
         Expect(good.Past(20) >= .99, $"잘하는 봇 20잎 넘김 {good.Past(20) * 100:0.0}% (99% 이상)");
-        Expect(E(good.Time) is >= 40 and <= 60, $"잘하는 봇 시간으로 끝남 {E(good.Time):0}% (40~60)");
-        Expect(good.SecP95 <= 180, $"잘하는 봇 95%가 180초 안 ({good.SecP95:0}초)");
-        return $"느긋한 평균 {easy.Avg:0}잎·{easy.MedianSec:0}초 / 잘하는 평균 {good.Avg:0}잎·{good.MedianSec:0}초 (씨 {DefaultSeeds})";
+        Expect(good.Pct(good.Wrong) >= 70, $"잘하는 봇 틀린 쪽으로 끝남 {good.Pct(good.Wrong):0}% (≥ 70)");
+        Expect(good.Pct(good.Time) is >= 10 and <= 28, $"잘하는 봇 시간으로 끝남 {good.Pct(good.Time):0}% (10~28)");
+        Expect(good.SecP95 <= 210, $"잘하는 봇 95%가 210초 안 ({good.SecP95:0}초)");
+        Expect(easy.TierShare(1) is >= .20 and <= .55 && easy.TierShare(3) < .05, $"느긋한 봇 콤보 단계 몫 1단 {easy.TierShare(1) * 100:0}%·3단 {easy.TierShare(3) * 100:0}% (1단 20~55·3단 5 아래)");
+        Expect(good.TierShare(3) >= .55, $"잘하는 봇 3단 몫 {good.TierShare(3) * 100:0}% (55% 이상)");
     }
 }

@@ -3,22 +3,14 @@ using System.Text;
 namespace Bolok;
 
 // 클라이밍: 장면 그려 보기(--mode-scene climb[@배율] 그림.png [값]), 속도 재기(--mode-bench climb)
-//   값 없음 · panel: 모양 둘(A2·A4) × 배경 둘(문서 창 안·바탕화면) × 장면 다섯(오르는 중·100잎 친구·떨어짐·결과·새 기록 결과). 그림.png = 모두 이은 한 장, 그림-A2-window.png 처럼 따로도
+//   값 없음 · panel: 모양 둘(A2·A4) × 배경 둘(문서 창 안·바탕화면) × 장면 다섯(오르는 중·콤보 3단·떨어짐·결과·새 기록 결과). 그림.png = 모두 이은 한 장, 그림-A2-window.png 처럼 따로도
 //   값 check: 자가 검사만 · 값 table[:씨 수[:full[:손잡이]]]: 봇 표 · 값 art: 만든 그림 모음
-//   값 theme[:덩굴|desk|sweet|balloon|block]: 테마마다 theme-<이름>-window.png (오르는 중·친구·떨어짐·결과) · -dark.png · -moments.png (서 있는 발판 셋·시간 다 돼 떨어짐·결과)
-//   값 skip[:테마]: 건너뛰기(덩굴손) 장면 띠 skip-<이름>.png (한 칸 폴짝 → 5잎 → 내려섬, 위아래 두 줄)
-//   값 replay:씨:테마:처음:끝[:한 줄 장 수[:지난 최고[:틀리게 한 번 누를 잎]]]: 그 씨의 판을 바르게 올라가며 잎 처음~끝마다 한 장씩 (친구·건너뛰기·구름 띠·시든 잎 그대로, 어른 볼록이) 그림.png 한 장에 잇고, 사건·앞 발판 보임 비율을 적는다. 버그 재현용
+//   값 theme[:덩굴|desk|sweet|balloon|block]: 테마마다 theme-<이름>-window.png (오르는 중·콤보 3단·떨어짐·결과) · -dark.png · -moments.png (서 있는 발판 셋·시간 다 돼 떨어짐·결과)
+//   값 combo[:테마|a4]: 콤보 단계 0~3 · 5마다 터짐 · 끊김을 한 장에 (combo-<이름>.png, 밝은 창·어두운 창) / 값 cafe[:테마|a4]: 카페 들어가고 나오기 한 장 (cafe-<이름>.png) — ClimbScenesFx.cs
+//   값 replay:씨:테마:처음:끝[:한 줄 장 수[:지난 최고[:틀리게 한 번 누를 잎]]]: 그 씨의 판을 바르게 올라가며 잎 처음~끝마다 한 장씩 (구름 띠·시든 잎·카페 그대로, 어른 볼록이) 그림.png 한 장에 잇고, 사건·앞 발판 보임 비율을 적는다. 버그 재현용
 static partial class ClimbCheck
 {
-    static readonly string[] Friends = { "fox", "cat", "shiba", "redpanda", "corgi" };
-
-    static ClimbGame NewGame(SceneHost host)
-    {
-        var g = new ClimbGame(host);
-        g.FriendList = () => Friends;
-        g.FriendArt = sp => Sprites.Drawn(PetArt.Embedded, sp, null);
-        return g;
-    }
+    static ClimbGame NewGame(SceneHost host) => new ClimbGame(host);
 
     public static void Scene(string path, int k)
     {
@@ -62,7 +54,8 @@ static partial class ClimbCheck
         int f = Math.Min(Math.Max(k, 2), 4);
         string dir = Path.GetDirectoryName(path) ?? "", stem = Path.GetFileNameWithoutExtension(path), ext = Path.GetExtension(path);
         if (arg is { } ta2 && (ta2 == "theme" || ta2.StartsWith("theme:"))) { ThemeScenes(dir, f, ta2.Length > 6 ? ta2[6..] : null); return; }
-        if (arg is { } sa && (sa == "skip" || sa.StartsWith("skip:"))) { SkipScenes(dir, f, sa.Length > 5 ? sa[5..] : null); return; }
+        if (arg is { } ca && (ca == "combo" || ca.StartsWith("combo:"))) { ComboScenes(dir, f, ca.Length > 6 ? ca[6..] : null); return; }
+        if (arg is { } fa && (fa == "cafe" || fa.StartsWith("cafe:"))) { CafeScenes(dir, f, fa.Length > 5 ? fa[5..] : null); return; }
         if (arg is { } ra && ra.StartsWith("replay:")) { ReplayScenes(path, f, ra[7..]); return; }
         var rows = new List<Bitmap>();
         foreach (var look in new[] { ClimbLook.A2, ClimbLook.A4 })
@@ -88,11 +81,11 @@ static partial class ClimbCheck
         all.Save(path);
     }
 
-    enum Shot { Mid, Friend, Fall, Result, NewBest, Stand1, Stand2, Stand3, FallTime, ResultTime, Save, Weak }
+    enum Shot { Mid, Combo, CafeIn, Fall, Result, NewBest, Stand1, Stand2, Stand3, FallTime, ResultTime, Save, Weak }
 
     // 시안과 같은 덩굴 모양 (잎 −1 ~ +8 의 방향): 시안 A 장면의 지그재그
     static readonly int[] MidDirs = { -1, -1, 1, 1, 1, -1, -1, -1, -1, 1 };
-    static readonly int[] FriendDirs = { 1, -1, -1, 1, 1, 1, -1, -1, -1, 1 };
+    static int[] CafeDirs(int d) => new[] { d, d, -d, -d, -d, d, d, -d, -d, d };   // 카페 발판 N 은 d 쪽으로 올라왔고 길은 그 반대로 꺾인다
 
     static void Shape(Climb t, int[] dirsFrom)   // dirsFrom[0] = 잎 N−1 의 방향, [1] = N, … [9] = N+8
     {
@@ -104,16 +97,16 @@ static partial class ClimbCheck
     static (ClimbGame, Climb) Make(SceneHost host, Shot shot, ClimbLook look, Rectangle panel, ClimbTheme theme = ClimbTheme.Vine, bool fog = false)
     {
         var game = NewGame(host);
-        game.LoadState("{\"Best\":91,\"Plays\":9,\"Last\":60,\"Berries\":40,\"Friends\":2}");
-        int start = shot switch { Shot.Friend => 100, Shot.NewBest => 124, _ => 87 };
+        game.LoadState("{\"Best\":91,\"Plays\":9,\"Last\":60,\"Berries\":40}");
+        int start = shot switch { Shot.NewBest => 124, _ => 87 };
         var t = new Climb(5, null, start) { Best = 91 };
-        Shape(t, shot == Shot.Friend ? FriendDirs : MidDirs);
-        for (int j = t.N - 3; j <= t.N + 12; j++) { t.At(j).Kind = ClimbKind.Leaf; t.At(j).Fog = false; }
-        if (shot != Shot.Friend) { t.At(t.N + 2).Kind = ClimbKind.Wilt; t.At(t.N + 3).Kind = ClimbKind.Berry; t.At(t.N + 5).Kind = ClimbKind.Puff; t.At(t.N + 6).Kind = ClimbKind.Curl; }
-        else { t.At(t.N).Kind = ClimbKind.Flower; t.At(t.N + 3).Kind = ClimbKind.Berry; }
+        Shape(t, shot == Shot.CafeIn ? CafeDirs(1) : MidDirs);
+        for (int j = t.N - 3; j <= t.N + 12; j++) { t.At(j).Kind = ClimbKind.Leaf; t.At(j).Fog = false; t.At(j).Cafe = 0; t.At(j).Visited = false; }
+        if (shot != Shot.CafeIn) { t.At(t.N + 2).Kind = ClimbKind.Wilt; t.At(t.N + 3).Kind = ClimbKind.Berry; t.At(t.N + 5).Kind = ClimbKind.Puff; }
+        else t.PutCafe(1);
         t.State = Climb.Phase.Run;
         if (fog) for (int j = t.N + 7; j <= t.N + 10; j++) t.At(j).Fog = true;
-        t.Bar = shot switch { Shot.Friend => 1, Shot.Stand1 => .8, Shot.Stand2 => .3, Shot.Stand3 => .1, Shot.FallTime or Shot.ResultTime => .02, _ => .62 };
+        t.Bar = shot switch { Shot.CafeIn => .45, Shot.Stand1 => .8, Shot.Stand2 => .3, Shot.Stand3 => .1, Shot.FallTime or Shot.ResultTime => .02, _ => .62 };
         t.GraceLeft = shot is Shot.FallTime or Shot.ResultTime ? 0 : 99;
         t.Steps = 5;   // 시작 안내 말풍선이 안 뜨게
         if (shot == Shot.Mid) t.Puff = false;
@@ -129,7 +122,8 @@ static partial class ClimbCheck
             case Shot.Weak: Run(10); t.Press(t.At(t.N + 1).Dir); Run(36); break;                                      // 약한 발판 위에서 버티는 중
             case Shot.FallTime: Run(10); while (!t.Done) game.Frame(1 / 60.0); while (t.SinceFall < .45) game.Frame(1 / 60.0); break;   // 시간이 다 돼 무너지며 떨어지는 중
             case Shot.ResultTime: Run(10); while (!t.Done) game.Frame(1 / 60.0); while (t.State != Climb.Phase.Over || t.EndedFor < .3) game.Frame(1 / 60.0); break;
-            case Shot.Friend: t.Clock = 3; t.MileAt = 2.9; t.Fire("zone"); Run(6); break;
+            case Shot.Combo: t.SetCombo(42); Run(10); t.Press(t.At(t.N + 1).Dir); Run(2); break;                  // 3단 콤보로 오르는 중
+            case Shot.CafeIn: Run(10); t.Press(1); Run(14); Run(60); break;                                         // 카페에 앉아 홀짝
             case Shot.Fall:
                 Run(20);
                 t.Press(-t.At(t.N + 1).Dir);
@@ -153,7 +147,7 @@ static partial class ClimbCheck
             ? look == ClimbLook.A2 ? new Rectangle(win.Right - 80 - pw, win.Bottom - 60 - ph, pw, ph) : new Rectangle(win.Right - pw / 2, win.Bottom - 50 - ph, pw, ph)
             : new Rectangle(800, 300, pw, ph);
         var view = Rectangle.Inflate(panel, 40, 40);
-        var shots = shotList ?? new[] { Shot.Mid, Shot.Friend, Shot.Fall, Shot.Result, Shot.NewBest };
+        var shots = shotList ?? new[] { Shot.Mid, Shot.Combo, Shot.Fall, Shot.Result, Shot.NewBest };
         var bmp = new Bitmap((view.Width + 12) * shots.Length + 12, view.Height + 24);
         using var g = Graphics.FromImage(bmp);
         g.Clear(Color.FromArgb(244, 241, 236));
@@ -175,13 +169,13 @@ static partial class ClimbCheck
 
     static readonly (ClimbTheme T, string Name)[] ThemeNames = { (ClimbTheme.Vine, "vine"), (ClimbTheme.Desk, "desk"), (ClimbTheme.Sweet, "sweet"), (ClimbTheme.Balloon, "balloon"), (ClimbTheme.Block, "block") };
 
-    // 테마마다 장면: window (밝은 창: 오르는 중·친구·떨어짐·결과) · dark (어두운 창) · moments (서 있는 발판 싱싱·조짐·곧·시간 다 돼 떨어짐·결과)
+    // 테마마다 장면: window (밝은 창: 오르는 중·콤보 3단·떨어짐·결과) · dark (어두운 창) · moments (서 있는 발판 싱싱·조짐·곧·시간 다 돼 떨어짐·결과)
     static void ThemeScenes(string dir, int f, string? only)
     {
         foreach (var (th, name) in ThemeNames)
         {
             if (only != null && only != name) continue;
-            var four = new[] { Shot.Mid, Shot.Friend, Shot.Fall, Shot.Result };
+            var four = new[] { Shot.Mid, Shot.Combo, Shot.Fall, Shot.Result };
             using (var a = Row(ClimbLook.A2, "window", f, false, four, th, true)) a.Save(Path.Combine(dir, $"theme-{name}-window.png"));
             using (var b = Row(ClimbLook.A2, "window", f, true, four, th, true)) b.Save(Path.Combine(dir, $"theme-{name}-dark.png"));
             using (var c = Row(ClimbLook.A2, "window", f, false, new[] { Shot.Stand1, Shot.Stand2, Shot.Stand3, Shot.FallTime, Shot.ResultTime }, th, true)) c.Save(Path.Combine(dir, $"theme-{name}-moments.png"));
@@ -224,7 +218,7 @@ static partial class ClimbCheck
             ov.Render(fg);
             int x = 6 + shot % cols * (view.Width + 6), y = 6 + shot / cols * (view.Height + 6);
             sg.DrawImage(frame, new Rectangle(x, y, view.Width, view.Height), view, GraphicsUnit.Pixel);
-            string kinds = string.Concat(Enumerable.Range(t.N + 1, 9).Select(j => t.At(j).Kind switch { ClimbKind.Flower => 'F', ClimbKind.Curl => 'C', ClimbKind.Wilt => 'W', ClimbKind.Berry => 'b', ClimbKind.Puff => 'p', _ => '.' }));
+            string kinds = string.Concat(Enumerable.Range(t.N + 1, 9).Select(j => t.At(j).Kind switch { ClimbKind.Flower => 'F', ClimbKind.Wilt => 'W', ClimbKind.Berry => 'b', ClimbKind.Puff => 'p', _ => '.' }));
             sg.DrawString($"{t.N} {kinds}", font, Brushes.Black, x + 4, y + 2);
             shot++;
             if (game.View!.Skin != null) Console.WriteLine($"{t.N}: 앞 발판 (판 안/보임) " + string.Join("  ", Enumerable.Range(t.N + 1, 6).Select(j => { var (a, b) = game.View!.StepSeen(t, j); return $"{j}:{a:0.00}/{b:0.00}"; })));
@@ -236,62 +230,13 @@ static partial class ClimbCheck
             for (int i = 0; i < 90 && t.SaveLeft > 0 || i < 1; i++) game.Frame(1 / 60.0);
             t.Press(t.At(t.N + 1).Dir);
             var rr = new List<Rectangle>(8);
-            for (int i = 0; i < 24 || t.LiftLeft > 0 || t.SaveLeft > 0; i++) { game.Frame(1 / 60.0); rr.Clear(); game.Dirty(ov, rr); ov.Render(fg); }   // 올라서 가만히 설 때까지 (프레임마다 실제처럼 다시 칠할 자리·그리기도)
+            for (int i = 0; i < 24 || t.SaveLeft > 0; i++) { game.Frame(1 / 60.0); rr.Clear(); game.Dirty(ov, rr); ov.Render(fg); }   // 올라서 가만히 설 때까지 (프레임마다 실제처럼 다시 칠할 자리·그리기도)
             if (t.N >= from && shot < n) Snap();
         }
         strip.Save(path);
         game.Stop(true);
         Console.WriteLine($"replay {seed} {th} {from}~{to}: {shot}장 → {path}");
     }
-
-    // 건너뛰기 장면 띠: 덩굴손을 밟는 순간 → 5잎을 지나는 동안 → 내려선 뒤 (잎 N+1 의 덩굴손, 지그재그로 꺾이는 줄기)
-    static readonly double[] SkipTimes = { .00, .07, .14, .24, .34, .44, .54, .66 };
-
-    static void SkipScenes(string dir, int f, string? only)
-    {
-        foreach (var (th, name) in ThemeNames)
-        {
-            if (only != null && only != name) continue;
-            var win = new Rectangle(160, 40, 1560, 1000);
-            int pw = ClimbPlace.Width(ClimbLook.A2) * f, ph = ClimbView.PH * f;
-            var panel = new Rectangle(win.Right - 80 - pw, win.Bottom - 60 - ph, pw, ph);
-            var view = Rectangle.Inflate(panel, 30, 20);
-            var host = new SceneHost("adult_sweet", f);
-            var game = NewGame(host);
-            var t = new Climb(5, null, 120) { Best = 91 };
-            Shape(t, MidDirs);
-            for (int j = t.N - 3; j <= t.N + 12; j++) { t.At(j).Kind = ClimbKind.Leaf; t.At(j).Fog = false; }
-            t.At(t.N + 1).Kind = ClimbKind.Curl; t.At(t.N + 8).Kind = ClimbKind.Berry;
-            t.State = Climb.Phase.Run; t.Bar = 1; t.GraceLeft = 99; t.Steps = 5;
-            game.Begin(t, ClimbLook.A2, panel, Session.Fake(panel, null, () => true), host.Pet.P.Stage, th);
-            for (int i = 0; i < 20; i++) game.Frame(1 / 60.0);
-            using var ov = host.Overlay(game);
-            using var strip = new Bitmap((view.Width + 8) * 4 + 8, (view.Height + 8) * 2 + 8);
-            using var sg = Graphics.FromImage(strip);
-            sg.Clear(Color.FromArgb(244, 241, 236));
-            using var frame = new Bitmap(1920, 1080);
-            using var fg = Graphics.FromImage(frame);
-            void Shot1(int idx)
-            {
-                ClimbDesk.Wallpaper(fg, new Rectangle(0, 0, 1920, 1080));
-                ClimbDesk.DocWindow(fg, win, false);
-                ov.Render(fg);
-                sg.DrawImage(frame, new Rectangle(8 + idx % 4 * (view.Width + 8), 8 + idx / 4 * (view.Height + 8), view.Width, view.Height), view, GraphicsUnit.Pixel);
-            }
-            int next = 0;
-            t.Press(t.At(t.N + 1).Dir);                                  // 덩굴손 잎으로 (건너뛰기 시작)
-            while (next < SkipTimes.Length)
-            {
-                double e = t.LiftLeft > 0 ? t.T.LiftSec - t.LiftLeft : t.T.LiftSec + .06;
-                if (e + 1e-9 >= SkipTimes[next]) { Shot1(next++); continue; }
-                game.Frame(1 / 60.0);
-            }
-            strip.Save(Path.Combine(dir, $"skip-{name}.png"));
-            game.Stop(true);
-            Console.WriteLine($"{name}: skip-{name}.png ({SkipTimes.Length}장)");
-        }
-    }
-
 
     // 만든 그림 모음
     static void ArtSheet(string path, int f)

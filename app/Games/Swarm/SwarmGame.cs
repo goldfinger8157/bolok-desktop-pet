@@ -90,8 +90,13 @@ sealed partial class SwarmGame : IGameMode
         swarm = s;
         s.OnEvent = e =>
         {
-            if (e == "fire") Snd.Play(FireSound[(int)s.Weapon.Which]);
-            else Snd.Play(Sounds, e);
+            if (e == "fire") { if (FireAllowed(s)) Snd.Play(FireSound[(int)s.Weapon.Which]); }   // 팡 직후 40ms 는 쏘는 소리가 못 자른다
+            else if (e == "kill" && Feel.On) { }                                                  // 죽는 소리는 팡 소리가 낸다 (SwarmFeel: 45ms 에 한 번)
+            else
+            {
+                if (HighSound(e)) lastHighAt = s.Clock;                                           // 쾅·다침·레벨 뒤 150ms 는 팡이 못 자른다
+                Snd.Play(Sounds, e);
+            }
             if (e is "level" or "hurt" or "big" or "bigkill" or "magnet" or "shoe" or "over" or "win" or "rush" or "grenade" or "throw" or "nade")
                 Dbg.Log("swarm", ("event", e), ("stage", s.Stage), ("sec", (int)s.Time), ("weapon", Arm.Name(s.Weapon.Which)), ("level", s.Level), ("kills", s.Kills), ("hp", s.Hp), ("foes", s.Foes.Count), ("shoes", s.Shoes), ("magnets", s.Magnets), ("boss", s.BossesKilled), ("grenades", s.Grenades), ("nadekills", s.NadeKills));
         };
@@ -102,6 +107,7 @@ sealed partial class SwarmGame : IGameMode
         gemRects.Clear();
         flakes.Trim(0);
         flameRect = Rectangle.Empty;
+        FeelReset();
     }
 
     public void Frame(double dt)
@@ -119,7 +125,10 @@ sealed partial class SwarmGame : IGameMode
             shiftWas = shift;
             if (shift && !prevShift && CanSwap(s)) { Swap(s); return; }   // 새 판으로 바꿨으면 옛 판은 더 돌리지 않는다 (다음 프레임부터 새 판)
         }
-        s.Update(dt);
+        double sim = dt;
+        if (Feel.On && stopLeft > 0) { stopLeft -= dt; sim = dt * Feel.StopSlow; StopFrames++; }   // 보스를 잡은 순간 아주 짧은 멈춤: 규칙의 시간만 느려진다 (조작은 계속 읽는다)
+        DtTap?.Invoke(sim);
+        s.Update(sim);
         Track();
         (host.Pet.X, host.Pet.Y) = (s.X, s.Feet); // 본체는 숨었지만 끝나면 여기서 나타난다
         if (s.Done || Ended(s) && s.EndedFor > .8 && io.LeftHit) Stop(false); // 끝 화면은 0.8초 뒤부터 눌러서 닫을 수 있다
@@ -239,6 +248,11 @@ sealed partial class SwarmGame : IGameMode
         var beetle = foe[(int)Swarm.Kind.Beetle];
         (steel, eliteSteel) = (new Stamp[beetle.Length], new Stamp[beetle.Length]);
         for (int i = 0; i < beetle.Length; i++) (steel[i], eliteSteel[i]) = (SwarmArt.Steel(beetle[i], i, small), SwarmArt.Elite(SwarmArt.Steel(beetle[i], i, small), 6 + i, small));
+        feelArt = FeelArt.Of(o.Art, small, new[]   // 벌레 줄 열 (FeelArt.Row 순서): 맞은 흰 판·찌그러짐·터짐 그림은 이 줄들에서 만든다
+        {
+            foe[(int)Swarm.Kind.Bug], foe[(int)Swarm.Kind.Wasp], foe[(int)Swarm.Kind.Beetle], foe[(int)Swarm.Kind.Boss], queen,
+            elite[0], elite[1], elite[2], steel, eliteSteel,
+        });
     }
 
     Stamp FoeArt(Swarm s, Swarm.Foe f)
@@ -456,13 +470,14 @@ sealed partial class SwarmGame : IGameMode
         foreach (var m in s.Gone) if (!double.IsNaN(m.ShownX)) gemRects.Add(GemRect(GemArt(m), m.ShownX, m.ShownY));
         foreach (var m in s.Gems)
         {
-            double y = ShowY(s, m);
-            if (m.ShownX == m.X && m.ShownY == y) continue;
+            var (gx, gy) = GemAt(s, m);   // 톡 튀는 동안은 프레임마다 자리가 바뀐다
+            if (m.ShownX == gx && m.ShownY == gy) continue;
             var art = GemArt(m);
             if (!double.IsNaN(m.ShownX)) gemRects.Add(GemRect(art, m.ShownX, m.ShownY));
-            gemRects.Add(GemRect(art, m.X, y));
-            (m.ShownX, m.ShownY) = (m.X, y);
+            gemRects.Add(GemRect(art, gx, gy));
+            (m.ShownX, m.ShownY) = (gx, gy);
         }
+        FeelTrack(s);
     }
 
     public void Dirty(Overlay o, List<Rectangle> rs)
@@ -502,7 +517,8 @@ sealed partial class SwarmGame : IGameMode
         for (int i = 0; i < s.Fires.Count; i++) rs.Add(o.Client(Rectangle.Inflate(fireFloor[0].Box((int)s.Fires[i].X, (int)s.Fires[i].Y), 1, 1)));   // 불 자리 (있는 동안 프레임마다: 장이 바뀌고 깜빡이며 꺼진다)
         if (!flameRect.IsEmpty) rs.Add(o.Client(flameRect));
         foreach (var r in gemRects) rs.Add(o.Client(r));
-        foreach (var p in s.Pops) rs.Add(o.Client(BlastArt.PopRect(p.X, p.Y, p.R * 1.2, small)));
+        for (int i = 0; i < s.Pops.Count; i++) { ref var p = ref s.Pops[i]; rs.Add(o.Client(BlastArt.PopRect(p.X, p.Y, p.R * 1.2, small))); }
+        FeelDirty(o, rs, s);   // 죽는 벌레의 찌그러짐·고리·조각, 흔들림
         rs.Add(o.Client(new Rectangle((int)(s.X - cell / 2.0) - 8 * k, (int)(s.Feet - cell) - 12 * k, cell + 16 * k, cell + 18 * k))); // 볼록이·무기·머리 위 그림·발밑 막대
         if (s.Clock - s.SwingAt < s.SwingLen + .05) rs.Add(o.Client(Overlay.Around(s.X, s.Y, s.RangePx + 3 * k, s.RangePx + 3 * k)));
         if (s.Clock - s.MagnetAt < RingSec) rs.Add(o.Client(Overlay.Around(s.X, s.Y, s.PickPx + 3 * k, s.PickPx + 3 * k)));   // 새 줍는 둘레 (점선 원)
@@ -581,9 +597,11 @@ sealed partial class SwarmGame : IGameMode
         }
         for (int i = 0; i < s.LaneCount; i++) DrawLane(o, g, s, s.Lanes[i]);   // 돌진 띠: 흐린 주황 점선 두 줄 (깜빡임·빨강 없음)
 
+        var (shx, shy) = ShakeAt(s);   // 흔들림: 판 안 그림(보석·벌레·탄·터짐)만 한 칸씩 (모서리·표시 줄·볼록이는 안 움직인다)
+        if (shx != 0 || shy != 0) g.TranslateTransform(shx, shy);
         for (int pass = 0; pass < 2; pass++) // 자석·신발은 보석 더미에 묻히지 않게 위에
             foreach (var m in s.Gems)
-                if (m.Item >= Swarm.Item.Magnet == (pass == 1)) GemArt(m).Put(o, g, (int)m.X, (int)ShowY(s, m));
+                if (m.Item >= Swarm.Item.Magnet == (pass == 1)) { var (gx, gy) = GemAt(s, m); GemArt(m).Put(o, g, (int)gx, (int)gy); }
         for (int i = 0; i < s.Mounds.Count; i++)   // 흙더미: 바닥에 깔린다 (보석 다음·벌레 앞). 글자 없이 그림만
         {
             ref var m = ref s.Mounds[i];
@@ -618,7 +636,7 @@ sealed partial class SwarmGame : IGameMode
         foreach (var f in order)
         {
             int fx = FoeX(s, f);
-            if (!Fx.Flash(s.Clock, f.Hit)) FoeArt(s, f).Put(o, g, fx, (int)f.Y + RiseY(s, f)); // 맞으면 번쩍
+            DrawFoe(o, g, s, f, fx, small);   // 맞으면 흰 판으로 번쩍(맛 끄면 옛 모습) + 맞은 쪽 반대로 한 칸
             if (Rising(s, f)) burst[BurstFrame(s, f)].Put(o, g, fx, (int)f.Y + 6 * small);   // 땅에서 올라온 직후: 흙덩이
             if (f.Tier >= Swarm.Bosses) crown.Put(o, g, fx, CrownY(s, f));        // 여왕은 왕관
             if (Sparkle(s, f)) spark.Put(o, g, fx, CrownY(s, f));                 // 엘리트는 머리 위 반짝이
@@ -631,6 +649,7 @@ sealed partial class SwarmGame : IGameMode
             }
         }
         order.Clear();
+        DrawSquash(o, g, s);   // 죽은 벌레는 찌그러진 흰 판으로 (연쇄에서는 차례를 기다리는 동안)
         for (int i = 0; i < s.Shots.Count; i++) DrawShot(o, g, s, ref s.Shots[i]);
         if (s.BladeOut) bladeFly[BladeFrame(s)].Put(o, g, (int)s.BladeX, (int)s.BladeY);   // 날아가는 칼 (탄 위·불길 아래)
         for (int i = 0; i < flakes.Count; i++) // 불길: 멀어질수록 크고 붉게
@@ -640,7 +659,9 @@ sealed partial class SwarmGame : IGameMode
             var p = o.ToClient(f.X + f.Vx * age, f.Y + f.Vy * age);
             Fx.Ember(g, p.X, p.Y, (int)((1.5 + 3 * u) * k), u < .3 ? 0 : u < .65 ? 1 : 2);
         }
-        foreach (var p in s.Pops) BlastArt.Pop(o, g, p.X, p.Y, p.R * 1.2, s.Clock - p.At, small);
+        DrawFeel(o, g, s);     // 고리·별·반짝이와 조각 (불덩이 아래)
+        for (int i = 0; i < s.Pops.Count; i++) { ref var p = ref s.Pops[i]; BlastArt.Pop(o, g, p.X, p.Y, p.R * 1.2, s.Clock - p.At, small); }
+        if (shx != 0 || shy != 0) g.TranslateTransform(-shx, -shy);
 
         // 작은 볼록이: 움직이면 걷고, 맞으면 아파하고 잠깐 깜빡인다. 손에 이번 판 무기를 든다 (양손 무기는 양쪽에)
         bool blink = s.State == Swarm.Phase.Play && Fx.Blink(s.Clock, s.SafeUntil);
@@ -1009,7 +1030,7 @@ sealed partial class SwarmGame : IGameMode
     // 디버그: swarm / swarm weapon <id> / swarm auto [id] (알아서 한다, 기록 안 남김) / swarm at <초> / swarm boss [1~4] / swarm up [n] / swarm hp <n> / swarm item <heart|magnet|shoe|grenade> / swarm grenade (지금 던진다: 0개면 하나 채우고 쿨다운을 지운다) / swarm stop /
     //   swarm level <n> (n 단계로, 하는 중이면 같은 무기로 새 판: 연습 판이라 기록·단계가 안 바뀐다) / swarm level set <n> (저장된 단계를 n 으로, 깬 단계는 n-1) /
     //   swarm rush [wall|ring|dart|pincer] (지금 예고를 띄우고 1초 뒤 그 모양으로, 안 주면 차례대로) / swarm elite [bug|wasp|beetle|steel] (볼록이 옆에 엘리트 하나) / swarm steel (강철 딱정벌레 하나) / swarm boss twin (3번 보스 + 마주 보는 둘째) /
-//   swarm special (다음 공격에 특수기가 나온다: 산탄총·쌍검·쌍권총·바주카포·화염방사기만)
+//   swarm special (다음 공격에 특수기가 나온다: 산탄총·쌍검·쌍권총·바주카포·화염방사기만) / swarm feel [on|off] (타격감) / swarm feel shake|stop on|off / swarm pop <bug|wasp|beetle|elite|steel|boss> [수]
     public bool Command(string[] a)
     {
         if (a.Length == 0 || a[0] != Id) return false;
@@ -1041,6 +1062,24 @@ sealed partial class SwarmGame : IGameMode
                 break;
             case "grenade": s?.ThrowNow(); break;
             case "special": s?.ChargeNow(); break;
+            case "feel":   // 타격감 (docs/swarm-feel.md 6장): swarm feel [on|off] · swarm feel shake|stop on|off
+                bool feelOn = (a.Length > 3 ? a[3] : arg) != "off";
+                if (arg == "shake") Feel.Shake = feelOn ? 1 : 0;
+                else if (arg == "stop") Feel.StopBoss = feelOn ? .05 : 0;
+                else Feel.On = feelOn;
+                break;
+            case "pop":    // swarm pop <bug|wasp|beetle|elite|steel|boss> [수]: 볼록이 옆에 그만큼 놓고 바로 터뜨린다
+                if (s != null)
+                {
+                    int count = a.Length > 3 && int.TryParse(a[3], out int pn) ? pn : 1;
+                    if (arg == "wasp") s.CallPop(Swarm.Kind.Wasp, count);
+                    else if (arg == "beetle") s.CallPop(Swarm.Kind.Beetle, count);
+                    else if (arg == "elite") s.CallPop(Swarm.Kind.Bug, count, elite: true);
+                    else if (arg == "steel") s.CallPop(Swarm.Kind.Beetle, count, steel: true);
+                    else if (arg == "boss") s.CallPop(Swarm.Kind.Boss, 1);
+                    else s.CallPop(Swarm.Kind.Bug, count);
+                }
+                break;
             default: StartWith(null); break;
         }
         return true;

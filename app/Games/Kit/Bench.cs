@@ -22,6 +22,7 @@ static class Bench
         var rects = new List<Rectangle>(512);
         var cells = new HashSet<(int, int)>();
         long tUpdate = 0, tDirty = 0, tDraw = 0, bytes = 0, dirtyCells = 0, worst = 0;
+        var perFrame = new long[maxFrames];   // 프레임마다 걸린 시간 (99.9% 값을 구한다: 다른 프로그램이 끼어든 한두 프레임이 가장 느린 값을 흔든다)
         int frames = 0;
         for (int warm = 0; warm < 30 && step(); warm++) { update(); rects.Clear(); game.Dirty(ov, rects); ov.Render(g); } // 처음 그림 만들기·JIT 는 빼고
         int gc0 = GC.CollectionCount(0);
@@ -37,6 +38,7 @@ static class Bench
             long t3 = Stopwatch.GetTimestamp();
             bytes += GC.GetAllocatedBytesForCurrentThread() - a0;
             (tUpdate, tDirty, tDraw, worst) = (tUpdate + t1 - t0, tDirty + t2 - t1, tDraw + t3 - t2, Math.Max(worst, t3 - t0));
+            perFrame[frames] = t3 - t0;
             ov.Render(buf.Graphics);
             tBuf += Stopwatch.GetTimestamp() - t3;
             cells.Clear(); // Overlay 가 하듯 64px 칸으로 모은 넓이
@@ -46,7 +48,9 @@ static class Bench
             dirtyCells += cells.Count;
         }
         double Us(long ticks) => ticks * 1e6 / Stopwatch.Frequency / Math.Max(1, frames);
-        return $"{id}: {frames}프레임, 규칙 {Us(tUpdate):0.0}µs, 칠할 자리 {Us(tDirty):0.0}µs, 그리기 {Us(tDraw):0.0}µs (화면 버퍼에는 {Us(tBuf):0.0}µs), 가장 느린 프레임 {worst * 1e3 / Stopwatch.Frequency:0.00}ms, " +
+        Array.Sort(perFrame, 0, frames);
+        long p999 = frames > 0 ? perFrame[Math.Min(frames - 1, (int)(frames * .999))] : 0;
+        return $"{id}: {frames}프레임, 규칙 {Us(tUpdate):0.0}µs, 칠할 자리 {Us(tDirty):0.0}µs, 그리기 {Us(tDraw):0.0}µs (화면 버퍼에는 {Us(tBuf):0.0}µs), 가장 느린 프레임 {worst * 1e3 / Stopwatch.Frequency:0.00}ms (99.9% {p999 * 1e3 / Stopwatch.Frequency:0.00}ms), " +
                $"메모리 {bytes / Math.Max(1, frames)}B/프레임 (GC {GC.CollectionCount(0) - gc0}번), 다시 칠한 넓이 {dirtyCells * 64.0 * 64 / Math.Max(1, frames) / 1000:0.0}천px²/프레임";
     }
 }

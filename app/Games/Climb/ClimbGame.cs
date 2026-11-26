@@ -5,6 +5,7 @@ namespace Bolok;
 // 클라이밍 모듈 (docs/climb.md): 앱에 붙이기(판 자리·조작·볼록이), 그리기, 기록, 디버그 명령. 규칙은 Climb.cs, 손잡이는 ClimbTune.cs,
 // 그림은 ClimbArt.cs·ClimbView.cs, 자동 조종은 ClimbBot.cs, 판 자리는 ClimbPlace.cs, 자가 검사·장면·속도 재기·봇 표는 ClimbCheck.cs·ClimbTable.cs
 // 볼록이 발밑에서 콩나무가 솟는다. 다음 잎이 있는 쪽 방향키(← →)를 눌러 오른다 (방향키는 판이 앞 창일 때만). 틀린 쪽을 누르거나 막대(잎 조각)가 다 되면 떨어진다. Esc 보스 키
+// 0.5초 안에 이어 오르면 콤보 (5·15·30 에서 단계, 몸짓·효과가 달라진다), 꺾이는 발판 바깥쪽에 가끔 카페 (그쪽 키로 들어가 쉬고 길 쪽 키로 돌아온다) — docs/climb-combo.md
 // 모양은 둘: A2 콩나무 투명(150×176칸, 넓은 창·바탕화면), A4 창 테두리 덩굴(96×176칸, 가끔·창 테두리 가까이일 때). 판 안 볼록이는 판 위에 직접 그린다 (본체 창은 숨김)
 // 그림 테마는 다섯: 덩굴 · 책상 위 문구 · 과자 탑 · 풍선 · 장난감 블록. A4 는 늘 덩굴, A2 는 씨로 다섯 가운데 무작위 (규칙은 모두 같다, ClimbSkin.cs)
 sealed partial class ClimbGame : IGameMode
@@ -19,7 +20,7 @@ sealed partial class ClimbGame : IGameMode
     ClimbLook look;
     ClimbTheme theme;                  // 이번 판의 그림 테마 (A4 는 늘 덩굴)
     Point winOff;                      // 판이 창 왼쪽 위에서 떨어진 만큼 (창을 따라갈 때 같은 자리로)
-    int best, plays, last, berries, friendsMax;
+    int best, plays, last, berries, maxCombo, cafes;
     internal bool auto, practice, desktopOnly, newBest;
     int? forceSeed, forceStart, forceBest;
     internal int lookMode;             // 0 보통(세 판에 한 번쯤 A4) · 1 A4 로(가능할 때) · 2 A2 로
@@ -31,11 +32,6 @@ sealed partial class ClimbGame : IGameMode
     readonly ClimbShow show = new();
     double visual;                     // 그림 시계 (멈춘 동안에도 간다)
     Watch hud;
-    double friendSince;
-    int friendCount;
-    readonly Dictionary<string, ClimbFriend?> friendCache = new();
-    internal Func<IReadOnlyList<string>>? FriendList;   // 장면·검사: 손 흔들러 올 친구 목록을 정한다
-    internal Func<string, Sprites?>? FriendArt;         // 장면·검사: 친구 그림
     internal Func<Rectangle, Session>? FakeOpen;        // 장면·검사: 판을 열지 않고 Start 를 돌려 본다
     internal Func<List<Win>>? FakeWindows;              // 검사: 창 목록
     internal Func<IntPtr, WinState>? FakeProbe;         // 검사: 창 상태 (움직이거나 닫히는 것)
@@ -43,7 +39,7 @@ sealed partial class ClimbGame : IGameMode
 
     static readonly Dictionary<string, Sound> Sounds = new()
     {
-        ["hop"] = Sound.Tap, ["berry"] = Sound.Pick, ["puff"] = Sound.Pick, ["mile"] = Sound.Pick, ["zone"] = Sound.Pick, ["curl"] = Sound.Pick, ["best"] = Sound.Pick,
+        ["hop"] = Sound.Tap, ["berry"] = Sound.Pick, ["puff"] = Sound.Pick, ["mile"] = Sound.Pick, ["tier"] = Sound.Pick, ["best"] = Sound.Pick,
         ["wrong"] = Sound.Hurt, ["fall"] = Sound.Hurt, ["save"] = Sound.Tap,
     };
     // 시작 안내 (줄 순서 규칙: 마우스 → 키 → Esc)
@@ -75,7 +71,7 @@ sealed partial class ClimbGame : IGameMode
         (look, panel, winH, edgeSide, winOff) = (plan.Look, plan.Panel, plan.Win, plan.Side, plan.Off);
         (practice, int start) = (forceStart != null, forceStart ?? 0);
         (forceStart, forceSeed) = (null, null);
-        var t = new Climb(seed, null, start) { Best = forceBest ?? best };
+        var t = new Climb(seed, null, start, plan.Look == ClimbLook.A4) { Best = forceBest ?? best };
         var s0 = FakeOpen?.Invoke(panel) ?? Session.Open(host, panel, () => Stop(true));
         var th = ClimbPlace.Theme(seed, plan.Look, themeForced);
         Begin(t, plan.Look, panel, s0, host.Pet.P.Stage, th);
@@ -95,15 +91,15 @@ sealed partial class ClimbGame : IGameMode
         (run, ses, panel, look) = (t, s, p, lk);
         theme = lk == ClimbLook.A4 ? ClimbTheme.Vine : th;
         f = Math.Max(2, p.Width / ClimbPlace.Width(lk));
-        (hud, newBest, resumed, resumeLeft, visual, panelVer, friendCount) = (default, false, true, 0, 0, 0, 0);
-        show.FriendAt = -1; show.Friend = null; show.Result = false; show.NewBest = false; show.Paused = false;
+        (hud, newBest, resumed, resumeLeft, visual, panelVer) = (default, false, true, 0, 0, 0);
+        show.Result = false; show.NewBest = false; show.Paused = false; show.MaxCombo = 0;
         show.BestLeaf = t.Best > 0 ? t.Best : -1;
         view = new ClimbView(host.Sprites, stage, lk, f, theme);
         // 쓸 그림은 판을 열 때 다 만들어 둔다
         var stamps = Stamps.Of(host.Sprites);
         int sm = GameHud.Small(f);
         stamps.Digits(sm); stamps.Digits(f + 1); stamps.Get("game/crown", 0, sm); stamps.Get("game/crown", 0, f + 1); stamps.Get("game/spark", 0, sm); stamps.Get("game/spark", 1, sm);
-        foreach (var name in new[] { "emo/bang", "emo/heart" }) if (stamps.Has(name)) stamps.Get(name, 0, sm);
+        if (stamps.Has("emo/bang")) stamps.Get("emo/bang", 0, sm);
         guide = GuideKeys.Select(k => L.T(k)).ToArray();
         guidePic?.Dispose();
         (guideOn, guidePic, guideBoxOk, guideGoneFrame, guideMovedFrame) = (null, null, false, -1, -1); movedFrame = -1;   // 지난 판의 안내 자리를 버린다 (안 버리면 두 번째 판의 안내가 옛 자리에 그려져 안 보인다)
@@ -111,13 +107,9 @@ sealed partial class ClimbGame : IGameMode
         t.OnEvent = e =>
         {
             Snd.Play(Sounds, e);
-            if (e == "zone") { friendCount++; friendSince = t.Clock; show.FriendAt = t.N; show.Friend = FriendFor(friendCount); show.FriendSide = 0; }   // 자리는 볼록이가 내려선 뒤 정한다 (ClimbView.Update)
-            if (Dbg.On && e is "mile" or "berry" or "puff" or "save" or "curl" or "zone" or "best" or "wrong" or "fall" or "over")   // 로그가 꺼져 있으면 인자도 안 만든다
-                Dbg.Log("climb", ("event", e), ("leaf", t.N), ("bar", Math.Round(t.Bar, 2)), ("sec", Math.Round(t.RunClock, 1)));
+            if (Dbg.On && e is "mile" or "berry" or "puff" or "save" or "best" or "wrong" or "fall" or "over" or "tier" or "combo-end" or "cafe-in" or "cafe-out")   // 로그가 꺼져 있으면 인자도 안 만든다
+                Dbg.Log("climb", ("event", e), ("leaf", t.N), ("bar", Math.Round(t.Bar, 2)), ("sec", Math.Round(t.RunClock, 1)), ("combo", t.Combo));
         };
-        friendNames = (FriendList?.Invoke() ?? host.Friends).Where(x => !string.IsNullOrEmpty(x)).GroupBy(PetArt.Base).Select(g => g.First())
-            .OrderBy(x => (StableHash(PetArt.Base(x)) ^ t.Seed * 2654435761L) & 0xffffff).ToList();
-        for (int n = 1; n <= Math.Min(friendNames.Count, 6); n++) FriendFor(n);   // 손 흔들러 올 친구 그림은 판을 열 때 미리 (100잎에서 그림을 만드느라 멈칫하지 않게)
         Pose(t);
         view.Update(t, show, 0);
         Track(t);
@@ -163,19 +155,6 @@ sealed partial class ClimbGame : IGameMode
         return guideScreen = o.NoteRect(foot.X, foot.Y, panel, guide);
     }
 
-    // 100잎마다 손 흔들러 오는 친구: 떠난 친구를 씨로 섞어 차례로 (없으면 작은 새). 같은 씨면 같은 친구
-    List<string> friendNames = new();
-    ClimbFriend? FriendFor(int n)
-    {
-        if (friendNames.Count == 0) return null;
-        string name = friendNames[(n - 1) % friendNames.Count];
-        if (friendCache.TryGetValue(name, out var hit)) return hit;
-        var sp = FriendArt?.Invoke(name) ?? host.SpritesOf(name);
-        return friendCache[name] = sp != null && sp.Has("adult_sweet/0/hop") ? new ClimbFriend(name, sp) : null;
-    }
-
-    static long StableHash(string s) { long h = 17; foreach (char c in s) h = h * 31 + c; return h; }
-
     // ── 한 프레임 ──
     public void Frame(double dt)
     {
@@ -194,6 +173,7 @@ sealed partial class ClimbGame : IGameMode
                 if (l != rr) r.Press(l ? -1 : 1);                                           // 같은 프레임에 두 키가 눌리면 둘 다 버린다 (꼼수 막기)
             }
             else if (r.State == Climb.Phase.Run) resumed = false;
+            if (paused) r.BreakCombo();                                                      // 다른 창을 누르면 콤보가 끊긴다 (앞길을 읽어 두는 꼼수 막기)
         }
         if (!paused) r.Update(dt);
         FollowWindow();
@@ -243,8 +223,7 @@ sealed partial class ClimbGame : IGameMode
         sh.Paused = !auto && ses is { Active: false } && t.State == Climb.Phase.Run;
         sh.Result = t.State == Climb.Phase.Over;
         sh.Guide = GuideOn(t);
-        if (sh.FriendAt >= 0 && t.Clock - friendSince > 5) sh.FriendAt = -1;
-        sh.FriendAge = t.Clock - friendSince;
+        sh.MaxCombo = t.MaxCombo;
         if (t.State == Climb.Phase.Over)
         {
             sh.NewBest = newBest = forceBestShown(t);
@@ -261,7 +240,7 @@ sealed partial class ClimbGame : IGameMode
         run = null;
         if (!auto && !practice && r.Done) Keep(r);
         bool won = !auto && (newBest || r.N >= 50);
-        var log = new (string, object?)[] { ("score", r.N), ("steps", r.Steps), ("sec", Math.Round(r.RunClock, 1)), ("cause", r.CauseName), ("pace", Math.Round(r.Steps / Math.Max(1, r.RunClock), 2)), ("berries", r.Berries), ("saves", r.Saves), ("friends", r.Friends), ("look", look.ToString()), ("theme", theme.ToString()), ("esc", quit), ("practice", practice || auto) };
+        var log = new (string, object?)[] { ("score", r.N), ("steps", r.Steps), ("sec", Math.Round(r.RunClock, 1)), ("cause", r.CauseName), ("pace", Math.Round(r.Steps / Math.Max(1, r.RunClock), 2)), ("berries", r.Berries), ("saves", r.Saves), ("combo", r.MaxCombo), ("cafes", r.Cafes), ("cafeSec", Math.Round(r.CafeSec, 1)), ("look", look.ToString()), ("theme", theme.ToString()), ("esc", quit), ("practice", practice || auto) };
         ses?.Close(host.Pet, quit, won, "climb", log);
         ses = null;
         Close();
@@ -279,7 +258,8 @@ sealed partial class ClimbGame : IGameMode
         best = Math.Max(best, r.N);
         last = r.N;
         berries += r.Berries;
-        friendsMax = Math.Max(friendsMax, r.Friends);
+        maxCombo = Math.Max(maxCombo, r.MaxCombo);
+        cafes += r.Cafes;
     }
 
     // ── 그리기: 판 하나 (모니터에 걸친 만큼). 멈춘 동안은 바뀐 것만 ──
@@ -313,7 +293,8 @@ sealed partial class ClimbGame : IGameMode
 
     // ── 디버그 ──
     //   climb / climb stop (바로 끝, 기록 안 남김) / climb auto [easy|good] (봇이 오른다, 기록 안 남김) / climb seed N (다음 판 씨) / climb at N (다음 판을 N잎에서, 연습 판)
-    //   climb bar N (막대를 N%로) / climb put <berry|puff|wilt|curl|cloud> (세 칸 앞 잎을 그 종류로) / climb best N (지난 최고를 N 으로 본다, 저장 안 함)
+    //   climb bar N (막대를 N%로) / climb put <berry|puff|wilt|cloud|mile> (세 칸 앞 잎을 그 종류로) / climb put cafe (지금 선 발판에 카페: 다음 발판 반대쪽) / climb best N (지난 최고를 N 으로 본다, 저장 안 함)
+    //   climb combo N (콤보를 N 으로: 단계·효과를 바로 보려고)
     //   climb desktop (창이 있어도 바탕화면 판) / climb look <a2|a4|auto> (다음 판 모양: a4 는 창 테두리가 맞을 때만, 아니면 a2)
     //   climb theme <vine|desk|sweet|balloon|block|auto> (다음 판 그림: 덩굴 말고 정하면 A4 는 안 쓴다. auto 는 씨로 무작위)
     public bool Command(string[] a)
@@ -331,11 +312,13 @@ sealed partial class ClimbGame : IGameMode
             case "look": lookMode = a.Length > 2 ? a[2] switch { "a4" => 1, "a2" => 2, _ => 0 } : 0; break;
             case "theme": themeForced = a.Length > 2 ? a[2] switch { "vine" => ClimbTheme.Vine, "desk" => ClimbTheme.Desk, "sweet" => ClimbTheme.Sweet, "balloon" => ClimbTheme.Balloon, "block" => ClimbTheme.Block, _ => null } : null; break;
             case "bar": if (run != null && n >= 0) run.Bar = Math.Min(1, n / 100.0); break;
+            case "combo": if (run != null && n >= 0) run.SetCombo(n); break;
             case "put":
                 if (run != null && a.Length > 2)
                 {
                     if (a[2].Equals("cloud", StringComparison.OrdinalIgnoreCase)) { for (int i = 0; i < 10; i++) run.At(run.N + 3 + i).Fog = true; }
-                    else if (Enum.TryParse<ClimbKind>(a[2] switch { "puff" => "Puff", "wilt" => "Wilt", "curl" => "Curl", "berry" => "Berry", "mile" => "Flower", _ => a[2] }, true, out var k)) run.Put(k);
+                    else if (a[2].Equals("cafe", StringComparison.OrdinalIgnoreCase)) run.PutCafe(-run.At(run.N + 1).Dir);
+                    else if (Enum.TryParse<ClimbKind>(a[2] switch { "puff" => "Puff", "wilt" => "Wilt", "berry" => "Berry", "mile" => "Flower", _ => a[2] }, true, out var k)) run.Put(k);
                 }
                 break;
             default:
@@ -357,10 +340,10 @@ sealed partial class ClimbGame : IGameMode
         yield return new GameStat(L.T("game.climb"), plays > 0 ? L.T("game.climb_val", best.ToString("N0", L.Culture), plays) : L.T("game.climb_none"), plays > 0);
     }
 
-    // 기록: { Best, Plays, Last, Berries, Friends } — Best 최고 잎 수, Friends 한 판에서 만난 친구 최대 수
-    sealed record Record(int Best, int Plays, int Last, int Berries, int Friends);
+    // 기록: { Best, Plays, Last, Berries, MaxCombo, Cafes } — Best 최고 잎 수, MaxCombo 가장 긴 콤보, Cafes 들른 카페 수 (옛 저장의 친구 칸은 읽을 때 버려진다)
+    sealed record Record(int Best, int Plays, int Last, int Berries, int MaxCombo, int Cafes);
 
-    public string? SaveState() => plays > 0 ? JsonSerializer.Serialize(new Record(best, plays, last, berries, friendsMax)) : null;
+    public string? SaveState() => plays > 0 ? JsonSerializer.Serialize(new Record(best, plays, last, berries, maxCombo, cafes)) : null;
 
     public void LoadState(string? json)
     {
@@ -368,13 +351,13 @@ sealed partial class ClimbGame : IGameMode
         try
         {
             if (JsonSerializer.Deserialize<Record>(json) is not { } r) return;
-            (best, plays, last, berries, friendsMax) = (Math.Max(0, r.Best), Math.Max(0, r.Plays), Math.Max(0, r.Last), Math.Max(0, r.Berries), Math.Max(0, r.Friends));
+            (best, plays, last, berries, maxCombo, cafes) = (Math.Max(0, r.Best), Math.Max(0, r.Plays), Math.Max(0, r.Last), Math.Max(0, r.Berries), Math.Max(0, r.MaxCombo), Math.Max(0, r.Cafes));
         }
         catch (JsonException) { /* 깨진 기록은 버린다 */ }
     }
 
     // 자가 검사용: 기록을 직접 만져 본다
-    internal (int Best, int Plays, int Last, int Berries, int Friends) State => (best, plays, last, berries, friendsMax);
+    internal (int Best, int Plays, int Last, int Berries, int MaxCombo, int Cafes) State => (best, plays, last, berries, maxCombo, cafes);
     internal void KeepForCheck(Climb r, bool practiceRun = false, bool autoRun = false) { (practice, auto) = (practiceRun, autoRun); if (!auto && !practice) Keep(r); (practice, auto) = (false, false); }
     internal (ClimbLook Look, Rectangle Panel, IntPtr Win) Placed => (look, panel, winH);
     internal ClimbView? View => view;

@@ -31,7 +31,7 @@ public static class Sfx
     {
         const int rate = 22050;
         var rng = new Random(name.GetHashCode());
-        double len = name switch { "shotgun" => .3, "pistol" => .18, "mg" => .07, "hit" => .12, "empty" => .03, "reload" => .26, "boom" => .55, "rumble" => 2.2, "pick" => .14, "hurt" => .22, _ => .05 };
+        double len = name switch { "shotgun" => .3, "pistol" => .18, "mg" => .07, "hit" => .12, "empty" => .03, "reload" => .26, "boom" => .55, "rumble" => 2.2, "pick" => .14, "hurt" => .22, "popbig" => .09, _ => name.StartsWith("pop") ? .055 : .05 };
         int n = (int)(rate * len);
         var s = new short[n];
         double low = 0;
@@ -48,6 +48,11 @@ public static class Sfx
                 case "reload": v = (noise * Math.Exp(-t * 250) + (t > .17 ? noise * Math.Exp(-(t - .17) * 250) : 0)) * .5; break;
                 case "pick": v = Math.Sin(2 * Math.PI * (t < .055 ? 880 : 1320) * t) * Math.Exp(-(t < .055 ? t : t - .055) * 22) * .45; break;   // 띠링: 짧게 올라가는 두 음 (줍기·레벨)
                 case "hurt": v = Math.Sign(Math.Sin(2 * Math.PI * (520 - 900 * t) * t)) * Math.Exp(-t * 9) * .3 + noise * Math.Exp(-t * 40) * .2; break; // 뚜웅: 내려가는 음 (다침)
+                case "pop0" or "pop1" or "pop2" or "pop3" or "pop4" or "pop5" or "popbig":   // 팡 (버그 떼 터지는 소리): 딸깍 8ms + 내려가는 뽁 한 번을 한 파형에 섞는다. 번호가 오를수록 반음 둘씩 높다, popbig 은 낮은 퉁을 더 섞는다
+                    double f0 = 560 * Math.Pow(2, 2 * (name == "popbig" ? 0 : name[3] - '0') / 12.0);
+                    v = (t < .008 ? noise * (1 - t / .008) * .5 : 0) + Math.Sin(2 * Math.PI * f0 * (1 - 2.2 * t) * t) * Math.Exp(-t * 55) * .65;
+                    if (name == "popbig") v += Math.Sin(2 * Math.PI * (170 - 700 * t) * t) * Math.Exp(-t * 26) * .8;
+                    break;
                 case "boom": low += (noise - low) * .08; v = low * Math.Exp(-t * 5) * 2.2; break;
                 case "rumble": low += (noise - low) * .06; v = low * (.45 + .55 * Math.Max(0, Math.Sin(2 * Math.PI * 7 * t))) * (.5 + .5 * t / 2.2) * 2.6; break; // 콰콰콰콰: 낮게 울리며 점점 커진다
                 default: v = 0; break;

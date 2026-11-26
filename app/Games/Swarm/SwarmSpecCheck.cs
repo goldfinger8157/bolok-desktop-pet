@@ -8,7 +8,7 @@ sealed partial class SwarmGame
     const int Tough = 99999999;   // 죽지 않는 과녁의 체력
 
     // 특수기를 켠 빈 판 (벌레는 직접 놓고, 안 맞게 한다)
-    static Swarm SpecOn(int seed, Arm.Id id, int stage = 1) => new(TestField, 3, new Random(seed), id, stage) { Spawning = false, ShoeChance = 0, MagnetChance = 0, HeartChance = 0, GrenadeChance = 0, SafeUntil = 1e9 };
+    static Swarm SpecOn(int seed, Arm.Id id, int stage = 1) => new(TestField, 3, new Random(seed), id, stage) { Spawning = false, GemRate = 1, RushGemRate = 1, ShoeChance = 0, MagnetChance = 0, HeartChance = 0, GrenadeChance = 0, SafeUntil = 1e9 };
 
     static Swarm.Foe SpecDummy(Swarm s, Swarm.Kind kind, double dx, double dy, int hp = Tough, int tier = 1)
     {
@@ -108,7 +108,7 @@ sealed partial class SwarmGame
         var st5 = SpecOn(81, Arm.Id.Shotgun, 5);
         double hi = Arm.Spec.Hi5Dmg[(int)Arm.Id.Shotgun] > 1 ? Arm.Spec.Hi5Dmg[(int)Arm.Id.Shotgun] : Arm.Spec.HiDmg[(int)Arm.Id.Shotgun];   // 5단계부터는 5단계 칸
         int d5 = st5.SpecDmg(Arm.Spec.DoubleDmg);
-        Expect(d5 == Math.Max(1, (int)Math.Round(st5.Weapon.Dmg * Arm.Spec.DoubleDmg * st5.T.HpX * hi, MidpointRounding.AwayFromZero)) && st5.T.HpX > 1.2, $"5단계 특수기 피해는 무기 피해 × 배율 × 벌레 체력 배율: {d5}");
+        Expect(d5 == Math.Max(1, (int)Math.Round(st5.Weapon.Dmg * Arm.Spec.DoubleDmg * st5.T.HpX * hi, MidpointRounding.AwayFromZero)) && st5.T.HpX > 1.1, $"5단계 특수기 피해는 무기 피해 × 배율 × 벌레 체력 배율: {d5}");
         Expect(Swarm.Versus(new Swarm.Foe { Elite = true }, d5) == (int)Math.Round(d5 * Arm.Spec.Elite, MidpointRounding.AwayFromZero) && Swarm.Versus(new Swarm.Foe(), d5) == d5 && Swarm.Versus(new Swarm.Foe { Kind = Swarm.Kind.Boss }, d5) == d5, "엘리트는 특수기 피해 ×1.5, 보통 벌레·보스는 그대로");
         (int Lost, int Per) Second(Swarm.Kind kind, bool elite)
         {

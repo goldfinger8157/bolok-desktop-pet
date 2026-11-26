@@ -34,6 +34,8 @@ sealed partial class VolleyGame : IGameMode
     Rectangle lastStoneRect;
     Rectangle lastFlashRect;
     readonly Rectangle[] lastTripRect = new Rectangle[2];
+    readonly Rectangle[] lastSlideRect = new Rectangle[2];
+    Rectangle lastDigRect;
 
     // 공 비트맵 캐시
     Bitmap[]? ballFrames;                 // 돌아가는 공 그림 (BallTurns 장, 0 번 = 꼭지가 위)
@@ -51,6 +53,7 @@ sealed partial class VolleyGame : IGameMode
     Stamp star = null!, crown = null!, bang = null!;
     Stamp meIdleStamp = null!, meHopStamp = null!, meAngryStamp = null!, meHappyStamp = null!, meSadStamp = null!, meDizzyStamp = null!;
     Stamp meBlockStamp = null!, meSlideStamp = null!, meShockStamp = null!, meWalkStamp = null!; // 장면(showMe)에서만 쓴다
+    Stamp[] meDiveRight = null!, meDiveLeft = null!;                                              // dive 두 장 (던지는 중 · 누운 모습), 오른쪽·왼쪽 보기
 
     // GDI+ 브러시 및 펜 캐시 (프레임당 메모리 할당 0B)
     static readonly SolidBrush poleBrush = new(Color.FromArgb(120, 80, 50));
@@ -70,6 +73,11 @@ sealed partial class VolleyGame : IGameMode
     static readonly Pen starRayPen = new(Color.FromArgb(255, 210, 60), 2);
     static readonly SolidBrush starBrush = new(Color.FromArgb(255, 210, 60));
     static readonly SolidBrush dustBrush = new(Color.FromArgb(236, 228, 208));
+    // 슬라이드 먼지 꼬리: 흩어지는 정도 네 단계의 붓·테두리 (프레임마다 새로 만들지 않는다). 테두리를 짙게 해서 흰 창 위에서도 읽힌다
+    static readonly SolidBrush[] trailFill = { new(Color.FromArgb(70, 238, 230, 210)), new(Color.FromArgb(130, 238, 230, 210)), new(Color.FromArgb(200, 238, 230, 210)), new(Color.FromArgb(255, 238, 230, 210)) };
+    static readonly Pen[] trailRim = { new(Color.FromArgb(70, 170, 156, 128), 1), new(Color.FromArgb(130, 170, 156, 128), 1), new(Color.FromArgb(200, 170, 156, 128), 1), new(Color.FromArgb(255, 170, 156, 128), 1) };
+    static readonly SolidBrush[] trailSpeck = { new(Color.FromArgb(70, 196, 182, 152)), new(Color.FromArgb(130, 196, 182, 152)), new(Color.FromArgb(200, 196, 182, 152)), new(Color.FromArgb(255, 196, 182, 152)) };
+    static readonly SolidBrush digHalo = new(Color.FromArgb(95, 255, 226, 120)), digCore = new(Color.FromArgb(255, 255, 248, 200));
 
     static readonly SolidBrush mockGlass = new(Color.FromArgb(246, 248, 252));
     static readonly SolidBrush mockBar = new(Color.FromArgb(60, 104, 214));
@@ -199,6 +207,16 @@ sealed partial class VolleyGame : IGameMode
                     Snd.Play(arg is VolleySim.Actor.Player ? Sound.Hurt : Sound.Tap);
                     Dbg.Log("volley-trip", ("who", arg?.ToString() ?? ""));
                 }
+                else if (ev == "slide") // 몸을 던짐 (자세는 규칙이 dive 로): 넘어짐과 같은 소리
+                {
+                    Snd.Play(arg is VolleySim.Actor.Player ? Sound.Hurt : Sound.Tap);
+                    Dbg.Log("volley-slide", ("who", arg?.ToString() ?? ""), ("x", (int)(arg is VolleySim.Actor.Player ? w.PlayerX : w.RivalX)));
+                }
+                else if (ev == "dig") // 누워서 받아 올림: hit 소리 + 빛
+                {
+                    Snd.Play(Sound.Tap);
+                    Dbg.Log("volley-dig", ("who", arg?.ToString() ?? ""));
+                }
                 else if (ev == "block") // 맞은 블로킹: 번쩍
                 {
                     Snd.Play(Sound.Tap);
@@ -306,7 +324,7 @@ sealed partial class VolleyGame : IGameMode
         // 입력 전달
         int axisX = s.AxisX;
         bool jump = s.Up;
-        bool spike = s.Ctrl;
+        bool spike = !w.T.AutoSpike && s.Ctrl; // 자동 스파이크면 Ctrl 은 읽지 않는다
 
         w.Update(dt, axisX, jump, spike);
         Sync();
@@ -326,7 +344,8 @@ sealed partial class VolleyGame : IGameMode
     void Sync()
     {
         var (w, b) = (sim!, host.Pet);
-        (b.X, b.Y, b.Dir) = (w.PlayerX, w.PlayerY, 1);
+        bool dived = w.IsSliding(VolleySim.Actor.Player) || w.IsLying(VolleySim.Actor.Player);
+        (b.X, b.Y, b.Dir) = (w.PlayerX, w.PlayerY, dived ? w.SlideDirOf(VolleySim.Actor.Player) : 1); // 던지는 동안만 던진 쪽을 본다
         b.Pose = w.PlayerPose;
     }
 
@@ -487,6 +506,24 @@ sealed partial class VolleyGame : IGameMode
             if (!trRect.IsEmpty) dirty.Add(trRect);
             lastTripRect[i] = trRect;
         }
+        for (int i = 0; i < 2; i++) // 슬라이드 먼지 꼬리 (던진 자리에서 멈춘 자리까지, 흩어지는 동안 매 프레임)
+        {
+            var who = (VolleySim.Actor)i;
+            Rectangle slRect = Rectangle.Empty;
+            if (w.SlideTrailLeft(who) > 0)
+            {
+                var (x0, x1) = w.SlideTrail(who);
+                slRect = Rectangle.FromLTRB((int)Math.Min(x0, x1) - 22 * k, w.FloorY - 16 * k, (int)Math.Max(x0, x1) + 22 * k, w.FloorY + 4 * k);
+            }
+            if (slRect.IsEmpty && lastSlideRect[i].IsEmpty) continue;
+            if (!lastSlideRect[i].IsEmpty) dirty.Add(lastSlideRect[i]);
+            if (!slRect.IsEmpty) dirty.Add(slRect);
+            lastSlideRect[i] = slRect;
+        }
+        var digRect = w.DigFlashActive ? DigRect(w) : Rectangle.Empty;                 // 디그 빛 (0.2초, 매 프레임 자란다)
+        if (!digRect.IsEmpty) dirty.Add(digRect);
+        if (digRect != lastDigRect && !lastDigRect.IsEmpty) dirty.Add(lastDigRect);
+        lastDigRect = digRect;
         var flashRect = w.BlockFlashActive ? FlashRect(w) : Rectangle.Empty;
         if (!flashRect.IsEmpty) dirty.Add(flashRect);                                  // 빛줄기가 매 프레임 자란다
         if (flashRect != lastFlashRect && !lastFlashRect.IsEmpty) dirty.Add(lastFlashRect);
@@ -558,7 +595,10 @@ sealed partial class VolleyGame : IGameMode
         if (w.StoneFrame >= 0) DrawStone(o, g, w);
         for (int i = 0; i < 2; i++)
             if (w.TripDustLeft((VolleySim.Actor)i) > 0) DrawTripDust(o, g, w, (VolleySim.Actor)i);
+        for (int i = 0; i < 2; i++)
+            if (w.SlideTrailLeft((VolleySim.Actor)i) > 0) DrawSlideTrail(o, g, w, (VolleySim.Actor)i);
         if (w.BlockFlashActive) DrawBlockFlash(o, g, w);
+        if (w.DigFlashActive) DrawDigFlash(o, g, w);
 
         // 6. 강스파이크 연출 (속도선·별, va5 참조)
         if (w.SpikeEffectActive)
@@ -731,6 +771,56 @@ sealed partial class VolleyGame : IGameMode
         g.FillEllipse(dustBrush, cp.X - 4 * k, cp.Y - 2 * k - lift / 2, 8 * k, 3 * k);
         g.FillEllipse(dustBrush, cp.X - spread - small, cp.Y - 2 * k - lift, small * 2, small + k);
         g.FillEllipse(dustBrush, cp.X + spread - small, cp.Y - 2 * k - lift, small * 2, small + k);
+    }
+
+    // 슬라이드 먼지 꼬리: 던진 자리(x0)에서 지금·멈춘 자리(x1)까지 몸 뒤로 길게 깔리고, 0.35초 동안 흩어지며 옅어진다
+    void DrawSlideTrail(Overlay o, Graphics g, VolleySim w, VolleySim.Actor who)
+    {
+        int k = w.K;
+        var (x0, x1) = w.SlideTrail(who);
+        double fade = Math.Clamp(w.SlideTrailLeft(who) / VolleySim.SlideTrailSec, 0, 1), spread = 1 - fade;
+        int lv = Math.Clamp((int)(fade * 4), 0, 3);
+        int dir = Math.Sign(x1 - x0);
+        double len = Math.Abs(x1 - x0);
+        if (dir == 0 || len < k) return;
+        var floor = o.ToClient(Math.Min(x0, x1), w.FloorY);
+        var fb = trailFill[lv];
+        g.FillEllipse(fb, (float)(floor.X + len * .06), floor.Y - 1.4f * k, (float)(len * .9), 2.4f * k);       // 바닥에 깔린 긴 줄
+        int n = Math.Max(3, (int)(len / (9 * k)));
+        for (int i = 0; i < n; i++)
+        {
+            double t = i / (double)(n - 1);                                    // 0 = 던진 자리(오래됨) → 1 = 몸 바로 뒤
+            double px = dir > 0 ? floor.X + len * (.04 + .80 * t) : floor.X + len * (.96 - .80 * t);
+            double w2 = (8.5 - 3 * t + 3 * spread) * k, h = (4 - 1.2 * t + 1.5 * spread) * k, lift = ((1 - t) * 3.5 + spread * 3) * k;
+            var r = new RectangleF((float)(px - w2 / 2), (float)(floor.Y + k - h - lift), (float)w2, (float)h);
+            g.FillEllipse(fb, r);
+            g.DrawEllipse(trailRim[lv], r);
+        }
+        for (int i = 0; i < n; i++)                                            // 흩날리는 알갱이
+        {
+            double t = (i + .5) / n;
+            double px = dir > 0 ? floor.X + len * (.08 + .8 * t) : floor.X + len * (.92 - .8 * t);
+            int s2 = k * (i % 2 == 0 ? 2 : 1);
+            g.FillRectangle(trailSpeck[lv], (int)px - s2 / 2, (int)(floor.Y - (8 + (i % 3) * 3 + spread * 4) * k), s2, s2);
+        }
+    }
+
+    // 디그 빛: 공이 튕기는 자리에 노란 후광 + 흰 점 + 빛줄기 셋 (블로킹 번쩍보다 작게, 0.2초, 화면 흔들림 없음)
+    static Rectangle DigRect(VolleySim w) => new((int)w.DigFlashX - 20 * w.K, (int)w.DigFlashY - 20 * w.K, 40 * w.K, 40 * w.K);
+
+    void DrawDigFlash(Overlay o, Graphics g, VolleySim w)
+    {
+        int k = w.K;
+        double p = w.DigFlashP;
+        var c = o.ToClient(w.DigFlashX, w.DigFlashY);
+        int hr = (int)((5 + 5 * p) * k);
+        g.FillEllipse(digHalo, c.X - hr, c.Y - hr, hr * 2, hr * 2);
+        int dot = Math.Max(3, (int)((5 - 3 * p) * k));
+        g.FillEllipse(digCore, c.X - dot / 2, c.Y - dot / 2, dot, dot);
+        int r0 = hr + k, r1 = hr + (int)((4 + 3 * p) * k);
+        for (int sx = -1; sx <= 1; sx += 2)
+            g.DrawLine(starRayPen, c.X + sx * (int)(r0 * .72), c.Y - (int)(r0 * .72), c.X + sx * (int)(r1 * .72), c.Y - (int)(r1 * .72));
+        g.DrawLine(starRayPen, c.X, c.Y - r0, c.X, c.Y - r1);
     }
 
     // 블로킹 번쩍: 네트 위 흰 점 + 노란 빛줄기 넷 (스파이크 별보다 작게)
@@ -949,14 +1039,16 @@ sealed partial class VolleyGame : IGameMode
     Stamp RivalStamp(VolleySim w)
     {
         string pose = w.RivalPose;
-        var rows = rivalStamps[1]; // 왼쪽 보기 (라이벌은 오른쪽에서 왼쪽을 바라봄)
+        bool right = pose == VolleySim.DivePose && w.SlideDirOf(VolleySim.Actor.Rival) > 0;        // 보통은 왼쪽 보기 (라이벌은 오른쪽에서 왼쪽을 바라봄), 오른쪽으로 던지는 동안만 오른쪽
+        var rows = rivalStamps[right ? 0 : 1];
         if (!rows.TryGetValue(pose, out var row))
         {
             var sp = rivalSprites ?? artOf!;
             string form = (rivalSprites != null) ? host.Pet.P.Stage : "adult_grumpy";
             var stamps = Stamps.Of(sp);
-            rows[pose] = row = stamps.Row(stamps.Has($"{form}/1/{pose}") ? $"{form}/1/{pose}" : $"{form}/1/idle", w.K, true); // 없는 자세는 가만히로 (그림 창이 멈추지 않게)
+            rows[pose] = row = stamps.Row(stamps.Has($"{form}/1/{pose}") ? $"{form}/1/{pose}" : $"{form}/1/idle", w.K, !right); // 없는 자세는 가만히로 (그림 창이 멈추지 않게)
         }
+        if (pose == VolleySim.DivePose && row.Length >= 2) return row[w.IsLying(VolleySim.Actor.Rival) ? 1 : 0]; // 던지는 중은 눈 뜬 첫 장, 누워 있으면 ^^ 둘째 장
         return row[(int)(w.Clock * 4) % row.Length];
     }
 
@@ -971,6 +1063,7 @@ sealed partial class VolleyGame : IGameMode
             "hop" => meHopStamp,
             VolleySim.BlockPose => meBlockStamp,
             VolleySim.TripPose => meSlideStamp,
+            VolleySim.DivePose => (w.SlideDirOf(VolleySim.Actor.Player) > 0 ? meDiveRight : meDiveLeft)[w.IsLying(VolleySim.Actor.Player) ? 1 : 0],
             "shock" => meShockStamp,
             "walk" => meWalkStamp,
             _ => meIdleStamp,
@@ -1004,6 +1097,9 @@ sealed partial class VolleyGame : IGameMode
         meSlideStamp = MePose(st, b.P.Stage, VolleySim.TripPose, k);
         meShockStamp = MePose(st, b.P.Stage, "shock", k);
         meWalkStamp = MePose(st, b.P.Stage, "walk", k);
+        string diveName = st.Has($"{b.P.Stage}/1/{VolleySim.DivePose}") ? $"{b.P.Stage}/1/{VolleySim.DivePose}" : $"{b.P.Stage}/1/idle";
+        meDiveRight = new[] { st.Get(diveName, 0, k, false), st.Get(diveName, 1, k, false) };
+        meDiveLeft = new[] { st.Get(diveName, 0, k, true), st.Get(diveName, 1, k, true) };
 
         if (!string.IsNullOrEmpty(RivalSpecies)) rivalSprites = host.SpritesOf(RivalSpecies);
         rivalStamps[0].Clear();
@@ -1011,7 +1107,7 @@ sealed partial class VolleyGame : IGameMode
     }
 
     // ── 디버그 명령 ──
-    // volley / volley serve / volley spike / volley stone [me|rival] / volley block / volley end win|lose / volley bird / volley desktop / volley stop
+    // volley / volley serve / volley spike / volley stone [me|rival] / volley slide [me|rival] [l|r] / volley block / volley end win|lose / volley bird / volley desktop / volley stop
     public bool Command(string[] a)
     {
         if (a.Length == 0 || a[0] != Id) return false;
@@ -1059,6 +1155,14 @@ sealed partial class VolleyGame : IGameMode
         if (a.Length > 1 && a[1] == "block" && sim is { } wBlock) // 디버그: 네트 앞에서 뛰게 (블로킹 자세)
         {
             wBlock.DebugJump(VolleySim.Actor.Player, wBlock.NetX - wBlock.PetR - 4);
+            return true;
+        }
+
+        if (a.Length > 1 && a[1] == "slide" && sim is { } wSlide) // 디버그: 바로 몸을 던지게 (volley slide [me|rival] [l|r], 방향 없으면 네트 쪽)
+        {
+            var who = a.Length > 2 && a[2] == "rival" ? VolleySim.Actor.Rival : VolleySim.Actor.Player;
+            int dir = a.Length > 3 ? (a[3] == "l" ? -1 : 1) : who == VolleySim.Actor.Player ? 1 : -1;
+            wSlide.DebugSlide(who, dir);
             return true;
         }
 

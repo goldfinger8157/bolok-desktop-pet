@@ -213,45 +213,6 @@ static class ClimbArt
         return g;
     }
 
-    // 덩굴손: 말림 · 펴짐 (던져 올릴 때)
-    public static Px Curl(bool open = false)
-    {
-        var g = new Px(15, 19);
-        uint c = C("#A6DC6A"), d = C("#6DB24A");
-        g.LineTo(6, 18, 6, 11, d); g.LineTo(7, 18, 7, 11, d);
-        if (open)
-        {
-            for (double t = 0; t < 1; t += .01) { int x = (int)Math.Floor(6.5 + Math.Sin(t * 5) * 2.5), y = (int)Math.Floor(11 - t * 11); g.Put(x, y, c); g.Put(x + 1, y, c); }
-        }
-        else
-            for (double t = 0; t < 1; t += .003)
-            {
-                double a = Math.PI + t * Math.PI * 2.7, r = 5.2 * (1 - t * .8);
-                int x = (int)Math.Floor(7.5 + 5.2 + Math.Cos(a) * r), y = (int)Math.Floor(6.5 + Math.Sin(a) * r);
-                g.Put(x, y, c); if (t < .55) g.Put(x, y + 1, c);
-            }
-        g.Outline(Line);
-        return g;
-    }
-
-    // 덩굴손이 풀리며 튀어 오르는 모습 (밟는 순간): 1 풀리는 중 (큰 곡선) · 2 쭉 뻗음 (튀어 오름) · 3 되튐 (조금 줄어듦). 맨 아래 줄 가운데가 잎 위, 같은 너비 15 (아래를 맞춰 얹는다)
-    public static Px CurlSpring(int frame)
-    {
-        int h = frame == 2 ? 31 : 24;
-        var g = new Px(15, h);
-        uint c = C("#A6DC6A"), d = C("#6DB24A");
-        int baseY = h - 1;
-        g.LineTo(6, baseY, 6, baseY - 7, d); g.LineTo(7, baseY, 7, baseY - 7, d);
-        double top = baseY - 7, amp = frame == 1 ? 4.6 : frame == 2 ? 2.2 : 3.4, len = frame == 1 ? 12 : frame == 2 ? 22 : 13;
-        for (double t = 0; t < 1; t += .006)
-        {
-            int x = (int)Math.Floor(6.5 + Math.Sin(t * (frame == 1 ? 6.5 : 5)) * amp * (1 - t * .35)), y = (int)Math.Floor(top - t * len);
-            g.Put(x, y, c); g.Put(x + 1, y, c);
-        }
-        g.Outline(Line);
-        return g;
-    }
-
     public static Px Flower()
     {
         var g = new Px(15, 11);
@@ -287,22 +248,6 @@ static class ClimbArt
         g.Fill(2 + h / 3, 2 + h * 2 / 3, w - h * 2 / 3, h / 3, fill);
         for (int y = 0; y < g.H; y++) for (int x = 0; x < g.W; x++) if (g.On(x, y) && y > 2 + h * .72) g.Set(x, y, shade);
         if (edge >> 24 != 0) g.Outline(edge);
-        return g;
-    }
-
-    // 작은 새 (친구가 없을 때): 날갯짓 두 장
-    public static Px Bird(int frame)
-    {
-        var g = new Px(15, 11);
-        uint body = C("#6BA3E8"), belly = C("#E8F2FF"), beak = C("#F2A83A");
-        g.Ell(7, 6.4, 4.4, 3.2, body);
-        g.Ell(6.4, 7.6, 3, 1.8, belly);
-        g.Ell(10.6, 4.6, 2.5, 2.3, body);
-        g.Put(13, 5, beak); g.Put(14, 5, beak);
-        g.Put(11, 4, Line);
-        g.Poly(frame == 0 ? new[] { (3.0, 6.0), (0.0, 7.5), (4.0, 7.5) } : new[] { (3.0, 6.0), (0.0, 4.0), (4.5, 7.0) }, body);
-        g.Poly(frame == 0 ? new[] { (5.0, 4.0), (6.5, 1.0), (8.5, 4.2) } : new[] { (5.0, 4.0), (6.5, 6.0), (8.5, 4.2) }, C("#4F86CB"));
-        g.Outline(Line);
         return g;
     }
 

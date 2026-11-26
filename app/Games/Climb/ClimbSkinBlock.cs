@@ -6,7 +6,6 @@ namespace Bolok;
 sealed class BlockSkin : ClimbSkin
 {
     public override ClimbTheme Theme => ClimbTheme.Block;
-    public override ClimbLift Lift => ClimbLift.Bounce;  // 용수철을 밟고 발판에서 발판으로 통통
     public override int Variants => 6;
 
     static uint C(string h) => SkinKit.C(h);
@@ -168,11 +167,6 @@ sealed class BlockSkin : ClimbSkin
 
         Save = SkinKit.Base(Pinwheel(true));
         SaveHead = new SkinPx(Pinwheel(false), 11, 10);
-        Skip = SkinKit.Base(Spring(false));
-        SkipOpen = SkinKit.Base(Spring(true));
-        var sp0 = Spring(false);
-        var cs = SkinKit.Base(sp0);
-        SetCarrier(sp0, cs.Ax, cs.Ay);              // 발판을 떠날 때 눌리는 용수철
         for (int i = 0; i < 2; i++)
         {
             var c = ClimbArt.Cloud(i == 0 ? 44 : 40, 12, 41 + i * 5, White, C("#EAE2F6"), C("#B5A8D6"));
@@ -202,26 +196,6 @@ sealed class BlockSkin : ClimbSkin
         return g;
     }
 
-    static Px Spring(bool open)
-    {
-        int h = open ? 32 : 17;
-        var g = new Px(21, 34);
-        uint st = C("#8FA6D0"), sh = C("#5E78AE"), hi = C("#C8D8F4");
-        int coils = open ? 6 : 5, top = 34 - 2 - h;
-        for (int i = 0; i < coils; i++)
-        {
-            int y = 31 - (int)((h - 6) * i / (double)(coils - 1)) ;
-            for (int x = 4; x < 16; x++) { g.Put(x, y, st); g.Put(x, y - 1, st); }
-            g.Put(4, y - 1, hi); g.Put(5, y - 1, hi); g.Put(14, y, sh); g.Put(15, y, sh); g.Put(13, y, sh);
-        }
-        // 위 마개
-        int ty = 31 - (h - 6) - 3;
-        g.Fill(4, ty, 12, 3, C("#F6C945")); SkinKit.Row(g, 4, 15, ty, C("#FFE98A")); SkinKit.Row(g, 4, 15, ty + 2, C("#D79B28"));
-        g.Fill(4, 31 + 1, 12, 2, C("#8A94AE"));
-        g = SkinKit.Pad(g, 1); g.Outline(SkinKit.Line);
-        return g;
-    }
-
     static Px PipBlk(int st)
     {
         var g = new Px(9, 8);
@@ -239,18 +213,4 @@ sealed class BlockSkin : ClimbSkin
         return g;
     }
 
-    // 친구 자리: 탑 뒤에서 옆으로 쑥 나온 긴 널빤지
-    public override void Perch(Px g, int bx, int by, int side, int tx, int ty)
-    {
-        int xa = side > 0 ? bx : tx - 9, xb = side > 0 ? tx + 9 : bx;
-        int w = xb - xa + 1;
-        var r = new Px(w + 2, 14);
-        var t = SkinKit.Tone("#6FC7C9", .4, .3);
-        SkinKit.Block(r, 1, 4, w, 8, t, 1);
-        int[] inset = { 2, 1, 0 };
-        for (int k = 0; k < 3; k++) SkinKit.Row(r, 1 + inset[k], w - inset[k], k + 1, k == 0 ? Wood.H : k == 2 ? Wood.S : Wood.F);
-        for (int x = 5; x < w - 3; x += 8) { r.Fill(x, 6, 2, 4, t.H); }
-        r.Outline(SkinKit.Line);
-        g.Blit(r, xa - 1, ty - 1);
-    }
 }

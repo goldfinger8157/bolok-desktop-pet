@@ -23,19 +23,36 @@ sealed class Swarm
     public sealed class Foe
     {
         public Kind Kind;
+        public int Id;                              // 나올 때마다 +1 (되쓰는 Foe 가 새 벌레로 나와도 탄이 「이미 맞은 놈」으로 잘못 보지 않게: Shot 은 번호로 기억한다)
         public int Tier, Hp, MaxHp;                 // Tier: 보스 차례 1~4 (4 = 여왕)
-        public double X, Y, R, Speed, Hit = -9, StunUntil = -9, BurnUntil = -9, BurnTick;   // Hit 은 번쩍임 전용, 멈칫은 StunUntil
-        public double DashAt = 1e9, DashX, DashY, SpawnDue = 1e9;   // 돌진(3번 보스·여왕): 떨기 시작하는 때와 방향. 여왕이 벌레를 낳는 때
+        public double X, Y, R, Speed, Hit, StunUntil, BurnUntil, BurnTick;   // Hit 은 번쩍임 전용, 멈칫은 StunUntil
+        public double DashAt, DashX, DashY, SpawnDue;   // 돌진(3번 보스·여왕): 떨기 시작하는 때와 방향. 여왕이 벌레를 낳는 때
         public bool Winding, Dead;
-        public double BornAt = -9;                  // 땅에서 올라온 때 (올라오는 그림)
+        public sbyte NudgeX, NudgeY;                // 맞은 쪽 반대 방향 (-1·0·1, 그림 전용: 맞은 0.06초 동안 한 칸 밀려 그린다)
+        public int Hits;                            // 맞은 횟수 (측정 칸: 한 마리당 맞은 횟수·한 방에 죽은 비율)
+        public double BornAt;                       // 땅에서 올라온 때 (올라오는 그림)
         public bool Dirt;                           // 땅에서 올라온 벌레 (가만히 있기 막기): 잡아도 보석·아이템이 안 나온다 (눌러앉아 경험치를 모으는 길을 막는다)
         public int Cut;                             // 마지막으로 맞은 칼(쌍검 특수기)의 번호: 같은 길에서 두 번 안 맞게 (새 벌레는 0)
         public bool Elite;                          // 엘리트 (2단계부터): 체력 ×2.5, 닿는 피해 ×1.5, 걸음 ×0.9. 금색 테두리
         public bool Heavy;                          // 강철 딱정벌레 (5단계부터): 체력 ×1.5, 밀침 ×¼, 멈칫 없음, 보석 5. 은회색
         public bool Dart;                           // 돌진 말벌 (3단계부터): 줄지어 떨다가 GoAt 에 곧게 내달려 판을 가로지른다 (밀리지도 멈칫하지도 않는다)
+        public bool Rush;                           // 러시로 들어온 벌레 (보석 비율이 다르다)
         public bool Extra;                          // 둘째 보스 (7단계부터): 1번 보스 그림, 체력 ×0.6. 잡아도 보스 수에 안 든다
         public sbyte Vx, Vy;                        // 돌진 말벌: 가는 쪽 (-1·0·1, 한 칸이라 벌레 하나가 커지지 않는다)
         public double GoAt { get => DashAt; set => DashAt = value; }   // 돌진 말벌이 떠나는 때 (보스 돌진 칸 DashAt 을 같이 쓴다: 말벌은 보스 돌진을 안 탄다)
+
+        public Foe() => Reset();
+
+        // 모든 칸을 처음 값으로 (Id 만 빼고: 나올 때 Swarm 이 새 번호를 준다). 되쓰는 벌레가 옛 값을 안 가지게 기본값은 여기 한 곳에만 둔다 (검사가 칸을 하나씩 바꿔 봐서 빠진 칸을 잡는다)
+        public void Reset()
+        {
+            (Kind, Tier, Hp, MaxHp) = (Kind.Bug, 0, 0, 0);
+            (X, Y, R, Speed, BurnTick) = (0, 0, 0, 0, 0);
+            (Hit, StunUntil, BurnUntil, BornAt) = (-9, -9, -9, -9);
+            (DashAt, DashX, DashY, SpawnDue) = (1e9, 0, 0, 1e9);
+            (Winding, Dead, Dirt, Elite, Heavy, Dart, Extra, Rush) = (false, false, false, false, false, false, false, false);
+            (Hits, Cut, Vx, Vy, NudgeX, NudgeY) = (0, 0, 0, 0, 0, 0);
+        }
     }
 
     public struct Shot
@@ -44,17 +61,31 @@ sealed class Swarm
         public int Dmg, Pierce;
         public bool Special;           // 특수기 탄 (엘리트 배율, 잡은 수 세기). 바주카는 터지면 새끼 폭탄
         public Ammo Ammo;
-        Foe? hit0, hit1, hit2, hit3;   // 이 탄이 이미 뚫고 지나간 벌레 (뚫는 탄이 같은 놈을 두 번 치지 않게. 관통은 넷까지)
-        public readonly bool Seen(Foe f) => ReferenceEquals(f, hit0) || ReferenceEquals(f, hit1) || ReferenceEquals(f, hit2) || ReferenceEquals(f, hit3);
-        public void Mark(Foe f) => (hit0, hit1, hit2, hit3) = (f, hit0, hit1, hit2);
+        int hit0, hit1, hit2, hit3;    // 이 탄이 이미 뚫고 지나간 벌레의 번호 (뚫는 탄이 같은 놈을 두 번 치지 않게. 관통은 넷까지). 참조가 아니라 Foe.Id: 되쓰는 Foe 가 새 벌레로 나와도 「이미 맞은 놈」이 아니다 (번호는 1부터, 0 = 없음)
+        public readonly bool Seen(Foe f) => f.Id == hit0 || f.Id == hit1 || f.Id == hit2 || f.Id == hit3;
+        public void Mark(Foe f) => (hit0, hit1, hit2, hit3) = (f.Id, hit0, hit1, hit2);
     }
-    public sealed class Gem { public Item Item; public double X, Y; public int Xp; public bool Pull; public double ShownX = double.NaN, ShownY; } // Pull: 보스를 잡아 둘레 밖에서도 끌려온다, Shown: 그리는 쪽이 마지막으로 그린 자리
-    public sealed class Pop { public double X, Y, At, R; }
+    public sealed class Gem   // Pull: 보스를 잡아 둘레 밖에서도 끌려온다, Shown: 그리는 쪽이 마지막으로 그린 자리
+    {
+        public Item Item; public double X, Y; public int Xp; public bool Pull; public double ShownX, ShownY;
+        public double BornAt, HopX, HopY;   // 떨어진 때와, 튀어 나오는 자리가 X·Y 에서 어긋난 만큼 (그림 전용: 0.2초 포물선으로 톡 튀어 X·Y 에 떨어진다. 규칙의 자리는 처음부터 X·Y)
+        public Gem() => Reset();
+        public void Reset() => (Item, X, Y, Xp, Pull, ShownX, ShownY, BornAt, HopX, HopY) = (Item.Gem, 0, 0, 0, false, double.NaN, 0, -9, 0, 0);
+    }
+    public struct Pop { public double X, Y, At, R; }   // 터짐 그림 (폭발·수류탄·다침). 벌레가 죽는 그림은 죽음 기록(Deaths)과 SwarmFeel 이 따로 맡는다
+    // 죽음 기록 (docs/swarm-feel.md 3장): 규칙(Kill)은 여기에 적기만 하고, 조각·연쇄·소리는 그리는 쪽(SwarmFeel)이 만든다. 그리는 쪽이 있든 없든 규칙은 같다
+    // 맞은 쪽 방향(Dx·Dy: 맞힌 자리에서 벌레 쪽 단위 벡터)과 맞힌 자리(Ox·Oy: 연쇄가 가까운 순서로 터지는 기준), 폭발로 죽었나(Boom)·5:00 에 한꺼번에 터졌나(Win)
+    public struct Death { public double X, Y, Dx, Dy, Ox, Oy; public Kind Kind; public int Tier; public bool Elite, Heavy, Dirt, Extra, Boom, Win; }
+    public const int MaxDeaths = 64;   // 한 프레임에 적을 수 있는 죽음 (5:00 에 벌레가 더 남았으면 고르게 줄여 적는다)
+    public readonly Bag<Death> Deaths = new(MaxDeaths);   // 읽는 쪽(SwarmFeel.FeelTrack)이 읽고 비운다. 읽는 쪽이 없는 판(봇 표·검사)은 가득 차면 못 적은 수만 센다
+    public int DeathsLost;             // 자리가 모자라 못 적은 수 (검사용)
+    bool blowing;                      // 폭발이 벌레를 치는 중 (죽음 기록의 Boom)
     public struct Nade { public double X0, Y0, X1, Y1, At; public int Spin; }   // 던진 자리 → 떨어질 자리, 던진 때, 도는 쪽(±1)
     public struct Bomb { public double X0, Y0, X1, Y1, At, Fly; }              // 새끼 폭탄: 터진 자리 → 떨어질 자리, 터진(날기 시작한) 때, 날아가는 시간
     public struct FireSpot { public double X, Y, At; }                          // 불 자리 (화염 특수기): 놓인 자리와 때
 
     // 배율 3 기준 px·초. 판은 앱이 볼록이 둘레에 220×150 칸(배율 3 이면 660×450)으로 잡는다
+    public const double GemHopSec = .2;   // 보석이 톡 튀어 떨어지는 시간 (그림 + 보스 보석이 끌려오기 전 기다림)
     public const double WinSec = 300, MoveSpeed = 170, PickRange = 56, SafeSec = 1, SwingSec = .2, SpinMoveSec = .5, EndSec = 3.5, HurtPush = 60, HpTrailSec = .4,
         BossEvery = 60, BossWarn = 2,                                        // 보스: 1분마다, 2초 전에 들어올 자리를 알린다
         DashEvery = 5, DashWind = .6, DashSec = .5, DashSpeed = 260, QueenEvery = 6,   // 돌진: 5초마다 0.6초 떨다가 0.5초 내달린다. 여왕은 6초마다 벌레 넷
@@ -70,19 +101,19 @@ sealed class Swarm
         MoundSec = .8, MoundDist = 64, MoundNear = 52,                                          // 흙더미가 보이는 시간, 볼록이에게서 놓는 거리, 이보다 가까운 자리는 피한다
         CampGapFirst = 2.2, CampGapDrop = .08, CampGapMin = .7, CampStep = 7;                    // 흙더미 사이: 처음 2.2초 → 넘긴 1초마다 0.08초씩 줄어 0.7초까지, 7초마다 한 번에 하나씩 더 (셋까지)
     public const int MaxMounds = 6, MoundMax = 3;
-    public const int MaxHp = 100, HeartHp = 30, MaxFoes = 110, FinaleCap = 90, MaxGems = 150, MaxShoes = 3, MaxMagnets = 5, MaxShots = 200, Bosses = 4, StartGrenades = 1, MaxGrenades = 3, MaxNades = 4, BotThrowMin = 6, BotThrowHurt = 4;   // MaxFoes: 한 화면 상한 (여왕이 살아 있는 마무리는 FinaleCap)
+    public const int MaxHp = 100, HeartHp = 30, MaxFoes = 180, FinaleCap = 150, MaxGems = 150, MaxShoes = 3, MaxMagnets = 5, MaxShots = 200, Bosses = 4, StartGrenades = 1, MaxGrenades = 3, MaxNades = 4, BotThrowMin = 9, BotThrowHurt = 6;   // MaxFoes: 한 화면 상한 (여왕이 살아 있는 마무리는 FinaleCap)
 
     // ── 1분 주기 (분 안의 초): 잔잔 0~35 · 예고 35~40 · 러시 40~55(물결 5번, 3초마다) · 숨 고르기 55~60 · 보스 60.
     //    마지막 분은 4:00 여왕 → 4:35 예고 → 4:40~5:00 마무리 러시(물결 5번, 4초마다) ──
     public const double WarnFrom = 35, RushFrom = 40, RushTo = 55, WaveGap = 3, FinaleGap = 4, FinaleFrom = 280, RushLen = 15,
-        BaseFrom = 1.4, BaseGrow = 8.8,           // 잔잔 기준 초당 수 base1(t) = 1.4 + 8.8·t/300 (손잡이 ②: 계획 3.4 → 봇 표 8.2 → 무기 특기를 자주 터지게 하며 8.8, 2026-11-18)
+        BaseFrom = 3.4, BaseGrow = 12.6,          // 잔잔 기준 초당 수 base1(t) = 3.4 + 12.6·t/300 (많이·약하게 2026-11-26: 1.4 + 8.8·t/300 의 ×1.5 쯤, docs/swarm-feel.md 2장)
         CalmWasp = .28, CalmBeetle1 = .16, CalmBeetle2 = .24, RushWasp = .30, RushBeetle = .10,   // 구성: 말벌은 20초부터, 딱정벌레는 60·180초부터
         RingHole = .25, FinaleHole = .33, WallGap = 26, WallRow = 18, KeepOut = 150;       // 대열: 구멍 25%(마무리 33%), 한쪽 줄 간격·줄 사이, 볼록이 둘레 비우는 거리
     public const int Waves = 5;
     // 2차 기믹 (docs/swarm-levels.md 2-1). 배율 3 기준 px·초 (규칙에서 × sf)
     public const double DartBand = 180, DartWind = 1.0, DartSpeed = 300, DartOut = 40, DartLaneTail = 54,   // 돌진 띠 너비, 떠는 시간, 빠르기, 판 밖에서 사라지는 거리, 띠가 사라지기까지 더하는 길이
         SteelHp = 1.5, SteelKnock = .25, DashEveryLow = 7, ExtraHp = .6, MixP = .5;                          // 강철 체력·밀침 배율, 1·2번 보스의 돌진 간격, 둘째 보스 체력, 겹친 대열 확률
-    public const int DartTouch = 12, SteelGems = 5, MaxLanes = 2;
+    public const int DartTouch = 11, SteelGems = 5, MaxLanes = 2;
     public static int DartN(int stage) => Math.Clamp(4 + stage / 2, 5, 10);                // 돌진 말벌 마릿수 (한 마리 = 물결 마릿수 2)
     public static double SteelP(int stage) => Math.Min(.50, .25 + .03 * (stage - 5));      // 딱정벌레 중 강철 비율
     public const double RushHp = .5, RushWalk = 1.3;   // 러시 벌레 체력·걸음 배율 (YELL 검토 2026-11-16: 러시가 잔잔보다 2.5배 넘게 몰려와야 「러시」로 느껴진다)
@@ -94,17 +125,17 @@ sealed class Swarm
     // ── 단계 (2장): 8단계까지는 고르게, 그 뒤로는 체력·수는 거의 멈추고 빠르기·엘리트·모양으로 ──
     public readonly struct Tune
     {
-        public const double RushBase = 2.5, RushStep = .1,            // 러시 세기 바탕과 단계마다 (손잡이 ①: 계획 2.2 → 1차 1.0 → 검토 2.5, 러시 벌레를 약하고 빠르게 해서 맞춤)
-            HpA = .07, HpB = .02, SpawnA = .06, SpawnB = .015, BossA = .10, BossB = .04, SpeedA = .015, SpeedB = .01, EliteA = .01, EliteB = .015;   // 기울기 (손잡이 ④)
+        public const double RushBase = 2.0, RushStep = .19,            // 러시 세기 바탕과 단계마다 (손잡이 ①: 계획 2.2 → 1차 1.0 → 검토 2.5 → 많이·약하게 2.0 + 단계마다 .19: 1단계는 한 물결 25~70마리, 4단계부터 3.0 가까이)
+            HpA = .03, HpB = .02, SpawnA = .14, SpawnB = .015, BossA = .10, BossB = .04, SpeedA = .035, SpeedB = .01, EliteA = .01, EliteB = .015;   // 기울기 (손잡이 ④)
         public readonly double HpX, SpawnX, BossX, SpeedX, EliteP, RushX;   // 벌레 체력, 나오는 수(잔잔만), 보스 체력, 빠르기(걸음만), 엘리트 비율, 러시 세기
 
         Tune(int stage)
         {
             double a = Math.Min(stage, 8) - 1, b = Math.Max(0, stage - 8);
-            HpX = Math.Min(1.8, 1 + HpA * a + HpB * b);
-            SpawnX = Math.Min(1.6, 1 + SpawnA * a + SpawnB * b);
+            HpX = Math.Min(1.3, 1 + HpA * a + HpB * b);
+            SpawnX = Math.Min(1.8, 1 + SpawnA * a + SpawnB * b);
             BossX = Math.Min(2.5, 1 + BossA * a + BossB * b);
-            SpeedX = Math.Min(1.25, 1 + SpeedA * a + SpeedB * b);
+            SpeedX = Math.Min(1.3, 1 + SpeedA * a + SpeedB * b);
             EliteP = stage <= 1 ? 0 : Math.Min(.20, .03 + EliteA * (a - 1) + EliteB * b);
             RushX = Math.Min(3.0, RushBase + RushStep * (stage - 1));
         }
@@ -126,19 +157,23 @@ sealed class Swarm
     public readonly int Stage;                     // 이번 판 단계 (1부터)
     public readonly Tune T;                        // 그 단계의 값
     public readonly Arm Weapon;                    // 이번 판 무기 (지금 값)
-    public readonly List<Foe> Foes = new();
+    public readonly List<Foe> Foes = new(MaxFoes + 16);   // 미리 자리를 잡아 둔다 (늘리느라 메모리를 새로 잡지 않게)
     public readonly Bag<Shot> Shots = new(64);
     public readonly Bag<Nade> Nades = new(MaxNades);   // 공중에 있는 수류탄
     public readonly Bag<Bomb> Bombs = new(4);          // 공중에 있는 새끼 폭탄 (한 번에 셋: 로켓이 2초에 한 번이라 겹치지 않는다)
     public readonly Bag<FireSpot> Fires = new(Arm.Spec.MaxFires);   // 불 자리 (많아야 두 벌. 꽉 차면 가장 오래된 것을 지우고 넣는다)
-    public readonly List<Gem> Gems = new();
-    public readonly List<Pop> Pops = new();
-    public readonly List<Gem> Gone = new();        // 이번 프레임에 사라진 보석 (그리는 쪽이 그 자리를 지운다)
+    public readonly List<Gem> Gems = new(MaxGems + 8);
+    public readonly Bag<Pop> Pops = new(32);       // 폭발·수류탄·다침 터짐 (0.45초 지나면 지운다)
+    public readonly List<Gem> Gone = new(32);      // 이번 프레임에 사라진 보석 (그리는 쪽이 그 자리를 지운다). 다음 Update 첫머리에서 되쓸 묶음으로 돌려놓는다
+    readonly Stack<Foe> foePool = new(MaxFoes + 16);   // 되쓰는 벌레·보석 (프레임마다 새로 잡는 메모리가 없다: 죽은 벌레는 Sweep 이, 사라진 보석은 다음 Update 가 돌려놓는다)
+    readonly Stack<Gem> gemPool = new(MaxGems + 8);
+    int foeSeq;                                    // 지금까지 나온 벌레 수 (Foe.Id)
+    public int FoesMade, GemsMade;                 // 새로 만든 벌레·보석 수 (검사용: 되쓰니 한 번에 있는 수를 못 넘는다)
     public readonly int[] FromSide = new int[4];   // 변마다 들어온 수 (왼쪽·오른쪽·위·아래)
     public double X, Y, Clock, SafeUntil, HurtAt = -9, FireAt = -9, UpAt = -9, BoomAt = -9;   // BoomAt 은 바주카의 쾅 (수류탄은 NadeBoomAt: 바주카 장면이 BoomAt 을 본다)
     public double ThrowAt = -9, GrenadeAt = -9, EmptyAt = -9, NadeBoomAt = -9;   // 마지막으로 던진 때, 던졌거나 주운 때(표시 번쩍), 빈 손으로 눌러 본 때, 마지막 수류탄이 터진 때
     public int Grenades = StartGrenades, Thrown, NadeKills;   // 든 수류탄, 던진 수, 수류탄으로 잡은 벌레 수
-    public double GrenadeChance = .008;            // 보통 벌레를 잡을 때 수류탄이 떨어질 확률 (검사에서 0·1 로 바꾼다)
+    public double GrenadeChance = .0055;           // 보통 벌레를 잡을 때 수류탄이 떨어질 확률 (검사에서 0·1 로 바꾼다)
     public bool BotIdle;                           // 자동 조종이 제자리에 서 있는다 (가만히 있기가 이기는 길이 아닌지 재는 표·검사 전용: 무기·수류탄·특수기는 그대로)
     public bool BotGrab;                           // 제자리 봇이 가까이(BotGrabR px) 떨어진 보석·하트를 주우러 나갔다 돌아온다
     public double BotGrabR = 110;
@@ -167,7 +202,10 @@ sealed class Swarm
     public double BladeX, BladeY, BladeAt;         // 칼의 자리, 던진 때
     public int BladeHand;                          // 던진 손 (1 오른쪽·-1 왼쪽: 그림에서 그 손을 비운다)
     public bool FlameOn;                           // 불길을 뿜는 중 (닿는 거리 안에 벌레가 있다)
-    public double MagnetChance = .03, ShoeChance = .05, HeartChance = .04;   // 벌레를 잡을 때 자석·신발이, 딱정벌레를 잡을 때 하트가 나올 확률
+    public double MagnetChance = .02, ShoeChance = .033, HeartChance = .03;   // 벌레를 잡을 때 자석·신발이, 딱정벌레를 잡을 때 하트가 나올 확률
+    // 측정 칸 (docs/swarm-feel.md 2-4, 표 전용: 규칙은 안 건드린다): 화면 위 벌레 수의 합·프레임 수·최대, 보통 벌레(보통·말벌, 엘리트·강철·보스 아님)를 잡은 수·그 맞은 횟수·한 방에 죽은 수, 처음 30초에 잡은 수
+    public long FoeSum, FoeFrames;
+    public int FoeMax, NormKills, NormHits, NormOne, Kills30;
     public int Hp = MaxHp, HpFrom = MaxHp, Level = 1, Xp, Kills, Dir = 1, AimDir = 1, Magnets, Shoes, BossesKilled, DamageTaken, Born, Level180 = -1;   // Born: 지금까지 나온 벌레 수, Level180: 3:00 때 레벨
     public double HpAt = -9, MagnetAt = -9;        // 생명이 마지막으로 바뀐 때 (HpFrom: 그 전 값, 잠깐 흰 잔상), 자석을 주운 때 (새 둘레를 잠깐 보여 준다)
     public double BossWarnAt = -9, BossU, FirstBossSec = -1;   // 보스 예고를 시작한 때와 들어올 자리(변 위 0~1), 첫 보스를 잡는 데 걸린 초
@@ -180,6 +218,9 @@ sealed class Swarm
     public struct Lane { public int Side; public double A, B, At, Until; }
     public readonly Lane[] Lanes = new Lane[MaxLanes];
     public int LaneCount, DartsBorn;               // 지금 있는 띠 수, 지금까지 나온 돌진 말벌 수
+    // 보통·말벌이 보석을 남기는 비율 (수가 늘어도 경험치가 같게: 잡은 수로 세는 누적이라 rng 를 안 쓴다). 잔잔 벌레는 3마리에 2알, 러시 벌레는 2마리에 1알. 검사는 1 로 바꿔 한 마리마다 떨어뜨린다
+    public double GemRate = 2 / 3.0, RushGemRate = .5;
+    double gemAcc = .5;
     public double EliteHeartChance = .2;           // 엘리트를 잡을 때 하트가 나올 확률
     public Item LastItem;                          // 마지막으로 주운 자석·신발과 그때 (머리 위에 잠깐 뜬다)
     public double ItemAt = -9;
@@ -259,7 +300,7 @@ sealed class Swarm
     public double FoeR(Foe f) => f.R;
     public static int TouchDmg(Foe f)
     {
-        int dmg = f.Kind switch { Kind.Boss => f.Tier >= Bosses ? 40 : 30, Kind.Beetle => 18, Kind.Wasp => f.Dart ? DartTouch : 8, _ => 10 };
+        int dmg = f.Kind switch { Kind.Boss => f.Tier >= Bosses ? 36 : 27, Kind.Beetle => 16, Kind.Wasp => f.Dart ? DartTouch : 7, _ => 9 };   // 많이·약하게 2026-11-26: 벌레가 약하고 많아져 닿는 피해를 한 칸씩 낮췄다 (×0.9)
         return f.Elite ? (int)Math.Round(dmg * EliteTouch, MidpointRounding.AwayFromZero) : dmg;
     }
     public bool Shaking(Foe f) => f.Winding && Clock - f.DashAt < DashWind || f.Dart && Clock < f.GoAt;   // 돌진 예고: 멈춰서 떤다 (보스·돌진 말벌)
@@ -272,8 +313,11 @@ sealed class Swarm
     public void Update(double dt)
     {
         Clock += dt;
+        foreach (var g in Gone) gemPool.Push(g);
         Gone.Clear();
-        for (int i = Pops.Count - 1; i >= 0; i--) if (Clock - Pops[i].At > BlastArt.Sec) Pops.RemoveAt(i);
+        int keepPop = 0;
+        for (int i = 0, n = Pops.Count; i < n; i++) if (Clock - Pops[i].At <= BlastArt.Sec) Pops[keepPop++] = Pops[i];
+        Pops.Trim(keepPop);
         if (State != Phase.Play)
         {
             if (State != Phase.Done && Clock - endAt >= EndSec) State = Phase.Done;
@@ -301,12 +345,20 @@ sealed class Swarm
         Burn();
         Sweep();
         Touch();
+        FoeSum += Foes.Count;
+        FoeFrames++;
+        if (Foes.Count > FoeMax) FoeMax = Foes.Count;
         if (State != Phase.Play) return;
         Pick(dt);
         if (Level180 < 0 && Clock >= 180) Level180 = Level;
         if (Clock >= WinSec) // 끝까지 버텼다: 남은 벌레·보스는 다 터진다
         {
-            foreach (var f in Foes) Pops.Add(new Pop { X = f.X, Y = f.Y, At = Clock, R = f.R * 1.5 });
+            int stride = (Foes.Count + MaxDeaths - 1) / MaxDeaths, at = 0;   // 남은 벌레가 64마리를 넘으면 고르게 건너뛰며 적는다
+            foreach (var f in Foes)
+            {
+                if (stride <= 1 || at++ % stride == 0) AddDeath(f, X, Y, win: true);
+                foePool.Push(f);
+            }
             Foes.Clear();
             Shots.Trim(0);
             Nades.Trim(0);
@@ -642,7 +694,7 @@ sealed class Swarm
 
     // 엘리트 (2단계부터, 30초 뒤부터 나오는 보통·말벌·딱정벌레): eliteP 확률로, 동시에 EliteMax 마리까지
     // 러시 벌레: 몸이 약하고(체력 ×RushHp) 빠르다(×RushWalk) — 우르르 몰려오지만 한 방 무기도 걷어 낼 수 있게
-    Foe Rusher(Foe f) { f.Hp = f.MaxHp = Math.Max(1, (int)(f.Hp * RushHp)); f.Speed *= RushWalk; return f; }
+    Foe Rusher(Foe f) { f.Hp = f.MaxHp = Math.Max(1, (int)(f.Hp * RushHp)); f.Speed *= RushWalk; f.Rush = true; return f; }
 
     Foe Elitify(Foe f)
     {
@@ -748,7 +800,7 @@ sealed class Swarm
     public void Drop(Item item, double dx = 40)
     {
         var (x, y) = Inside(X + dx * sf, Y);
-        Gems.Add(new Gem { X = x, Y = y, Item = item, Xp = item == Item.Gem ? 1 : 0 });
+        NewGem(item, x, y, item == Item.Gem ? 1 : 0);
         if (item == Item.Magnet) magnetsOut++;
         if (item == Item.Shoe) shoesOut++;
         if (item == Item.Grenade) grenadesOut++;
@@ -758,13 +810,15 @@ sealed class Swarm
     {
         tier = kind == Kind.Boss ? Math.Clamp(tier, 1, Bosses) : 0;
         double t = Clock;
-        var f = new Foe
-        {
-            Kind = kind, X = x, Y = y, Tier = tier,
-            Hp = (int)Math.Round(kind switch { Kind.Boss => BossHp[tier - 1] * T.BossX, Kind.Beetle => (46 + (int)(t / 3)) * T.HpX, Kind.Wasp => (9 + (int)(t / 10)) * T.HpX, _ => (12 + (int)(t / 8)) * T.HpX }, MidpointRounding.AwayFromZero),
-            Speed = kind switch { Kind.Boss => BossSpeed[tier - 1], Kind.Beetle => 36 + t * .08, Kind.Wasp => 90 + t * .09, _ => 45 + t * .09 } * T.SpeedX,
-            R = (kind switch { Kind.Boss => tier >= Bosses ? 34 : 24, Kind.Beetle => 12, Kind.Wasp => 8, _ => 10 }) * sf,
-        };
+        Foe f;
+        if (foePool.Count > 0) f = foePool.Pop();
+        else { f = new Foe(); FoesMade++; }
+        f.Reset();
+        f.Id = ++foeSeq;
+        (f.Kind, f.X, f.Y, f.Tier) = (kind, x, y, tier);
+        f.Hp = (int)Math.Round(kind switch { Kind.Boss => BossHp[tier - 1] * T.BossX, Kind.Beetle => (30 + (int)(t / 6)) * T.HpX, Kind.Wasp => (6 + (int)(t / 50)) * T.HpX, _ => (10 + (int)(t / 30)) * T.HpX }, MidpointRounding.AwayFromZero);
+        f.Speed = kind switch { Kind.Boss => BossSpeed[tier - 1], Kind.Beetle => 36 + t * .08, Kind.Wasp => 90 + t * .09, _ => 45 + t * .09 } * T.SpeedX;
+        f.R = (kind switch { Kind.Boss => tier >= Bosses ? 34 : 24, Kind.Beetle => 12, Kind.Wasp => 8, _ => 10 }) * sf;
         f.MaxHp = f.Hp;
         if (tier >= 3) f.DashAt = Clock + DashEvery;
         else if (AllDash && kind == Kind.Boss) f.DashAt = Clock + DashEveryLow;   // 6단계부터 1·2번 보스도 (더 드물게) 돌진
@@ -1059,14 +1113,16 @@ sealed class Swarm
     void Blow(double x, double y, double blastPx, int dmg, double knock, double stun, bool special)
     {
         int before = Kills;
+        blowing = true;
         foreach (var f in Foes)
         {
             double dx = f.X - x, dy = f.Y - y, r = blastPx + f.R;
             if (f.Dead || dx * dx + dy * dy >= r * r) continue;
             Damage(f, special ? Versus(f, dmg) : dmg, knock, stun, x, y);
         }
+        blowing = false;
         if (special) SpecKills += Kills - before;
-        Pops.Add(new Pop { X = x, Y = y, At = Clock, R = blastPx });
+        Pops.Add() = new Pop { X = x, Y = y, At = Clock, R = blastPx };
     }
 
     // ══ 특수기 (docs/swarm-specials.md) ══
@@ -1285,14 +1341,16 @@ sealed class Swarm
     {
         double blast = NadeBlast * sf;
         int before = Kills, normal = NadeDamage(false), boss = NadeDamage(true);
+        blowing = true;
         foreach (var f in Foes)
         {
             double dx = f.X - x, dy = f.Y - y, r = blast + f.R;
             if (f.Dead || dx * dx + dy * dy >= r * r) continue;
             Damage(f, f.Kind == Kind.Boss ? boss : normal, NadeKnock, NadeStun, x, y);
         }
+        blowing = false;
         NadeKills += Kills - before;
-        Pops.Add(new Pop { X = x, Y = y, At = Clock, R = blast });
+        Pops.Add() = new Pop { X = x, Y = y, At = Clock, R = blast };
         NadeBoomAt = Clock;
         OnEvent?.Invoke("nade");
     }
@@ -1302,7 +1360,13 @@ sealed class Swarm
     {
         if (f.Dead) return false;
         bool boss = f.Kind == Kind.Boss;
-        if (flash) f.Hit = Clock;
+        f.Hits++;
+        if (flash)
+        {
+            f.Hit = Clock;
+            double nx = f.X - fromX, ny = f.Y - fromY, nd = Math.Sqrt(nx * nx + ny * ny);   // 맞은 쪽 반대로 한 칸 (그림 전용)
+            (f.NudgeX, f.NudgeY) = nd > .01 ? ((sbyte)(Math.Abs(nx / nd) > .4 ? Math.Sign(nx) : 0), (sbyte)(Math.Abs(ny / nd) > .4 ? Math.Sign(ny) : 0)) : ((sbyte)0, (sbyte)0);
+        }
         if (stun > 0 && !boss && !f.Heavy && !f.Dart) f.StunUntil = Math.Max(f.StunUntil, Clock + stun);   // 보스·강철은 멈칫 없음, 돌진 말벌은 안 멈춘다
         if (knock > 0 && !f.Dart)
         {
@@ -1310,59 +1374,70 @@ sealed class Swarm
             if (d > .01) (f.X, f.Y) = (f.X + (f.X - fromX) / d * push, f.Y + (f.Y - fromY) / d * push);
         }
         if ((f.Hp -= n) > 0) { if (flash) OnEvent?.Invoke("hit"); return false; }
-        Kill(f);
+        Kill(f, fromX, fromY);
         return true;
     }
 
-    void Kill(Foe f)
+    void Kill(Foe f, double fromX, double fromY)
     {
         f.Dead = true;
         Kills++;
+        AddDeath(f, fromX, fromY);
         bool boss = f.Kind == Kind.Boss;
-        Pops.Add(new Pop { X = f.X, Y = f.Y, At = Clock, R = f.R * 1.5 });
+        if (Clock < 30) Kills30++;
+        if (f.Kind is Kind.Bug or Kind.Wasp && !f.Elite && !f.Heavy) { NormKills++; NormHits += f.Hits; if (f.Hits == 1) NormOne++; }
         if (f.Dirt) { OnEvent?.Invoke("kill"); return; }   // 땅에서 올라온 벌레는 아무것도 안 남긴다
-        Gems.Add(new Gem { X = f.X, Y = f.Y, Xp = f.Extra ? BossGems[0] / 2 : boss ? BossGems[f.Tier - 1] : f.Kind == Kind.Beetle ? f.Heavy ? (f.Elite ? 2 * SteelGems : SteelGems) : f.Elite ? EliteBeetleGems : 3 : f.Elite ? EliteGems : GemValue() });
-        if (f.Extra) Gems.Add(new Gem { X = f.X + 14 * sf, Y = f.Y, Item = Item.Heart });   // 둘째 보스: 보석 7 + 하트만 (보스 수·첫 보스 초·보석 끌어오기·자석 없음)
+        if (boss && !f.Extra) // 보스 보석은 한 알이 아니라 다섯 알이 사방으로 (합은 같다: 15·20·25·30 → 3·4·5·6 이 다섯. 72° 씩, rng 없이)
+            for (int i = 0; i < 5; i++)
+            {
+                double a = -Math.PI / 2 + i * 2 * Math.PI / 5;
+                var (gx, gy) = Inside(f.X + Math.Cos(a) * 18 * sf, f.Y + Math.Sin(a) * 14 * sf);
+                var gem = NewGem(Item.Gem, gx, gy, BossGems[f.Tier - 1] / 5);
+                (gem.HopX, gem.HopY) = (f.X - gx, f.Y - gy);
+            }
+        else if (f.Kind == Kind.Beetle || f.Elite || f.Extra || DropPlain(f))   // 보통·말벌은 GemRate 만큼만 (잡은 수 누적, 나머지는 보석 없이 터진다)
+            NewGem(Item.Gem, f.X, f.Y, f.Extra ? BossGems[0] / 2 : f.Kind == Kind.Beetle ? f.Heavy ? (f.Elite ? 2 * SteelGems : SteelGems) : f.Elite ? EliteBeetleGems : 3 : f.Elite ? EliteGems : GemValue());
+        if (f.Extra) NewGem(Item.Heart, f.X + 14 * sf, f.Y);   // 둘째 보스: 보석 7 + 하트만 (보스 수·첫 보스 초·보석 끌어오기·자석 없음)
         else if (boss)
         {
             foreach (var g in Gems) if (g.Item == Item.Gem) g.Pull = true;   // 보스를 잡으면 판 위 보석이 모두 날아온다
             BossesKilled++;
             if (FirstBossSec < 0) FirstBossSec = Clock - bossSince;
-            Gems.Add(new Gem { X = f.X + 14 * sf, Y = f.Y, Item = Item.Heart }); // 보스는 하트를 꼭 남긴다
+            NewGem(Item.Heart, f.X + 14 * sf, f.Y); // 보스는 하트를 꼭 남긴다
             if (f.Tier is 1 or 3 && Magnets + magnetsOut < MaxMagnets)          // 1·3번 보스는 자석도
             {
-                Gems.Add(new Gem { X = f.X - 14 * sf, Y = f.Y, Item = Item.Magnet });
+                NewGem(Item.Magnet, f.X - 14 * sf, f.Y);
                 magnetsOut++;
             }
             if (f.Tier >= Bosses && Grenades + grenadesOut < MaxGrenades)               // 여왕은 수류탄도 (봇 표 손잡이 ③: 계획은 2번 보스도였으나 1단계가 50% 를 넘어 여왕만). 쉬는 시간은 안 건드린다
             {
                 var (gx, gy) = Inside(f.X - 14 * sf, f.Y);
-                Gems.Add(new Gem { X = gx, Y = gy, Item = Item.Grenade });
+                NewGem(Item.Grenade, gx, gy);
                 grenadesOut++;
             }
         }
         // 하트: 딱정벌레가 가끔. 생명이 깎여 있고 판 위에 하트가 없을 때만
         else if ((f.Kind == Kind.Beetle || f.Elite) && Hp < MaxHp && rng.NextDouble() < (f.Elite ? EliteHeartChance : HeartChance) && !Lying(Item.Heart))
-            Gems.Add(new Gem { X = f.X, Y = f.Y - 12 * sf, Item = Item.Heart });
+            NewGem(Item.Heart, f.X, f.Y - 12 * sf);
         // 신발: 보통 벌레를 잡으면 가끔. 처음 15초와 하나 떨어진 뒤 30초는 나오지 않고, 신은 것과 떨어져 있는 것을 합쳐 세 켤레까지만
         if (!boss && Shoes + shoesOut < MaxShoes && Clock >= shoeFrom && rng.NextDouble() < ShoeChance)
         {
             var (hx, hy) = Inside(f.X + 14 * sf, f.Y);
-            Gems.Add(new Gem { X = hx, Y = hy, Item = Item.Shoe });
+            NewGem(Item.Shoe, hx, hy);
             (shoesOut, shoeFrom) = (shoesOut + 1, Clock + ShoeGap);
         }
         // 자석: 보통 벌레를 잡으면 가끔. 판 위에 하나만, 처음 20초·주운 뒤 35초는 나오지 않고, 다섯 개를 채우면 더 나오지 않는다
         if (!boss && magnetsOut == 0 && Magnets < MaxMagnets && Clock >= magnetFrom && rng.NextDouble() < MagnetChance)
         {
             var (mx, my) = Inside(f.X - 14 * sf, f.Y);
-            Gems.Add(new Gem { X = mx, Y = my, Item = Item.Magnet });
+            NewGem(Item.Magnet, mx, my);
             magnetsOut++;
         }
         // 수류탄: 보통 벌레를 잡으면 가끔. 처음 30초와 하나 떨어진 뒤 40초는 나오지 않고, 든 것과 떨어져 있는 것을 합쳐 세 개까지만 (조건을 앞에 둬서 30초까지는 rng 를 더 쓰지 않는다)
         if (!boss && Grenades + grenadesOut < MaxGrenades && Clock >= grenadeFrom && rng.NextDouble() < GrenadeChance)
         {
             var (gx, gy) = Inside(f.X, f.Y + 14 * sf);   // 신발 +x, 자석 -x, 하트 -y 와 안 겹치게 아래
-            Gems.Add(new Gem { X = gx, Y = gy, Item = Item.Grenade });
+            NewGem(Item.Grenade, gx, gy);
             (grenadesOut, grenadeFrom) = (grenadesOut + 1, Clock + GrenadeGap);
         }
         while (Gems.Count > MaxGems) // 상한: 가장 오래된 보석의 값을 그다음 오래된 보석에 더한다 (잃는 보석이 없다). 보석이 하나뿐이면 가장 오래된 하트가 사라진다 (자석·신발·수류탄은 밀려나지 않는다)
@@ -1386,12 +1461,70 @@ sealed class Swarm
         OnEvent?.Invoke(boss ? "bigkill" : "kill");
     }
 
+    bool DropPlain(Foe f)
+    {
+        gemAcc += f.Rush ? RushGemRate : GemRate;
+        if (gemAcc < 1 - 1e-9) return false;
+        gemAcc -= 1;
+        return true;
+    }
+
     // 보통 보석(값 1)은 벌레가 단단한 만큼 값 2 로 떨어진다: 넣은 피해만큼 보석이 나오도록 (단계가 올라도 레벨이 멈추지 않게)
     int GemValue() => T.HpX > 1 && rng.NextDouble() < (T.HpX - 1) * GemBoost ? 2 : 1;
 
     bool Lying(Item item) { foreach (var g in Gems) if (g.Item == item) return true; return false; }
 
-    void Sweep() => Foes.RemoveAll(static f => f.Dead);
+    // 죽은 벌레는 목록에서 빼 되쓸 묶음으로 (남은 것의 차례는 그대로)
+    void Sweep()
+    {
+        int keep = 0, n = Foes.Count;
+        for (int i = 0; i < n; i++)
+        {
+            var f = Foes[i];
+            if (f.Dead) foePool.Push(f);
+            else Foes[keep++] = f;
+        }
+        if (keep < n) Foes.RemoveRange(keep, n - keep);
+    }
+
+    void AddDeath(Foe f, double fromX, double fromY, bool win = false)
+    {
+        if (Deaths.Count >= MaxDeaths) { DeathsLost++; return; }
+        double dx = f.X - fromX, dy = f.Y - fromY, d = Math.Sqrt(dx * dx + dy * dy);
+        (dx, dy) = d > .01 ? (dx / d, dy / d) : (0, 0);
+        Deaths.Add() = new Death { X = f.X, Y = f.Y, Dx = dx, Dy = dy, Ox = fromX, Oy = fromY, Kind = f.Kind, Tier = f.Tier, Elite = f.Elite, Heavy = f.Heavy, Dirt = f.Dirt, Extra = f.Extra, Boom = blowing, Win = win };
+    }
+
+    // 디버그·검사: 그 벌레를 (fromX, fromY) 쪽에서 때린다 (잡았으면 true). 밀침·멈칫 없이
+    public bool Strike(Foe f, int dmg, double fromX, double fromY) => Damage(f, dmg, 0, 0, fromX, fromY);
+
+    // 디버그 (swarm pop <종류> [수]): 볼록이 옆에 벌레를 놓고 바로 터뜨린다 (보석·하트도 평소처럼 남는다). 맞은 쪽은 볼록이 쪽
+    public void CallPop(Kind kind, int n, bool elite = false, bool steel = false)
+    {
+        n = Math.Clamp(n, 1, 60);
+        double side = Dir >= 0 ? 1 : -1;
+        for (int i = 0; i < n; i++)
+        {
+            double a = n == 1 ? 0 : (i - (n - 1) / 2.0) * .34, r = (90 + (n > 12 ? i % 3 * 26 : 0)) * sf;
+            var (x, y) = Inside(X + Math.Cos(a) * r * side, Y + Math.Sin(a) * r * 1.2);
+            var f = Add(kind, x, y, kind == Kind.Boss ? 1 : 0);
+            if (steel) MakeSteel(f);
+            if (elite) MakeElite(f);
+            Strike(f, int.MaxValue / 2, X, Y);
+        }
+    }
+
+    // 보석 하나를 판에 놓는다 (되쓰는 것이 있으면 그것을 처음 값으로 되돌려)
+    Gem NewGem(Item item, double x, double y, int xp = 0)
+    {
+        Gem g;
+        if (gemPool.Count > 0) g = gemPool.Pop();
+        else { g = new Gem(); GemsMade++; }
+        g.Reset();
+        (g.Item, g.X, g.Y, g.Xp, g.BornAt) = (item, x, y, xp, Clock);
+        Gems.Add(g);
+        return g;
+    }
 
     // ── 닿으면 그 벌레만큼 생명이 깎인다 (여럿이 닿으면 가장 큰 것 하나). 둘레 벌레를 밀어내고 1초는 안 맞는다 ──
     void Touch()
@@ -1404,7 +1537,7 @@ sealed class Swarm
         if (Clock - HpAt >= HpTrailSec) HpFrom = Hp; // 방금 잃은 만큼은 잠깐 흰색으로 남는다
         (Hp, DamageTaken, HpAt) = (Math.Max(0, Hp - dmg), DamageTaken + dmg, Clock);
         (HurtAt, SafeUntil) = (Clock, Clock + SafeSec);
-        Pops.Add(new Pop { X = X, Y = Y, At = Clock, R = 18 * sf });
+        Pops.Add() = new Pop { X = X, Y = Y, At = Clock, R = 18 * sf };
         foreach (var f in Foes)
         {
             double d = Dist(f), away = HurtPush * sf + f.R;
@@ -1424,7 +1557,7 @@ sealed class Swarm
         {
             var g = Gems[i];
             double d = Dist(g.X, g.Y, X, Y);
-            if (d >= reach && !g.Pull) continue;
+            if (d >= reach && !(g.Pull && Clock - g.BornAt >= GemHopSec)) continue;   // 보스가 터뜨린 보석은 톡 튀어 떨어진 뒤에 날아온다
             if (d > 10 * sf)
             {
                 double step = Math.Min(d, PullSpeed * sf * dt);

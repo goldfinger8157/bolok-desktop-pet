@@ -6,7 +6,6 @@ namespace Bolok;
 sealed class SweetSkin : ClimbSkin
 {
     public override ClimbTheme Theme => ClimbTheme.Sweet;
-    public override ClimbLift Lift => ClimbLift.Swing;   // 사탕 줄에 매달려 그네처럼 흔들리며
     public override int Variants => 6;
 
     static uint C(string h) => SkinKit.C(h);
@@ -134,9 +133,6 @@ sealed class SweetSkin : ClimbSkin
 
         Save = SkinKit.Base(Cotton(true));
         SaveHead = new SkinPx(Cotton(false), 11, 8);
-        Skip = SkinKit.Base(Rope(false));
-        SkipOpen = SkinKit.Base(Rope(true));
-        SetCarrier(Hook(), 4, 1);                   // 줄이 걸린 갈고리 (줄은 그리는 때 선으로)
         for (int i = 0; i < 2; i++) Band[i] = Whip(i);
         Pip[0] = PipMac(0); Pip[1] = PipMac(1); Pip[2] = PipMac(2); Pip[3] = PipMac(3);
     }
@@ -160,46 +156,6 @@ sealed class SweetSkin : ClimbSkin
             for (int k = 0; k < 4; k++) { g.LineTo(7 + k * 2.4, 15.5, 11.5, 15.5 + (5 - Math.Abs(k - 1.5)) * 2.6, C("#C9A262")); g.LineTo(16 - k * 2.4, 15.5, 11.5, 15.5 + (5 - Math.Abs(k - 1.5)) * 2.6, C("#C9A262")); }
             g.Fill(7, 15, 9, 1, C("#F6E0B4"));
         }
-        g = SkinKit.Pad(g, 1); g.Outline(SkinKit.Line);
-        return g;
-    }
-
-    static Px Rope(bool open)
-    {
-        var g = new Px(23, 30);
-        uint a = C("#F0506E"), b = C("#FFFFFF");
-        if (open)
-        {
-            for (double t = 0; t < 1; t += .004)
-            {
-                int x = (int)Math.Floor(11 + Math.Sin(t * 7) * 3.2), y = (int)Math.Floor(25 - t * 24);
-                uint c = ((int)(t * 24) & 1) == 0 ? a : b;
-                g.Put(x, y, c); g.Put(x + 1, y, c); g.Put(x, y - 1, c); g.Put(x + 1, y - 1, c);
-            }
-        }
-        else
-        {
-            // 땅에서 솟는 줄기 + 말린 사탕줄 (빨강·하양 번갈아)
-            for (double t = 0; t < 1; t += .0015)
-            {
-                double ang = Math.PI * 1.1 + t * Math.PI * 4.6, r = 8.5 * (1 - t * .68);
-                int x = (int)Math.Floor(11 + Math.Cos(ang) * r), y = (int)Math.Floor(13 + Math.Sin(ang) * r * .95);
-                uint c = ((int)(t * 34) & 1) == 0 ? a : b;
-                g.Put(x, y, c); g.Put(x + 1, y, c); g.Put(x, y + 1, c); g.Put(x + 1, y + 1, c);
-            }
-            for (int y = 21; y < 26; y++) { g.Put(11, y, a); g.Put(12, y, b); }
-        }
-        g = SkinKit.Pad(g, 1); g.Outline(SkinKit.Line);
-        return g;
-    }
-
-    // 사탕 줄이 걸린 지팡이 갈고리 (빨강·하양 줄무늬): 원점 (4, 1) 이 줄이 늘어지는 자리
-    static Px Hook()
-    {
-        var g = new Px(9, 7);
-        uint a = C("#F0506E"), b = C("#FFFFFF");
-        for (int i = 0; i < 6; i++) g.Put(1 + i, 2, i % 2 == 0 ? a : b);
-        g.Put(7, 3, a); g.Put(7, 4, b); g.Put(6, 5, a); g.Put(5, 5, b);
         g = SkinKit.Pad(g, 1); g.Outline(SkinKit.Line);
         return g;
     }
@@ -238,18 +194,4 @@ sealed class SweetSkin : ClimbSkin
         return g;
     }
 
-    // 친구 자리: 탑 뒤에서 옆으로 나온 막대과자 (초콜릿 입힌 쪽 · 설탕 알갱이)
-    public override void Perch(Px g, int bx, int by, int side, int tx, int ty)
-    {
-        int xa = side > 0 ? bx : tx - 9, xb = side > 0 ? tx + 9 : bx;
-        int w = xb - xa + 1;
-        var r = new Px(w + 2, 9);
-        uint core = C("#E8C98E"), coreH = C("#F6E0B4"), coreS = C("#C9A262"), choc = C("#9A6450"), chocH = C("#C28A72"), chocS = C("#6E4234");
-        r.Fill(1, 1, w, 6, core); SkinKit.Row(r, 1, w, 1, coreH); SkinKit.Row(r, 1, w, 6, coreS);
-        int c0 = side > 0 ? w / 3 : 1, c1 = side > 0 ? w : w - w / 3;
-        r.Fill(1 + c0, 1, c1 - c0, 6, choc); SkinKit.Row(r, 1 + c0, c1, 1, chocH); SkinKit.Row(r, 1 + c0, c1, 6, chocS);
-        for (int i = c0 + 3; i < c1 - 2; i += 5) { r.Put(1 + i, 3, C("#FFD0E0")); r.Put(2 + i, 4, C("#BFE8D8")); }
-        r.Outline(SkinKit.Line);
-        g.Blit(r, xa - 1, ty - 1);
-    }
 }

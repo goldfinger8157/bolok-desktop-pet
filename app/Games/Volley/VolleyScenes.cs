@@ -29,7 +29,7 @@ static partial class VolleyCheck
         finally { foreach (var f in frames) f.Dispose(); }
     }
 
-    // 장면 넷 (바탕화면 판): ① 돌이 솟아 보이는 예고 ② 걸려 넘어진 순간(slide·먼지) ③ 블로킹(block 자세·번쩍) ④ 캡을 넘는 보조 스파이크
+    // 장면 넷 (바탕화면 판): ① 돌이 솟아 보이는 예고 ② 걸려 넘어진 순간(slide·먼지) ③ 블로킹(block 자세·번쩍) ④ 캡을 넘는 자동 스파이크 (Ctrl 없이)
     static void NewScenes(string path, int k)
     {
         var host = new SceneHost(scale: k);
@@ -72,7 +72,6 @@ static partial class VolleyCheck
                     (q.PlayerOnGround, q.PlayerY, q.PlayerVy) = (false, q.FloorY - 105 * k / 3.0, 0);
                     (q.BallX, q.BallY, q.BallVx, q.BallVy) = (q.PlayerX + 8 * k / 3.0, q.PlayerY - q.PetR - (q.BallR + q.PetR) + 2, 0, 0);
                     q.SetLast(VolleySim.Actor.Rival, VolleySim.Touch.Normal);
-                    ctrl = true;
                 }
             }
             var s = w!;
@@ -89,7 +88,6 @@ static partial class VolleyCheck
                 }
                 else if (!dropped) Park(s);
             }
-            else if (shot == 3 && frames > 1) ctrl = false;
             s.Stage = VolleySim.Phase.InPlay;
             game.Frame(Dt);
             return shot switch
@@ -98,6 +96,67 @@ static partial class VolleyCheck
                 1 => tripAt > 0 && s.Clock - tripAt >= .15,
                 2 => blockAt > 0 && s.Clock - blockAt >= .08,
                 _ => frames > 3 && s.BallX >= s.NetX - 6,
+            };
+        });
+    }
+
+    // 실제 판의 장면 (창 안, 배율 k): 슬라이드(`slide`)와 뛰면 저절로 스파이크(`spike`). 시안과 같은 흐름을 진짜 규칙·그림으로
+    static void SlideScenes(string path, int k, bool spike)
+    {
+        var host = new SceneHost(scale: k);
+        var game = new VolleyGame(host) { showMe = true };
+        int fw = Math.Min(1920, 1280 * k / 3), fh = Math.Min(1040, 720 * k / 3);
+        var field = new Rectangle(0, 0, fw, fh);
+        var court = new Rectangle((int)(fw * .15), (int)(fh * .22), (int)(fw * .70), (int)(fh * .62));
+        var view = Rectangle.Intersect(field, Rectangle.FromLTRB(court.Left - 8, court.Top - 8, court.Right + 8, court.Bottom + 36 * k / 3));
+        bool right = false, up = false;
+        var ses = Session.Fake(field, key: key => (key == Keys.Right && right) || (key == Keys.Up && up), active: () => true);
+        using var ov = host.Overlay(game);
+        var P = VolleySim.Actor.Player;
+        double sc = k / 3.0;
+
+        var w = new VolleySim(court, false, k, new Random(5), VolleyTune.Now) { BotsOff = true, Ball = VolleySim.BallKind.Orange, BallSpin = 2 };
+        w.ScorePlayer = 2; w.ScoreRival = 1;
+        game.Open(w, ses, events: false);
+        w.Stage = VolleySim.Phase.InPlay;
+        double digAt = -1, startX = 0;
+        w.OnEvent = (e, _) => { if (e == "dig") digAt = w.Clock; };
+        int frames = 0, shotNow = -1;
+        double holdX = w.NetX - 90 * sc, holdY = w.FloorY - 180 * sc;       // 스파이크 장면: 공은 닿을 때까지 이 자리에 떠 있다
+
+        if (spike) { w.PlayerX = w.NetX - 200 * sc; right = up = true; }
+        else
+        {
+            w.PlayerX = w.NetX - 300 * sc;                                   // 슬라이드 장면: 걸어서는 못 닿을 낮은 공이 앞에서 떨어진다
+            (w.BallX, w.BallY, w.BallVx, w.BallVy) = (w.PlayerX + 170 * sc, w.FloorY - 60 * sc, 0, 0);
+            startX = w.PlayerX; right = true;
+        }
+
+        SceneKit.Shots(path, ov, view, spike ? 4 : 5, shot =>
+        {
+            if (shot != shotNow) { shotNow = shot; if (shot == 0) return true; }   // 처음 모습
+            frames++;
+            w.Stage = VolleySim.Phase.InPlay;
+            if (spike)
+            {
+                if (w.LastHitActor == null) (w.BallX, w.BallY, w.BallVx, w.BallVy) = (holdX, holdY, 0, 0);
+                else right = false;
+            }
+            else if (w.IsSliding(P) || w.IsLying(P)) right = false;
+            game.Frame(Dt);
+            if (spike)
+                return shot switch
+                {
+                    1 => !w.PlayerOnGround && w.PlayerY < w.FloorY - 70 * sc && w.LastHitActor == null,
+                    2 => w.SpikeEffectActive && w.SpikeTimer > .3,
+                    _ => w.BallX >= w.NetX + 20 * sc,
+                };
+            return shot switch
+            {
+                1 => w.IsSliding(P) && Math.Abs(w.PlayerX - startX) > w.SlideDist * .55,
+                2 => w.DigFlashActive && w.DigFlashP < .3,
+                3 => digAt > 0 && w.Clock - digAt >= .22,
+                _ => digAt > 0 && !w.IsSliding(P) && !w.IsLying(P) && w.Clock - digAt >= .35,
             };
         });
     }

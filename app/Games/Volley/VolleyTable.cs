@@ -15,7 +15,7 @@ static partial class VolleyCheck
         public readonly long[] Points = new long[2 * VolleySim.PointKinds];
         public long PointTotal, HitSum, ScoreSum;
         public double RallySec;
-        public readonly long[] Stone = new long[2], Trip = new long[2], BlockHit = new long[2], BlockMiss = new long[2], Spike = new long[2], SpikeOver = new long[2];
+        public readonly long[] Stone = new long[2], Trip = new long[2], BlockHit = new long[2], BlockMiss = new long[2], Spike = new long[2], SpikeOver = new long[2], Slide = new long[2], Dig = new long[2], DigOver = new long[2];
 
         public void Add(VolleySim w)
         {
@@ -29,12 +29,15 @@ static partial class VolleyCheck
             {
                 Stone[i] += w.StoneCount[i]; Trip[i] += w.TripCount[i]; BlockHit[i] += w.BlockHit[i]; BlockMiss[i] += w.BlockMissCount[i];
                 Spike[i] += w.SpikeCount[i]; SpikeOver[i] += w.SpikeOver[i];
+                Slide[i] += w.SlideCount[i]; Dig[i] += w.DigCount[i]; DigOver[i] += w.DigOver[i];
             }
         }
 
         public double Kind(VolleySim.PointKind k) => Points[(int)k] + Points[VolleySim.PointKinds + (int)k];
         public double Rate => Wins / Math.Max(1, N);
         public double SpikeShare => Kind(VolleySim.PointKind.Spike) / Math.Max(1, PointTotal);
+        public double DigRate => (Dig[0] + Dig[1]) / (double)Math.Max(1, Slide[0] + Slide[1]);      // 던진 것 가운데 공을 받은 비율
+        public double DigReturn => (DigOver[0] + DigOver[1]) / (double)Math.Max(1, Dig[0] + Dig[1]);  // 디그한 공이 같은 편 손으로 상대 코트에 넘어간 비율
         public double SpikeCross => (SpikeOver[0] + SpikeOver[1]) / (double)Math.Max(1, Spike[0] + Spike[1]);
         public double StonesPerMatch => (Stone[0] + Stone[1]) / (double)Math.Max(1, N);
         public double TripShare => Kind(VolleySim.PointKind.Trip) / Math.Max(1, PointTotal);
@@ -62,10 +65,10 @@ static partial class VolleyCheck
     {
         double n = Math.Max(1, t.N);
         string LR(long[] a, string f = "0.00") => $"L{(a[0] / n).ToString(f)}/R{(a[1] / n).ToString(f)}";
-        sb.AppendLine($"{label,-18} 승률 {Pct(t.Rate)}  점수/판 {t.ScoreSum / n,4:0.0}  타구/랠리 {t.HitSum / (double)Math.Max(1, t.PointTotal),4:0.0}  랠리 {t.RallySec / Math.Max(1, t.PointTotal),4:0.0}초  " +
-                      $"스파이크 넘김 {Pct(t.SpikeCross)} ({LR(t.Spike, "0.0")})  | 돌/판 {LR(t.Stone)}  넘어짐/판 {LR(t.Trip)}  블로킹 맞음/판 {LR(t.BlockHit)} 어긋남/판 {LR(t.BlockMiss)}  미완 {t.Unfinished}");
+        sb.AppendLine($"{label,-22} 승률 {Pct(t.Rate)}  점수/판 {t.ScoreSum / n,4:0.0}  타구/랠리 {t.HitSum / (double)Math.Max(1, t.PointTotal),4:0.0}  랠리 {t.RallySec / Math.Max(1, t.PointTotal),4:0.0}초  " +
+                      $"스파이크 넘김 {Pct(t.SpikeCross)} ({LR(t.Spike, "0.0")})  | 슬라이드/판 {LR(t.Slide)} 디그/판 {LR(t.Dig)} 디그율 {Pct(t.DigRate)} 디그 뒤 넘김 {Pct(t.DigReturn)}  | 돌/판 {LR(t.Stone)}  넘어짐/판 {LR(t.Trip)}  블로킹 맞음/판 {LR(t.BlockHit)} 어긋남/판 {LR(t.BlockMiss)}  미완 {t.Unfinished}");
         string K(string name, VolleySim.PointKind k) => $"{name} {t.Kind(k) / Math.Max(1, t.PointTotal) * 100:0.0}%({t.Points[(int)k] / n:0.00}/{t.Points[VolleySim.PointKinds + (int)k] / n:0.00})";
-        sb.AppendLine($"{"",-18} 득점 종류 전체%(판당 왼/오): " + string.Join("  ", K("스파이크", VolleySim.PointKind.Spike), K("블로킹", VolleySim.PointKind.Block), K("일반", VolleySim.PointKind.Normal),
+        sb.AppendLine($"{"",-22} 득점 종류 전체%(판당 왼/오): " + string.Join("  ", K("스파이크", VolleySim.PointKind.Spike), K("블로킹", VolleySim.PointKind.Block), K("일반", VolleySim.PointKind.Normal),
             K("꼭지", VolleySim.PointKind.Fumble), K("블로킹실수", VolleySim.PointKind.BlockMiss), K("넘어짐", VolleySim.PointKind.Trip), K("새", VolleySim.PointKind.Bird), K("자책", VolleySim.PointKind.Own)));
     }
 
@@ -81,18 +84,25 @@ static partial class VolleyCheck
         var rows = steps
             ? new (string, VolleyTune, BotSkill)[]
             {
-                ("전  (Old, 거울)", VolleyTune.Old, VolleyTune.Old.Rival),
+                ("옛 (Old, 거울)", VolleyTune.Old, VolleyTune.Old.Rival),
                 ("+숫자 넷 (거울)", VolleyTune.Numbers, VolleyTune.Numbers.Rival),
                 ("+스파이크 보조", VolleyTune.WithAssist, VolleyTune.WithAssist.Rival),
                 ("+블로킹", VolleyTune.WithBlocks, VolleyTune.WithBlocks.Rival),
-                ("후  (Now, 거울)", VolleyTune.Now, VolleyTune.Now.Rival),
-                ("후  (Now, 사람)", VolleyTune.Now, BotSkill.Human),
+                ("전 (Before, 거울)", VolleyTune.Before, VolleyTune.Before.Rival),
+                ("전 (Before, 사람)", VolleyTune.Before, BotSkill.HumanBefore),
+                ("+자동 스파이크 (거울)", VolleyTune.WithAutoSpike, VolleyTune.WithAutoSpike.Rival),
+                ("+슬라이드 (거울)", VolleyTune.WithSlides, VolleyTune.WithSlides.Rival),
+                ("후 (Now, 거울)", VolleyTune.Now, VolleyTune.Now.Rival),
+                ("후 (Now, 사람)", VolleyTune.Now, BotSkill.Human),
             }
             : new (string, VolleyTune, BotSkill)[]
             {
-                ("전  (Old, 거울)", VolleyTune.Old, VolleyTune.Old.Rival),
-                ("후  (Now, 거울)", VolleyTune.Now, VolleyTune.Now.Rival),
-                ("후  (Now, 사람)", VolleyTune.Now, BotSkill.Human),
+                ("전 (Before, 거울)", VolleyTune.Before, VolleyTune.Before.Rival),
+                ("전 (Before, 사람)", VolleyTune.Before, BotSkill.HumanBefore),
+                ("+자동 스파이크 (거울)", VolleyTune.WithAutoSpike, VolleyTune.WithAutoSpike.Rival),
+                ("+슬라이드 (거울)", VolleyTune.WithSlides, VolleyTune.WithSlides.Rival),
+                ("후 (Now, 거울)", VolleyTune.Now, VolleyTune.Now.Rival),
+                ("후 (Now, 사람)", VolleyTune.Now, BotSkill.Human),
             };
         var sb = new StringBuilder();
         foreach (var (name, court, desktop) in courts)
@@ -119,15 +129,15 @@ static partial class VolleyCheck
         return true;
     }
 
-    // 돌·넘어짐·블로킹이 나오는 판에서 규칙 한 프레임이 새로 잡는 바이트 (봇 판단 포함, 그림은 뺀다)
-    internal static long RuleBytesPerFrame(out int stones, out int trips, out int blocks)
+    // 돌·넘어짐·블로킹·슬라이드·디그가 나오는 판에서 규칙 한 프레임이 새로 잡는 바이트 (봇 판단 포함, 그림은 뺀다)
+    internal static long RuleBytesPerFrame(out int stones, out int trips, out int blocks, out int slides)
     {
-        var tune = VolleyTune.Now with { StoneChance = .6 };
+        var tune = VolleyTune.Now with { StoneChance = 1 };
         var court = new Rectangle(0, 0, 800, 500);
-        var left = BotSkill.Human with { StoneHopProb = .3 };
+        var left = BotSkill.Human with { StoneHopProb = 0 };
         long bytes = 0, frames = 0;
-        (stones, trips, blocks) = (0, 0, 0);
-        for (int seed = 1; frames < 20000 && seed < 60; seed++)
+        (stones, trips, blocks, slides) = (0, 0, 0, 0);
+        for (int seed = 1; frames < 60000 && seed < 200; seed++)
         {
             var w = new VolleySim(court, false, 3, new Random(seed), tune) { Birds = true, BirdRng = new Random(seed + 7) };
             w.ResetMatch(VolleySim.Actor.Player);
@@ -144,6 +154,7 @@ static partial class VolleyCheck
             stones += w.StoneCount[0] + w.StoneCount[1];
             trips += w.TripCount[0] + w.TripCount[1];
             blocks += w.BlockHit[0] + w.BlockHit[1] + w.BlockMissCount[0] + w.BlockMissCount[1];
+            slides += w.SlideCount[0] + w.SlideCount[1] + w.DigCount[0] + w.DigCount[1];
         }
         return bytes / Math.Max(1, frames);
     }

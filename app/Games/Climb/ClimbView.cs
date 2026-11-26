@@ -7,6 +7,7 @@ namespace Bolok;
 // 클라이밍 그리기 (docs/climb.md 2-3·5장, 시안 run/mockups/climb): 판 하나를 칸 그림판(Px)에 그려 ×f 로 키운 그림 한 장으로 얹는다.
 // 판 아래(바탕)는 칠하지 않는다 — 덩굴·잎·줍는 것·볼록이와 가벼운 표시만 (모양 A2 콩나무 투명, 모양 A4 창 테두리 덩굴). 그림자는 점무늬 (색 열쇠 창이라 반투명이 안 된다).
 // 판을 열 때 그림을 다 만들어 두고 프레임에서는 찍기만 한다: 칸 그림판·큰 그림 버퍼를 다시 쓰고 (고정해 둔 배열이 곧 비트맵), 바뀐 게 없으면 다시 그리지 않는다.
+// 콤보 효과(잔상·조각·숫자 쪽지)와 카페(그림·볼록이가 앉는 모습)는 ClimbViewFx.cs, 그 그림은 ClimbFxArt.cs (docs/climb-combo.md)
 
 // 모양: A2 = 콩나무 투명 (넓은 창·바탕화면), A4 = 창 테두리 덩굴 (좁은 판, 줄기가 창 왼쪽·오른쪽 테두리에 걸친다)
 enum ClimbLook { A2, A4 }
@@ -53,36 +54,21 @@ sealed class ClimbPose
 // 볼록이 자세 묶음 (판을 열 때 한 번): 지금 모습의 옆걸음·떨어짐·기뻐함 …
 sealed class ClimbPet
 {
-    public readonly ClimbPose Walk, Fly, Dizzy, Shock, Happy, Sad, Slide, Freeze, Look, Held;
+    public readonly ClimbPose Walk, Fly, Dizzy, Shock, Happy, Sad, Slide, Freeze, Look, Held, Idle, Sip, SipEnd;   // Sip·SipEnd: 카페에서 컵을 쥐고 홀짝 (자세가 없으면 eat → idle)
     public readonly int Foot;
     public readonly int HalfW, Tall, HeldTop;       // 걷는 몸의 반 너비·키 (가운데 x 20 기준, 발 줄에서 위로), 매달린 자세의 머리 줄
     public ClimbPet(Sprites sp, string stage)
     {
         string st = stage;
         ClimbPose Get(string pose) => ClimbPose.Try(sp, $"{st}/0/{pose}") ?? ClimbPose.Try(sp, $"{st}/0/idle")!;
-        (Walk, Fly, Dizzy, Shock, Happy, Sad, Slide, Freeze, Look, Held) = (Get("walk"), Get("fly"), Get("dizzy"), Get("shock"), Get("happy"), Get("sad"), Get("slide"), Get("freeze"), Get("look"), Get("held"));
+        (Walk, Fly, Dizzy, Shock, Happy, Sad, Slide, Freeze, Look, Held, Idle) = (Get("walk"), Get("fly"), Get("dizzy"), Get("shock"), Get("happy"), Get("sad"), Get("slide"), Get("freeze"), Get("look"), Get("held"), Get("idle"));
+        Sip = ClimbPose.Try(sp, $"{st}/0/sip") ?? Get("eat");
+        SipEnd = ClimbPose.Try(sp, $"{st}/0/sipend") ?? Sip;
         Foot = ClimbPose.FootRow(sp, $"{st}/0/idle");
         var b = Walk.Box();
         HalfW = Math.Max(20 - b.X0, b.X1 - 19);
         Tall = Foot - b.Y0 + 1;
         HeldTop = Held.Box().Y0;
-    }
-}
-
-// 100잎마다 손 흔드는 친구 한 마리 (없으면 새)
-sealed class ClimbFriend
-{
-    public readonly string Species;
-    public readonly ClimbPose? Hop;
-    public readonly int Foot;
-    public readonly int HalfW, Tall;                // 몸 상자 (가운데 x 20 기준 반 너비, 발 줄에서 위로). 새는 15×11
-    public ClimbFriend(string species, Sprites sp)
-    {
-        Species = species;
-        Hop = ClimbPose.Try(sp, "adult_sweet/0/hop");
-        Foot = Hop != null ? ClimbPose.FootRow(sp, "adult_sweet/0/idle") : 0;
-        if (Hop != null) { var b = Hop.Box(); HalfW = Math.Max(20 - b.X0, b.X1 - 19); Tall = Foot - b.Y0 + 1; }
-        else (HalfW, Tall) = (7, 11);
     }
 }
 
@@ -94,10 +80,7 @@ sealed class ClimbShow
     public bool Result, NewBest, Guide;   // Guide: 시작 안내 말풍선이 떠 있다
     public int Best;                     // 결과 화면의 최고 기록
     public int BestLeaf = -1;            // 지난 최고 기록 잎 (작은 왕관). −1 이면 없다
-    public int FriendAt = -1;            // 친구가 온 이정표 잎 (그 높이), −1 이면 없다
-    public int FriendLeaf, FriendSide, FriendLen, FriendGap;   // 친구가 선 곁가지: 붙은 잎, 쪽(−1·+1), 길이(칸), 볼록이 몸과 떨어진 칸 (PlaceFriend 가 정한다)
-    public double FriendAge;
-    public ClimbFriend? Friend;
+    public int MaxCombo;                 // 결과 화면의 가장 긴 콤보 (5 아래면 안 보인다)
 }
 
 sealed partial class ClimbView : IDisposable
@@ -121,20 +104,18 @@ sealed partial class ClimbView : IDisposable
     readonly ClimbArt.Sprite[] wilt = new ClimbArt.Sprite[2], wiltDroop = new ClimbArt.Sprite[2];
     readonly ClimbArt.Seg[,] seg = new ClimbArt.Seg[4, 2];      // [dx 22·−8·8·−22][굽는 쪽]
     readonly ClimbArt.Seg strip = null!;
-    readonly Px berry = null!, puff = null!, puffHead = null!, curl = null!, curlOpen = null!, petiole = null!, star = null!, smallCloud = null!;
+    readonly Px berry = null!, puff = null!, puffHead = null!, petiole = null!, star = null!, smallCloud = null!;
     readonly Px flower, flowerBud;
-    readonly Px[] curlFx = new Px[5];                // 덩굴손: 말림 · 풀리는 중 · 쭉 뻗음 · 되튐 · 다 폄
-    readonly Px[] fog = new Px[2], bird = new Px[2], cloudPuff = new Px[3];
+    readonly ClimbFxArt fx = null!;       // 콤보 조각·카페·잔상 (판을 열 때 구워 둔다)
+    readonly byte[] fxBlock = null!;      // 효과가 못 얹는 칸 (1 볼록이 · 2 다음 네 잎 발판), 효과를 그릴 때만 쓴다
+    readonly Px[] fog = new Px[2], cloudPuff = new Px[3];
     readonly Px[] iconSmall;   // 표시 아이콘 (배율 1): 싱싱·노랑·갈색·빈 칸 (테마마다 다르다)
     readonly Bitmap[] icon = new Bitmap[4];
-    static readonly int[] LensA2 = { 40, 54, 78 }, LensA4 = { 26 };   // 친구가 서는 곁가지 길이 (칸)
-    readonly ClimbArt.Seg[,] branch = new ClimbArt.Seg[2, 3];     // 친구가 선 곁가지 [왼쪽·오른쪽][길이]
-    readonly ClimbArt.Sprite[] branchLeaf = new ClimbArt.Sprite[2];
 
     // 지금 (시선·그림이 따라오는 것)
     double vN, viewX;                 // 보이는 높이 (잎), 시선 가운데 (A2: 칸)
     bool started;
-    (int, int, int, int, int, int, int, int, int, int, int) sig, lastSig;
+    (int, int, int, int, int, int, int, int, int, int, int, int) sig, lastSig;
     public bool WorldChanged { get; private set; }
     bool needCompose = true;
     Climb? t;
@@ -158,10 +139,9 @@ sealed partial class ClimbView : IDisposable
             iconSmall = Skin.Pip;
             int sk = GameHud.Small(f);
             for (int i = 0; i < 4; i++) icon[i] = Scaled(iconSmall[i], sk);
-            for (int i = 0; i < 2; i++) bird[i] = ClimbArt.Bird(i);
             (flower, flowerBud) = (ClimbArt.Flower(), ClimbArt.FlowerBud());   // 50잎 이정표: 발판 위에 피는 꽃
-            for (int si = 0; si < 2; si++)                                    // 친구 받침 (왼쪽·오른쪽 × 길이 셋) 을 미리
-                for (int li = 0; li < LensA2.Length; li++) { perch[si, li] = BakePerch(Skin, si == 0 ? -1 : 1, LensA2[li], out int bx0); perchBx[si * 3 + li] = bx0; }
+            fx = new ClimbFxArt(Theme, look, pet);
+            fxBlock = new byte[CW * PH];
             return;
         }
         // 잎 (구역 여섯 × 왼쪽·오른쪽)
@@ -177,35 +157,17 @@ sealed partial class ClimbView : IDisposable
         int[] dxs = { 22, -8, 8, -22 };
         for (int k = 0; k < 4; k++) for (int b = 0; b < 2; b++) seg[k, b] = ClimbArt.StemSeg(dxs[k], -DY, b == 0 ? 1 : -1);
         strip = ClimbArt.StemStrip();
-        (berry, puff, puffHead, curl, curlOpen, petiole) = (ClimbArt.Berry(), ClimbArt.Puff(), ClimbArt.PuffHead(), ClimbArt.Curl(), ClimbArt.Curl(true), ClimbArt.Petiole());
+        (berry, puff, puffHead, petiole) = (ClimbArt.Berry(), ClimbArt.Puff(), ClimbArt.PuffHead(), ClimbArt.Petiole());
         (flower, flowerBud) = (ClimbArt.Flower(), ClimbArt.FlowerBud());
         star = ClimbArt.Glyph(new[] { "..o..", ".oyo.", "oyyyo", ".oyo.", "..o.." }, ch => ch == 'y' ? ClimbArt.C("#FFF6C8") : ch == 'o' ? ClimbArt.C("#B9A85A") : 0);
-        for (int i = 0; i < 2; i++) { bird[i] = ClimbArt.Bird(i); fog[i] = ClimbArt.Cloud(i == 0 ? 44 : 40, 12, 31 + i * 7, ClimbArt.White, ClimbArt.C("#E4ECF5"), ClimbArt.C("#A9BCD2")); }
+        for (int i = 0; i < 2; i++) { fog[i] = ClimbArt.Cloud(i == 0 ? 44 : 40, 12, 31 + i * 7, ClimbArt.White, ClimbArt.C("#E4ECF5"), ClimbArt.C("#A9BCD2")); }
         for (int i = 0; i < 3; i++) cloudPuff[i] = ClimbArt.Cloud(10 + i * 3, 5, i * 5 + 1, ClimbArt.White, ClimbArt.C("#E4ECF5"), ClimbArt.C("#A9BCD2"));
         smallCloud = cloudPuff[0];
         iconSmall = new[] { ClimbArt.Icon(0), ClimbArt.Icon(1), ClimbArt.Icon(2), ClimbArt.Icon(3) };
         int sm = GameHud.Small(f);
         for (int i = 0; i < 4; i++) icon[i] = Scaled(iconSmall[i], sm);
-        curlFx[0] = curl; curlFx[1] = ClimbArt.CurlSpring(1); curlFx[2] = ClimbArt.CurlSpring(2); curlFx[3] = ClimbArt.CurlSpring(3); curlFx[4] = curlOpen;
-        var lens = look == ClimbLook.A2 ? LensA2 : LensA4;
-        foreach (int s in new[] { -1, 1 })
-        {
-            for (int li = 0; li < lens.Length; li++) branch[s < 0 ? 0 : 1, li] = BranchSeg(s, lens[li]);
-            branchLeaf[s < 0 ? 0 : 1] = ClimbArt.Leaf(ClimbArt.Fresh, s);
-        }
-    }
-
-    // 곁가지 (친구가 서는 잎까지): 가운데에서 s 쪽으로 len 칸, 살짝 위로. 원점은 줄기 쪽 끝
-    static ClimbArt.Seg BranchSeg(int s, double len)
-    {
-        var pts = new List<(double X, double Y)>();
-        for (double u = 0; u <= 1; u += .03) pts.Add((s * len * u, -14 * u + Math.Sin(u * Math.PI) * 3));
-        int minX = (int)pts.Min(p => p.X) - 4, minY = (int)pts.Min(p => p.Y) - 4, maxX = (int)pts.Max(p => p.X) + 4, maxY = (int)pts.Max(p => p.Y) + 4;
-        var o = new Px(maxX - minX + 1, maxY - minY + 1);
-        var fl = new Px(o.W, o.H);
-        foreach (var (x, y) in pts) o.Ell(x - minX, y - minY, 2.1, 2.1, ClimbArt.Line);
-        foreach (var (x, y) in pts) fl.Ell(x - minX, y - minY, 1.1, 1.1, ClimbArt.StemFill);
-        return new ClimbArt.Seg(o, fl, minX, minY);
+        fx = new ClimbFxArt(Theme, look, pet);
+        fxBlock = new byte[CW * PH];
     }
 
     static Bitmap Scaled(Px g, int k)
@@ -251,7 +213,18 @@ sealed partial class ClimbView : IDisposable
         double sum = 0;
         for (int k = 0; k < 5; k++) sum += c.At(n0 + k).Col;
         double mean = sum / 5 * DX, own = c.At(n0).Col * DX;
-        return Math.Clamp(mean, own - 50, own + 50);
+        double target = Math.Clamp(mean, own - 50, own + 50);
+        // 카페 발판이 곁에 있으면(볼록이가 그 발판 둘 아래 ~ 그 발판) 카페 전체가 판 안에 오게 시선을 맞춘다: 카페 발판이 판 가운데에서 ±(23~3)칸 카페 쪽 반대로 비낀 자리
+        for (int j = n0; j <= n0 + 2; j++)
+        {
+            ref var lf = ref c.At(j);
+            if (lf.Cafe == 0) continue;
+            double cx = lf.Col * DX;
+            target = lf.Cafe > 0 ? Math.Clamp(target, cx - 23, cx - 3) : Math.Clamp(target, cx + 3, cx + 23);
+            target = Math.Clamp(target, own - 50, own + 50);
+            break;
+        }
+        return target;
     }
 
     // 볼록이 가로 (칸 그림판 안): 높이 vn 에서
@@ -278,16 +251,8 @@ sealed partial class ClimbView : IDisposable
             viewX = Look == ClimbLook.A2 ? TargetX(c, vN) : 0;
         }
         // 그림이 규칙을 따라온다: 한 칸 0.08초. 빨리 두드리면 밀린 만큼 서둘러 따라잡는다
-        // 건너뛰기(덩굴손): 덩굴손 잎까지 한 칸 폴짝, 그 뒤 건너뛰는 잎을 줄기를 따라 한 칸씩 (LiftSec 안에 끝난다)
         double gap = c.N - vN;
-        if (c.LiftLeft > 0 && c.Lifts > 0 && c.N - c.PrevN > 1)
-        {
-            double e = c.T.LiftSec - c.LiftLeft, hop = c.T.HopSec;
-            int leaf = c.N - c.T.CurlUp;
-            double want = e < hop ? c.PrevN + e / hop : leaf + c.T.CurlUp * Math.Min(1, (e - hop) / (c.T.LiftSec - hop));
-            vN = Math.Min(c.N, Math.Max(vN, want));
-        }
-        else if (gap > 0) vN = Math.Min(c.N, vN + Math.Max(1.0, gap) / c.T.HopSec * dt);
+        if (gap > 0) vN = Math.Min(c.N, vN + Math.Max(1.0, gap) / c.T.HopSec * dt);
         else vN = c.N;
         if (Look == ClimbLook.A2)
         {
@@ -297,13 +262,11 @@ sealed partial class ClimbView : IDisposable
             viewX = Math.Clamp(viewX, own - 50, own + 50);   // 볼록이가 판 가운데 ±50칸 안에
         }
         var pose = PetNow(c, s, out _, out _, out _, out int pf);
-        if (s.FriendAt >= 0 && s.FriendSide == 0 && vN >= c.N - 1e-6) PlaceFriend(c, s);          // 이정표에 내려선 뒤 친구가 나타난다
-        if (s.FriendAt >= 0 && s.FriendSide != 0 && FriendTooClose(c, s)) s.FriendAt = -1;       // 볼록이가 가까이 지나가면 친구는 손 흔들고 돌아간다 (겹치지 않게)
         int grow = Grow(c, s);
         int stg = Skin != null ? StandStage(c) * 4 + WeakStage(c) * 2 : 0;
         sig = (c.N, (int)Math.Round(vN * 24), (int)Math.Round(viewX * 4), (int)c.State * 8 + (c.Puff ? 4 : 0) + (s.Paused ? 2 : 0) + (s.Result ? 1 : 0),
             pf, grow, (c.WiltLeft > 0 ? 1 + (c.WiltLeft < c.T.WiltSec * .6 ? 1 : 0) : 0) + stg * 4,
-            s.FriendAt >= 0 ? 1 + ((int)(s.FriendAge * 5) & 1) + (s.FriendAge < 3.2 ? 0 : 4) : 0,
+            ComboSig(c, s), CafeSig(c, s),
             c.MileAt > 0 && c.Clock - c.MileAt < .6 ? 1 + (int)((c.Clock - c.MileAt) * 14) : 0,
             c.Done ? (c.SinceFall < .8 ? 1 + (int)(c.SinceFall * 40) : 99) : 0, c.Berries * 64 + c.Saves * 8 + (c.BerryAt > 0 && c.Clock - c.BerryAt < .25 ? 1 + (int)((c.Clock - c.BerryAt) * 20) : 0) + (s.Guide ? 100000 : 0));
         _ = pose;
@@ -351,26 +314,14 @@ sealed partial class ClimbView : IDisposable
             double q = 1 - c.SaveLeft / c.T.SaveSec;
             p = pet.Held; frame = (int)(s.Clock * 6); footY = Foot + sink - 8 * Math.Sin(q * Math.PI) - 4; id = 3;
         }
-        else if (Lifting(c))
-        {
-            // 건너뛰는 중: 줄기를 따라 한 칸씩 (fr = 지금 칸 안에서 얼마나 갔나). 덩굴은 폴짝폴짝, 그 밖은 나르는 것에 실려
-            int land = c.N - 1;
-            double sk = i0 >= land ? sink * fr : 0;                    // 마지막 칸에서 가라앉은 발판에 내려앉는다
-            double arc = 4 * fr * (1 - fr);
-            switch (Skin?.Lift)
-            {
-                case ClimbLift.Glide: (p, frame, id, footY) = (pet.Walk, 0, 8, Foot - 2 - 2 * Math.Sin(s.Clock * 9) + sk); break;      // 비행기 위에 선 채 미끄러진다
-                case ClimbLift.Hang:  (p, frame, id, footY) = (pet.Held, (int)(s.Clock * 6), 9, Foot + 7 - 2 * Math.Sin(s.Clock * 7) + sk); x += Math.Sin(s.Clock * 8) * 2.2; break;   // 풍선 아래 매달려 흔들
-                case ClimbLift.Swing: (p, frame, id, footY) = (pet.Held, (int)(s.Clock * 6), 10, Foot + 5 - 7 * Math.Sin(fr * Math.PI) + sk); break;   // 줄에 매달려 그네처럼
-                case ClimbLift.Bounce: (p, frame, id, footY) = (pet.Walk, 1, 11, Foot - 15 * arc + sk); break;                          // 용수철로 통통
-                default: (p, frame, id, footY) = (pet.Walk, 1, 4, Foot - 7 * arc); break;                                              // 덩굴: 빠르게 폴짝폴짝
-            }
-            left = c.At(i0 + 1).Dir < 0;
-        }
+        else if (c.InCafe) p = CafePet(c, s, ref x, ref footY, ref left, ref frame, ref id, sink);
         else if (vN < c.N - 1e-6)
         {
-            p = pet.Walk; frame = 1; id = 5;
-            footY = Foot + sink * Math.Max(0, vN - (c.N - 1)) - 6 * 4 * fr * (1 - fr);             // 한 칸 폴짝 (6칸 높이 포물선)
+            // 한 칸 폴짝: 콤보 단계가 오를수록 낮아지고(HopArc) 발이 바삐 움직이며(1·3번 걸음 번갈아) 가는 쪽으로 몸이 기운다
+            int tier = c.Tier;
+            p = pet.Walk; frame = tier >= 1 ? 1 + (c.N & 1) * 2 : 1; id = 5;
+            footY = Foot + sink * Math.Max(0, vN - (c.N - 1)) - c.T.HopArc[tier] * 4 * fr * (1 - fr);
+            if (tier >= 2) x += left ? -1 : 1;
             left = c.At(i0 + 1).Dir < 0;
         }
         else if (c.Clock - c.MileAt < .3 && c.MileAt > 0) { p = pet.Happy; frame = (int)(s.Clock * 6); id = 6; }
@@ -397,7 +348,6 @@ sealed partial class ClimbView : IDisposable
         {
             case ClimbKind.Berry: if (!done) PutPx(berry, x + dir * 3 - 4, y - 8); break;
             case ClimbKind.Puff: if (!done) PutPx(puff, x - dir * 2 - 8, y - 18); break;
-            case ClimbKind.Curl: { var cf = curlFx[CurlFrame(c, j)]; PutPx(cf, x + dir * 2 - 9, y + 1 - cf.H); break; }   // 밟으면 풀리며 튀어 오른다
             case ClimbKind.Flower: PutPx(done ? flower : flowerBud, x + dir * 9 - 7, y - 8); break;
         }
     }
@@ -411,19 +361,22 @@ sealed partial class ClimbView : IDisposable
         int n0 = (int)Math.Floor(vN);
         int lo = n0 - 3, hi = n0 + 10;
         int grow = Grow(c, s);
-        // 뒤: 친구 (덩굴이 그 위를 덮는다: 길이 가려지지 않게)
-        if (s.FriendAt >= 0 && s.FriendSide != 0 && Math.Abs(s.FriendLeaf - vN) < 8) FriendPaint(c, s);
+        bool fxOn = FxActive(c, s);
+        if (fxOn) Array.Clear(fxBlock);
+        DrawCafes(c, lo, hi);                       // 뒤: 카페 (발판이 그 위를 덮는다)
         if (Skin != null) ComposeSkin(c, s, lo, hi, grow);
         else ComposeVine(c, s, lo, hi, n0, grow);
         if (worldCells != null) Array.Copy(cells, worldCells, cells.Length);   // 검사: 볼록이를 얹기 전의 세계
-        // 볼록이 (건너뛰는 중 나르는 것은 볼록이 밑·위에)
-        var pp = PetNow(c, s, out double px, out double footY, out _, out _);
-        if (Skin != null) CarrierPaint(c, s, px, footY);
-        PutPx(pp, (int)Math.Round(px) - 20, (int)Math.Round(footY) - pet.Foot);
-        if (c.Puff && c.SaveLeft <= 0 && c.State != Climb.Phase.Over && c.State != Climb.Phase.Fall && !Lifting(c))   // 지닌 홀씨: 머리 위에 둥실
+        // 볼록이
+        var pp = PetNow(c, s, out double px, out double footY, out bool faceLeft, out _);
+        int pox = (int)Math.Round(px) - 20, poy = (int)Math.Round(footY) - pet.Foot;
+        PutPx(pp, pox, poy);
+        if (fxOn) MarkBlock(pp, pox, poy, 1);
+        if (c.Puff && c.SaveLeft <= 0 && c.State != Climb.Phase.Over && c.State != Climb.Phase.Fall && !c.InCafe)   // 지닌 홀씨: 머리 위에 둥실
             HeadThing(px, footY, (int)Math.Round(Math.Sin(s.Clock * 3) * 1.2), false);
         if (c.SaveLeft > 0) HeadThing(px, footY, 0, true);
         Shadow();
+        if (fxOn) ComboFx(c, s, px, footY, faceLeft);   // 그림자 뒤: 효과가 그림자를 안 만든다
         Upscale();
         needCompose = false;
     }
@@ -472,6 +425,7 @@ sealed partial class ClimbView : IDisposable
             };
             if (y - sp.Ay + sp.P.H < 6) continue;                       // 판 위로 거의 나간 잎은 그리지 않는다 (조각만 남아 점처럼 보인다)
             PutPx(sp.P, x - sp.Ax, y - sp.Ay);
+            MarkAhead(c, j, sp.P, x - sp.Ax, y - sp.Ay);
             if (kind != ClimbKind.Leaf && kind != ClimbKind.Wilt) Thing(c, j, kind, kind == ClimbKind.Flower ? j <= vN + .01 : taken, x, y, dir);
             Deco(c, j, kind, z, x, y, dir);
             _ = fogged;
@@ -588,17 +542,11 @@ sealed partial class ClimbView : IDisposable
             var (px, py) = PetCenter(c, s);
             stamps.Get("game/spark", (int)((c.Clock - c.BerryAt) * 20) & 1, small).Put(o, g, Cx((px + 12) * k), Cy((py - 16) * k));
         }
-        if (s.FriendAt >= 0 && s.FriendAge < 3.2 && Stamps.Of(o.Art).Has("emo/heart"))
-        {
-            var (fx, fy) = FriendHead(c, s);
-            stamps.Get("emo/heart", 0, small).Put(o, g, Cx(fx * k), Cy(fy * k));
-        }
         if (c.State == Climb.Phase.Fall && c.Why == Climb.Cause.Wrong && c.SinceFall < .35 && stamps.Has("emo/bang"))
         {
             var (px, py) = PetCenter(c, s);
             stamps.Get("emo/bang", 0, small).Put(o, g, Cx(px * k - 14 * k * c.WrongDir), Cy((py - 12) * k));
         }
-        if (Lifting(c)) LiftFx(o, g, panel, c, s, stamps, small);
         if (!s.Result) Hud(o, g, panel, c, s);
         else ResultBox(o, g, panel, c, s);
     }
@@ -609,12 +557,6 @@ sealed partial class ClimbView : IDisposable
     {
         PetNow(c, s, out double x, out double fy, out _, out _);
         return (x, fy - 20);
-    }
-
-    (int X, int Y) FriendHead(Climb c, ClimbShow s)
-    {
-        var (_, _, _, tx, ty) = FriendSpot(c, s);
-        return (tx + 2, ty - 46);
     }
 
     void Hud(Overlay o, Graphics g, Rectangle panel, Climb c, ClimbShow s)
@@ -653,11 +595,11 @@ sealed partial class ClimbView : IDisposable
         int k = F, big = k + 1, small = GameHud.Small(k);
         var stamps = Stamps.Of(o.Art);
         int cx = panel.X + panel.Width / 2, cy = (int)(panel.Y + panel.Height * .45);
-        bool second = !s.NewBest && s.Best > 0;
+        bool second = !s.NewBest && s.Best > 0, third = s.MaxCombo >= c.T.Tier1;       // 둘째 줄 최고 기록, 가장 긴 콤보(5 이상)는 반짝 + 숫자 한 줄 더
         int digits = GameHud.Digits(c.N) + 1;
-        int w1 = 14 * k + digits * 5 * big, w2 = second ? (13 + 5 * GameHud.Digits(s.Best)) * small : 0;
-        int half = Math.Max(w1, w2) / 2 + 5 * k, row2 = cy + 5 * big + 2 * k + 4 * small;
-        var box = o.Client(Rectangle.FromLTRB(cx - half, cy - 5 * big - 3 * k, cx + half, (second ? row2 + 4 * small : cy + 5 * big) + 3 * k));
+        int w1 = 14 * k + digits * 5 * big, w2 = second ? (13 + 5 * GameHud.Digits(s.Best)) * small : 0, w3 = third ? (13 + 5 * GameHud.Digits(s.MaxCombo)) * small : 0;
+        int half = Math.Max(w1, Math.Max(w2, w3)) / 2 + 5 * k, row2 = cy + 5 * big + 2 * k + 4 * small, row3 = (second ? row2 + 6 * small + k : row2);
+        var box = o.Client(Rectangle.FromLTRB(cx - half, cy - 5 * big - 3 * k, cx + half, (third ? row3 + 4 * small : second ? row2 + 4 * small : cy + 5 * big) + 3 * k));
         GameHud.Box(g, box, k);
         g.DrawImageUnscaled(icon[0], cx - w1 / 2 + 2 * k - 3 - o.Left, cy - 8 - o.Top);
         GameHud.Number(o, g, c.N, cx - w1 / 2 + 14 * k + 5 * big / 2, cy, big, -1, 'x');
@@ -668,6 +610,12 @@ sealed partial class ClimbView : IDisposable
             stamps.Get("game/crown", 0, small).Put(o, g, x + 6 * small, row2);
             GameHud.Number(o, g, s.Best, x + 13 * small + 5 * small / 2, row2, small, -1);
         }
+        if (third)
+        {
+            int x = cx - w3 / 2;
+            stamps.Get("game/spark", 0, small).Put(o, g, x + 6 * small, row3);
+            GameHud.Number(o, g, s.MaxCombo, x + 13 * small + 5 * small / 2, row3, small, -1);
+        }
     }
 
     // 다시 칠할 자리 (화면 좌표)
@@ -675,7 +623,7 @@ sealed partial class ClimbView : IDisposable
     {
         int k = F, big = k + 1;
         int cx = panel.X + panel.Width / 2, cy = (int)(panel.Y + panel.Height * .45);
-        return Rectangle.Inflate(Rectangle.FromLTRB(cx - 40 * k, cy - 5 * big - 3 * k - 16 * big, cx + 40 * k, cy + 5 * big + 3 * k + 10 * k), 2 * k, 2 * k);
+        return Rectangle.Inflate(Rectangle.FromLTRB(cx - 40 * k, cy - 5 * big - 3 * k - 16 * big, cx + 40 * k, cy + 5 * big + 3 * k + 18 * k), 2 * k, 2 * k);
     }
 
     public void ForceCompose() => needCompose = true;
@@ -687,19 +635,18 @@ sealed partial class ClimbView : IDisposable
         {
             foreach (var x in Skin.Gallery()) yield return x;
             yield return ("꽃", flower); yield return ("꽃봉오리", flowerBud);
-            for (int i = 0; i < 2; i++) yield return ($"새 {i}", bird[i]);
-            for (int si = 0; si < 2; si++) for (int li = 0; li < LensA2.Length; li++) yield return ($"친구 받침 {si}/{li}", perch[si, li]);
+            foreach (var x in fx.Gallery()) yield return x;
             yield break;
         }
-        for (int i = 1; i < 4; i++) yield return ($"풀리는 덩굴손 {i}", curlFx[i]);
         for (int z = 0; z < 6; z++) for (int d = 0; d < 2; d++) { yield return ($"잎 {z}/{d}", leaf[z, d].P); yield return ($"큰 잎 {z}/{d}", leafBig[z, d].P); yield return ($"처진 잎 {z}/{d}", leafDroop[z, d].P); }
         for (int d = 0; d < 2; d++) { yield return ($"시든 잎 {d}", wilt[d].P); yield return ($"처진 시든 잎 {d}", wiltDroop[d].P); }
         for (int k = 0; k < 4; k++) for (int b = 0; b < 2; b++) { yield return ($"덩굴 테두리 {k}/{b}", seg[k, b].Out); yield return ($"덩굴 속 {k}/{b}", seg[k, b].In); }
         yield return ("줄기 테두리", strip.Out); yield return ("줄기 속", strip.In);
-        foreach (var (n, p) in new[] { ("열매", berry), ("홀씨", puff), ("머리 홀씨", puffHead), ("덩굴손", curl), ("펴진 덩굴손", curlOpen), ("꽃", flower), ("꽃봉오리", flowerBud), ("잎자루", petiole), ("반짝", star) }) yield return (n, p);
-        for (int i = 0; i < 2; i++) { yield return ($"구름 {i}", fog[i]); yield return ($"새 {i}", bird[i]); }
+        foreach (var (n, p) in new[] { ("열매", berry), ("홀씨", puff), ("머리 홀씨", puffHead), ("꽃", flower), ("꽃봉오리", flowerBud), ("잎자루", petiole), ("반짝", star) }) yield return (n, p);
+        for (int i = 0; i < 2; i++) yield return ($"구름 {i}", fog[i]);
         for (int i = 0; i < 3; i++) yield return ($"작은 구름 {i}", cloudPuff[i]);
         for (int i = 0; i < 4; i++) yield return ($"표시 잎 {i}", iconSmall[i]);
+        foreach (var x in fx.Gallery()) yield return x;
     }
 
     public byte[] CellsCopy() => cells.SelectMany(v => BitConverter.GetBytes(v)).ToArray();

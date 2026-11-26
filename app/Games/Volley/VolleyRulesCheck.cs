@@ -48,16 +48,22 @@ static partial class VolleyCheck
         // ── 스파이크 보조 ──
         string assist = CheckAssist();
 
+        // ── 뛰면 스파이크 ──
+        string auto = CheckAutoSpike();
+
         // ── 돌부리 ──
         string stones = CheckStones();
 
         // ── 블로킹 ──
         string blocks = CheckBlocks();
 
+        // ── 슬라이딩 수비 · 디그 ──
+        string slides = CheckSlides();
+
         // ── 그 밖: 같은 씨 = 같은 판 · 메모리 · 자세 · 보스 키 · 다시 칠하기 ──
         string misc = CheckMisc();
 
-        return $"{assist}, {stones}, {blocks}, {misc}";
+        return $"{assist}, {auto}, {slides}, {stones}, {blocks}, {misc}";
     }
 
     // ── 스파이크 보조 ──
@@ -73,7 +79,7 @@ static partial class VolleyCheck
                     foreach (var who in new[] { VolleySim.Actor.Player, VolleySim.Actor.Rival })
                     {
                         int d = D(who);
-                        var w = Quiet(r, VolleyTune.Now, 3, desktop);
+                        var w = Quiet(r, VolleyTune.Before, 3, desktop);
                         Away(w, VolleySim.Actor.Player); Away(w, VolleySim.Actor.Rival);
                         double x0 = w.NetX - d * dist, y0 = w.NetTopY - h;
                         bool ok = w.AimOver(x0, y0, d, w.SpikeSpeed, w.T.SpikeMinSpeed * w.ScaleRatio, w.SpikeVy, out double vx, out double vy);
@@ -100,7 +106,7 @@ static partial class VolleyCheck
         var court = new Rectangle(400, 200, 800, 500);
         VolleySim Jumper(double fromNet, double h, int seed)
         {
-            var w = Quiet(court, VolleyTune.Now, seed);
+            var w = Quiet(court, VolleyTune.Before, seed);
             Away(w, VolleySim.Actor.Rival);
             w.PlayerX = w.NetX - fromNet;
             (w.PlayerOnGround, w.PlayerY, w.PlayerVy) = (false, w.FloorY - h, 0);
@@ -314,7 +320,7 @@ static partial class VolleyCheck
     static string CheckBlocks()
     {
         var P = VolleySim.Actor.Player; var R = VolleySim.Actor.Rival;
-        var now = VolleyTune.Now;
+        var now = VolleyTune.Before;   // Ctrl 로 스파이크하던 옛 순서 (자동 스파이크의 블로킹 순서는 CheckAutoSpike 에서)
 
         // A. 네트 1.5 몸(126px) 안에서 뛰면 자세 block, 밖이면 hop. 지금은 hop 을 내는 자세와 같은 길
         {
@@ -406,10 +412,21 @@ static partial class VolleyCheck
     }
 
     // 한 판을 처음부터 끝까지 (표와 같은 길): 점수·시간·득점 종류가 같으면 같은 판
-    static (int, int, double, string) Fingerprint(int seed, in BotSkill left)
+    static (int, int, double, string) Fingerprint(int seed, in BotSkill left, VolleyTune tune)
     {
-        var w = PlayMatch(new Rectangle(0, 0, 800, 500), false, VolleyTune.Now, left, seed);
-        return (w.ScorePlayer, w.ScoreRival, w.Clock, string.Join(",", w.Points) + "/" + string.Join(",", w.StoneCount) + string.Join(",", w.TripCount) + string.Join(",", w.BlockHit) + string.Join(",", w.BlockMissCount));
+        var w = PlayMatch(new Rectangle(0, 0, 800, 500), false, tune, left, seed);
+        string s = string.Join(",", w.Points) + "/" + string.Join(",", w.StoneCount) + string.Join(",", w.TripCount) + string.Join(",", w.BlockHit) + string.Join(",", w.BlockMissCount);
+        if (tune.Slides) s += "/" + string.Join(",", w.SlideCount) + string.Join(",", w.DigCount) + string.Join(",", w.DigOver);   // 슬라이드가 없던 판의 지문은 옛 모양 그대로
+        return (w.ScorePlayer, w.ScoreRival, w.Clock, s);
+    }
+
+    static void PrintFingerprints()
+    {
+        for (int seed = 1; seed <= 6; seed++)
+        {
+            var (sp, sr, clock, kinds) = Fingerprint(seed, BotSkill.HumanBefore, VolleyTune.Before);
+            Console.WriteLine($"fp {seed}: {sp}:{sr} {clock:R} {kinds}");
+        }
     }
 
     static string CheckMisc()
@@ -418,14 +435,30 @@ static partial class VolleyCheck
         for (int seed = 1; seed <= 6; seed++)
         {
             var human = BotSkill.Human;
-            Expect(Fingerprint(seed, human) == Fingerprint(seed, human), $"같은 씨 {seed} 는 같은 판이어야 한다");
+            Expect(Fingerprint(seed, human, VolleyTune.Now) == Fingerprint(seed, human, VolleyTune.Now), $"같은 씨 {seed} 는 같은 판이어야 한다");
         }
-        Expect(Fingerprint(1, BotSkill.Human) != Fingerprint(2, BotSkill.Human), "씨가 다르면 다른 판");
+        Expect(Fingerprint(1, BotSkill.Human, VolleyTune.Now) != Fingerprint(2, BotSkill.Human, VolleyTune.Now), "씨가 다르면 다른 판");
+
+        // 「오늘 판 그대로」: 슬라이드·자동 스파이크를 끈 Before 로 같은 씨 6판의 지문이 구현 전 값과 같다 (2026-11-26, 사람 봇 SpikeProb .55)
+        string[] before =
+        {
+            "5:4 98.64999999999569 4,0,0,0,0,0,0,1,2,0,1,0,0,0,0,1/0,10,00,00,5",
+            "5:4 84.26666666666317 2,0,1,0,0,0,0,2,1,1,0,0,0,0,1,1/0,00,00,11,1",
+            "5:0 44.21666666666544 2,0,1,0,0,0,0,2,0,0,0,0,0,0,0,0/0,00,00,00,2",
+            "4:5 117.01666666666131 1,0,3,0,0,0,0,0,0,0,4,0,0,0,0,1/1,10,10,03,4",
+            "5:4 94.24999999999594 1,0,2,0,0,0,0,2,2,0,1,0,0,0,0,1/0,10,00,02,0",
+            "5:2 62.916666666664376 0,0,2,0,0,0,0,3,0,0,1,0,0,0,0,1/1,10,00,00,2",
+        };
+        for (int seed = 1; seed <= 6; seed++)
+        {
+            var (fp, fr, clock, kinds) = Fingerprint(seed, BotSkill.HumanBefore, VolleyTune.Before);
+            Expect($"{fp}:{fr} {clock:R} {kinds}" == before[seed - 1], $"Before 는 구현 전과 같은 판 (씨 {seed}: {fp}:{fr} {clock:R} {kinds})");
+        }
 
         // 자세 block · slide 가 모든 시험 종·단계에 있다
         var sp = Sprites.Embedded();
         foreach (var form in new[] { "child", "adult_grumpy" })
-            foreach (var pose in new[] { VolleySim.BlockPose, VolleySim.TripPose, "shock", "walk" })
+            foreach (var pose in new[] { VolleySim.BlockPose, VolleySim.TripPose, VolleySim.DivePose, "shock", "walk" })
                 Expect(sp.Has($"{form}/1/{pose}"), $"자세 {form}/1/{pose} 가 있어야 한다");
 
         // 돌 그림: 글자 그림이 모양을 지키고 네 장이 다르게 (아래부터 ¼·½·¾·전부)
@@ -434,8 +467,8 @@ static partial class VolleyCheck
         Expect(Enumerable.Range(0, 4).Select(VolleyFruits.StoneRows).SequenceEqual(new[] { 2, 3, 5, 6 }), "돌이 솟는 네 장: 2·3·5·6 줄");
 
         // 메모리: 돌·넘어짐·블로킹이 나오는 판에서 규칙 한 프레임이 새로 잡는 바이트 0
-        long bytes = RuleBytesPerFrame(out int stones, out int trips, out int blocks);
-        Expect(stones > 0 && trips > 0 && blocks > 0, $"메모리 시험 판에 돌·넘어짐·블로킹이 나와야 한다 ({stones}/{trips}/{blocks})");
+        long bytes = RuleBytesPerFrame(out int stones, out int trips, out int blocks, out int slides);
+        Expect(stones > 0 && trips > 0 && blocks > 0 && slides > 0, $"메모리 시험 판에 돌·넘어짐·블로킹·슬라이드가 나와야 한다 ({stones}/{trips}/{blocks}/{slides})");
         Expect(bytes == 0, $"규칙 한 프레임이 새로 잡는 메모리는 0B ({bytes}B, 돌 {stones}·넘어짐 {trips}·블로킹 {blocks})");
 
         // 보스 키·허락 밖 키: 돌·넘어짐·블로킹 중에도 즉시 끝. 다시 칠할 자리가 돌·먼지·번쩍을 덮는다
@@ -473,6 +506,6 @@ static partial class VolleyCheck
             Expect(bad == 0, $"바뀐 자리만 다시 칠해도 돌·먼지·번쩍이 맞다: {bad}번 다름 (처음 {first}프레임)");
         }
 
-        return $"같은 씨 6판 같음·자세 block/slide 있음·규칙 메모리 {bytes}B/프레임(돌 {stones}·넘어짐 {trips}·블로킹 {blocks})·보스 키·다시 칠하기·옛 판 재현";
+        return $"같은 씨 6판 같음·자세 block/slide 있음·규칙 메모리 {bytes}B/프레임(돌 {stones}·넘어짐 {trips}·블로킹 {blocks}·슬라이드와 디그 {slides})·보스 키·다시 칠하기·옛 판 재현";
     }
 }

@@ -144,6 +144,7 @@ sealed partial class VolleySim
         b.TripDustTimer = TripDustSec;
         b.Vx = 0;
         (b.RunSec, b.RunDir, b.RunRolled) = (0, 0, false);
+        (b.SlideLeft, b.SlideRecoverUntil) = (0, -9);                      // 던지던 중에 걸리면 넘어짐이 이긴다 (결정 7)
         stoneTripped = true;
         stoneEndAt = Math.Min(stoneEndAt, Clock + StoneSinkAfterTripSec);
         TripCount[(int)who]++;
@@ -157,6 +158,9 @@ sealed partial class VolleySim
         double x = b.X + Dir(who) * WalkSpeed * StoneWarnTime;
         RaiseStone(who, Math.Clamp(x, who == Actor.Player ? WallLeft + PetR : NetX + PetR + 2, who == Actor.Player ? NetX - PetR - 2 : WallRight - PetR));
     }
+
+    // 검사용: 그 선수를 지금 넘어뜨린다 (돌 없이)
+    internal void DebugTrip(Actor who) => Trip(who, Of(who));
 
     // 디버그·장면용: 그 선수를 x 자리에서 뛰게 한다 (네트 가까이면 블로킹 점프)
     public void DebugJump(Actor who, double x)
@@ -175,6 +179,7 @@ sealed partial class VolleySim
     // 블로킹이 되는 닿음 (CheckBodyCollision 이 조건을 맞춰 부른다)
     void Block(Actor who, Body b, int d, double nx, double ny)
     {
+        b.BlockedSerial = b.JumpSerial;
         if (Math.Abs(b.Vy) <= Gravity * T.BlockWindowSec && BallY <= NetTopY)
         {
             // 맞은 블로킹: 스파이크와 같은 계산으로 느리게, 네트 바로 뒤에 뚝
@@ -201,5 +206,110 @@ sealed partial class VolleySim
             BlockMissCount[(int)who]++;
             OnEvent?.Invoke("blockmiss", who);
         }
+    }
+
+    // ── 슬라이딩 수비·디그 (docs/volley-slide.md 3장, YELL 2026-11-26) ──
+    public const double SlideTrailSec = .35, DigFlashSec = .2;
+    public double SlideSpeed => T.SlideSpeed * ScaleRatio;
+    // 가는 거리: 1.5 몸. 좁은 코트는 한쪽 코트를 걸어 건너는 거리의 절반까지 (돌부리처럼 코트 길이에 비례)
+    public double SlideDist => Math.Min(T.SlideBodies * 2 * PetR, T.SlideSpan * StoneSpanSec * WalkSpeed);
+    public double SlideTime => SlideDist / SlideSpeed;
+    public double SlideBodyR => .7 * PetR;                                          // 누운 몸의 원 반지름
+    double SlideWalkReach => PetR + BallR + 4 * K;                                        // 서 있는 몸이 바닥 높이의 공에 닿는 가로 거리 (이 안이면 걸어서 받는다)
+    double SlideReach => 1.2 * PetR + BallR;                                        // 누운 몸이 던진 끝에서 공에 닿는 가로 거리
+
+    double digX, digY, digAt = -9;
+    public bool DigFlashActive => Clock - digAt < DigFlashSec;
+    public double DigFlashP => Math.Clamp((Clock - digAt) / DigFlashSec, 0, 1);      // 0 → 1
+    public double DigFlashX => digX;
+    public double DigFlashY => digY;
+
+    public bool IsSliding(Actor a) => T.Slides && Of(a).SlideLeft > 0;               // 미끄러지는 중
+    public bool IsLying(Actor a) { var b = Of(a); return T.Slides && b.SlideLeft <= 0 && Clock < b.SlideRecoverUntil; } // 던지고 누워 있는 중
+    public int SlideDirOf(Actor a) => Of(a).SlideDir;
+    public double SlideTrailLeft(Actor a) => Of(a).SlideTrailLeft;
+    public (double X0, double X1) SlideTrail(Actor a) => (Of(a).SlideX0, Of(a).SlideX1);
+
+    // 공이 높이 yLow 에 내려와 닿는 때 t(초)와 자리 x. right 쪽(오른쪽 코트)에서 내려올 때만 true — 다른 쪽에 떨어지면 내 일이 아니다.
+    // PredictBallLandingX 와 같은 걸음(0.02초 × 90)·벽·기둥 튕김은 실제와 같게이고, 닿는 걸음 안은 줄 맞춰 시간을 낸다
+    bool PredictLow(double yLow, bool right, out double x, out double t)
+    {
+        (x, t) = (BallX, 0);
+        if (BallY >= yLow) return right ? BallX >= NetX : BallX <= NetX;
+        double simX = BallX, simY = BallY, simVx = BallVx, simVy = BallVy, dt = .02;
+        for (int i = 0; i < 90; i++)
+        {
+            double px = simX, py = simY;
+            simVy += BallGravity * dt;
+            simX += simVx * dt;
+            simY += simVy * dt;
+            if (simX - BallR <= WallLeft) { simX = WallLeft + BallR; simVx = Math.Abs(simVx) * .92; }
+            else if (simX + BallR >= WallRight) { simX = WallRight - BallR; simVx = -Math.Abs(simVx) * .92; }
+            if (simY + BallR > NetTopY && simY - BallR < FloorY && Math.Abs(simX - NetX) <= BallR + NetW / 2)   // 기둥: 실제 튕김(CheckNetCollision)과 같게 밀어내고 물러나는 쪽으로
+            {
+                bool left = simX < NetX;
+                simX = NetX + (left ? -1 : 1) * (BallR + NetW / 2);
+                simVx = (left ? -1 : 1) * Math.Abs(simVx) * .85;
+            }
+            if (simVy > 0 && simY >= yLow)
+            {
+                double f = simY > py ? (yLow - py) / (simY - py) : 1;
+                (x, t) = (px + f * (simX - px), (i + f) * dt);
+                return right ? x >= NetX : x <= NetX;
+            }
+        }
+        return false;
+    }
+
+    // 몸을 던질지: 양쪽 같은 함수, 무작위 없음. axis = 이번 프레임에 쥔 방향키.
+    // 땅에 있고 · 점프를 안 누르고 · 내 코트로 내려오는 공이 · 쥔 방향 쪽 · 걸어서는 못 닿을 낮은 자리에 · 곧 오고 · 던지면 닿을 만할 때만
+    bool WantSlide(Actor who, Body b, int axis, bool jump)
+    {
+        if (axis == 0 || jump || !b.SlideOk || Stage != Phase.InPlay || !b.OnGround || BallVy <= 0) return false;
+        if (Clock < b.TripUntil || b.SlideLeft > 0 || Clock < b.SlideRecoverUntil) return false;
+        if (!PredictLow(FloorY - BallR - T.SlideCatchCells * K, who == Actor.Rival, out double xLow, out double tLow)) return false;
+        double dx = xLow - b.X, ad = Math.Abs(dx);
+        if (Math.Sign(dx) != axis) return false;                                    // 방향이 맞다
+        // 걸어서 닿는 공에는 안 나간다: 공이 바닥에 닿기 직전(tLand)까지 걸어서 가는 거리 + 서 있는 몸이 닿는 가로 거리
+        double tLand = tLow;
+        if (PredictLow(FloorY - BallR - 1, who == Actor.Rival, out _, out double tl)) tLand = Math.Max(tLow, tl);
+        if (ad <= WalkSpeed * tLand + SlideWalkReach) return false;
+        double dist = SlideDist;
+        if (tLow > dist / SlideSpeed + T.SlideEarlySec) return false;               // 너무 일찍 던지지 않는다
+        if (Environment.GetEnvironmentVariable("VDBG") == "1" && ad <= (dist + SlideReach) * 1.25) Console.WriteLine($"slide? who={who} clock={Clock:F3} X={b.X:F1} ball=({BallX:F1},{BallY:F1}) v=({BallVx:F0},{BallVy:F0}) xLow={xLow:F1} tLow={tLow:F3} tLand={tLand:F3} ad={ad:F1}");
+        return ad <= (dist + SlideReach) * 1.25;                                     // 터무니없이 먼 공에는 안 던진다
+    }
+
+    void StartSlide(Actor who, Body b, int dir)
+    {
+        b.SlideDir = dir;
+        b.SlideLeft = SlideDist;
+        b.SlideX0 = b.SlideX1 = b.X;
+        b.SlideRecoverUntil = -9;
+        (b.RunSec, b.RunDir, b.RunRolled) = (0, 0, false);
+        SlideCount[(int)who]++;
+        OnEvent?.Invoke("slide", who);
+    }
+
+    // 디버그·장면용: 그 선수를 조건 없이 dir(+1 오른쪽·-1 왼쪽)으로 던지게 한다 (바닥에 있을 때)
+    public void DebugSlide(Actor who, int dir)
+    {
+        var b = Of(who);
+        if (b.OnGround && b.SlideLeft <= 0) StartSlide(who, b, dir);
+    }
+
+    // 누운 몸에 공이 닿았다: 위로 높이, 네트 쪽으로 살짝 — 정해진 값 (무작위 없음)
+    void Dig(Actor who, Body b, int d)
+    {
+        bool theirSpike = LastHitActor is { } last && last != who && LastTouch == Touch.Spike;
+        BallVx = d * T.DigVx * ScaleRatio;
+        BallVy = -T.DigVy * ScaleRatio * (theirSpike ? T.DigSpikeK : 1);
+        (digX, digY, digAt) = (BallX, BallY, Clock);
+        Touched(who, Touch.Dig);
+        digWatchBy = (int)who;
+        DigCount[(int)who]++;
+        lastStrikeAt = Clock;                                                        // 0.15초는 같은 선수와 다시 겹쳐도 밀어내기만
+        lastStrikeBy = who;
+        OnEvent?.Invoke("dig", who);
     }
 }

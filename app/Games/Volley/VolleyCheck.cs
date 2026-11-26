@@ -113,7 +113,7 @@ static partial class VolleyCheck
 
         // 4. 공중 Ctrl 강스파이크는 상대 쪽으로 빠르고 낮게 / 땅에서 Ctrl 은 아무 일 없음
         {
-            var sim = new VolleySim(court, false, 3, new Random(4));
+            var sim = new VolleySim(court, false, 3, new Random(4), VolleyTune.Before); // (옛 Ctrl 규칙: 자동 스파이크 전 판)
 
             // A. 공중에서 Ctrl: 강스파이크 발동 (높은 공 = 보조 없이도 넘으니 옛 값 그대로)
             sim.PlayerOnGround = false;
@@ -131,7 +131,7 @@ static partial class VolleyCheck
             Expect(sim.ShakeActive, "강스파이크 시 화면 흔들림 효과가 켜져야 함");
 
             // B. 땅에서 Ctrl: 스파이크 발동하지 않음
-            var simGround = new VolleySim(court, false, 3, new Random(5));
+            var simGround = new VolleySim(court, false, 3, new Random(5), VolleyTune.Before);
             simGround.PlayerOnGround = true;
             simGround.PlayerY = simGround.FloorY;
             simGround.PlayerVy = 0;
@@ -309,7 +309,7 @@ static partial class VolleyCheck
             Expect(Math.Abs(j.JumpVy - (-435 * j.ScaleRatio)) < 1e-9, "점프 속도는 435 (전 400 의 높이 ×1.18)");
 
             // Ctrl 을 닿기 0.1초 전에 눌렀다 떼도 스파이크
-            var g1 = new VolleySim(court, false, 3, new Random(6));
+            var g1 = new VolleySim(court, false, 3, new Random(6), VolleyTune.Before);
             var evs = new List<string>(); g1.OnEvent = (e, _) => evs.Add(e);
             g1.Stage = VolleySim.Phase.InPlay; g1.PlayerOnGround = false; g1.PlayerY = g1.FloorY - 40 * g1.K; g1.PlayerVy = 0;
             g1.BallX = g1.PlayerX + 4; g1.BallY = g1.PlayerY - g1.PetR - g1.PetR - g1.BallR - 6; g1.BallVx = 0; g1.BallVy = 0; g1.BallSpin = 0;
@@ -350,7 +350,7 @@ static partial class VolleyCheck
         }
 
         string more = CheckRules();
-        return "배구: 과일 공(무작위·가끔 배구공)·꼭지 헤딩 실수·공 튕김(벽·천장·그물 기둥·캡)·바닥 득점(랠리)·서브권 교대·5점 승리·공중 강스파이크·땅 Ctrl 무효·보스 키 즉시 종료·기록 저장/불러오기·창 추적 및 바탕화면 판·AI 타구·결정론·표정 자세 유효성 모두 통과; 다듬기: " + more;
+        return "배구: 과일 공(무작위·가끔 배구공)·꼭지 헤딩 실수·공 튕김(벽·천장·그물 기둥·캡)·바닥 득점(랠리)·서브권 교대·5점 승리·공중 강스파이크(옛 Ctrl 규칙, Before)·땅 Ctrl 무효·보스 키 즉시 종료·기록 저장/불러오기·창 추적 및 바탕화면 판·AI 타구·결정론·표정 자세 유효성 모두 통과; 다듬기: " + more;
     }
 
     // ── 화면 없이 그려 보기 (--mode-scene volley <경로>) ──
@@ -368,7 +368,9 @@ static partial class VolleyCheck
             Console.WriteLine(Table(seeds, steps));
             return;
         }
+        if (GameModes.SceneArg == "fp") { Console.OutputEncoding = System.Text.Encoding.UTF8; PrintFingerprints(); return; } // 같은 씨 6판의 지문 (고치기 전·후를 견준다)
         if (GameModes.SceneArg == "stone") { StoneStrip(path, k); return; }   // 돌부리 그림 네 장
+        if (GameModes.SceneArg is "slide" or "spike") { SlideScenes(path, k, GameModes.SceneArg == "spike"); return; } // 실제 판 장면: 슬라이드·디그 다섯 장 / 뛰면 저절로 스파이크 네 장
         if (GameModes.SceneArg == "new") { NewScenes(path, k); return; }      // 다듬기 장면: 돌 예고 · 걸려 넘어짐 · 블로킹 · 캡을 넘는 보조 스파이크
 
         var host = new SceneHost(scale: k);
@@ -599,7 +601,7 @@ static partial class VolleyCheck
         }, maxFrames: 120);
 
         // 3. 돌·넘어짐·블로킹이 나오는 판의 메모리: 규칙 한 프레임이 새로 잡는 바이트 (0 이어야 한다)
-        string mem = $"돌·넘어짐·블로킹 판 규칙 {RuleBytesPerFrame(out _, out _, out _)}B/프레임";
+        string mem = $"돌·넘어짐·블로킹·슬라이드 판 규칙 {RuleBytesPerFrame(out _, out _, out _, out _)}B/프레임";
 
         return $"volley: {totalMatches}판 시뮬레이션 (옛 규칙·옛 봇: 평균 랠리 {avgHitsPerRally:0.0}회, 좌측 승률 {leftWinRate:0.0}%)\n" +
                $"1400x900 대형 창 성능: {perf}\n" +
