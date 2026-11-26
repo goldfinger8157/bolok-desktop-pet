@@ -842,7 +842,9 @@ static class HomeCheck
         {
             using var e = new Env(k, new[] { area }, "child", energy: 90, petX: 300);
             (e.H.Book.CushionGiven, e.H.Book.HouseGiven) = (false, false);
-            for (int i = 0; i < 60 * 8; i++) e.Step(1 / 60.0);
+            // 받는 때는 「한가할 때」(Wander) 라서 펫이 앉기·엿보기 같은 다른 일을 하면 늦어진다: 8초 고정으로 보면 가끔 못 받은 채 끝났다 (CI 에서 떨어짐)
+            for (int i = 0; i < 60 * 40 && !e.H.Book.CushionGiven; i++) e.Step(1 / 60.0);
+            for (int i = 0; i < 60 * 4; i++) e.Step(1 / 60.0);
             Expect(e.H.Book.CushionGiven && e.H.Book.Cushion != null && e.ShownCount <= 1, "어린이가 되면 방석 하나를 받는다");
             e.B.P.Stage = "adult_sweet";
             for (int i = 0; i < 60 * 40 && !e.H.Book.HouseGiven; i++) e.Step(1 / 60.0);
