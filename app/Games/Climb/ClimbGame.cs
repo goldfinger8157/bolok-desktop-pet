@@ -105,7 +105,8 @@ sealed partial class ClimbGame : IGameMode
         stamps.Digits(sm); stamps.Digits(f + 1); stamps.Get("game/crown", 0, sm); stamps.Get("game/crown", 0, f + 1); stamps.Get("game/spark", 0, sm); stamps.Get("game/spark", 1, sm);
         foreach (var name in new[] { "emo/bang", "emo/heart" }) if (stamps.Has(name)) stamps.Get(name, 0, sm);
         guide = GuideKeys.Select(k => L.T(k)).ToArray();
-        (guideOn, guidePic) = (null, null);
+        guidePic?.Dispose();
+        (guideOn, guidePic, guideBoxOk, guideGoneFrame, guideMovedFrame) = (null, null, false, -1, -1); movedFrame = -1;   // 지난 판의 안내 자리를 버린다 (안 버리면 두 번째 판의 안내가 옛 자리에 그려져 안 보인다)
         bot = auto ? new ClimbBotState(t.Seed + 99) : null;
         t.OnEvent = e =>
         {
@@ -134,7 +135,8 @@ sealed partial class ClimbGame : IGameMode
     string[] guide = Array.Empty<string>();
     Overlay? guideOn;
     Rectangle guideRect, guideScreen;   // 안내 말풍선 자리 (창 좌표·화면 좌표). 판 밖으로 나올 수 있어 따로 칠한다
-    int guideGoneFrame = -1;
+    int guideGoneFrame = -1, guideMovedFrame = -1;
+    Rectangle oldGuide;
     Bitmap? guidePic;
     bool GuideOn(Climb r) => visual < Session.GuideSec && r.Steps == 0 && guide.Length > 0;
 
@@ -228,6 +230,7 @@ sealed partial class ClimbGame : IGameMode
         (oldPanel, movedFrame) = (panel, frameNo);
         panel = p;
         view?.ForceCompose();
+        if (guideBoxOk && GuideOn(run!)) { oldGuide = guideScreen; guideMovedFrame = frameNo; }   // 판을 따라 안내도 옮겨 간다: 옛 안내 자리도 지운다
         guidePic?.Dispose(); guidePic = null; guideBoxOk = false;
         if (ses?.Layer is { IsDisposed: false } l2) l2.Bounds = p;
         panelVer++;
@@ -287,10 +290,13 @@ sealed partial class ClimbGame : IGameMode
 
     public void Dirty(Overlay o, List<Rectangle> rs)
     {
-        if (run is not { } r || view is not { } v || !Here(o)) return;
+        if (run is not { } r || view is not { } v) return;
+        // 안내 말풍선은 판 밖(옆 모니터)까지 나올 수 있다: 판이 없는 그림 창도 말풍선이 걸치면 칠한다
+        if (GuideOn(r) && o.Bounds.IntersectsWith(GuideBox(o))) rs.Add(o.Client(guideScreen));
+        if (guideGoneFrame == frameNo && o.Bounds.IntersectsWith(guideScreen)) rs.Add(o.Client(guideScreen));   // 안내가 사라지는 프레임: 마지막으로 한 번 더 지운다
+        if (guideMovedFrame == frameNo && o.Bounds.IntersectsWith(oldGuide)) rs.Add(o.Client(oldGuide));
+        if (!Here(o)) return;
         if (movedFrame == frameNo) rs.Add(o.Client(oldPanel));   // 판이 창을 따라 옮겨 갔다: 옛 자리도 지운다
-        if (GuideOn(r)) rs.Add(o.Client(GuideBox(o)));
-        if (guideGoneFrame == frameNo) rs.Add(o.Client(guideScreen));   // 안내가 사라지는 프레임: 마지막으로 한 번 더 지운다
         if (v.WorldChanged || hud.Fresh) rs.Add(o.Client(panel));
         else if (hud.Changed) { rs.Add(o.Client(v.ScoreRect(panel, Math.Max(1, GameHud.Digits(r.N))))); rs.Add(o.Client(v.PipsRect(panel))); }
     }
@@ -300,9 +306,9 @@ sealed partial class ClimbGame : IGameMode
 
     public void Draw(Overlay o, Graphics g)
     {
-        if (run is not { } r || view is not { } v || !Here(o)) return;
-        v.Draw(o, g, panel, r, show);
-        if (GuideOn(r)) { var pic = GuidePic(o); g.DrawImageUnscaled(pic, guideRect.X, guideRect.Y); }
+        if (run is not { } r || view is not { } v) return;
+        if (Here(o)) v.Draw(o, g, panel, r, show);
+        if (GuideOn(r) && o.Bounds.IntersectsWith(GuideBox(o))) { var pic = GuidePic(o); g.DrawImageUnscaled(pic, guideRect.X, guideRect.Y); }
     }
 
     // ── 디버그 ──
