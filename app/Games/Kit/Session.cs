@@ -126,6 +126,8 @@ sealed class Session
     public bool GuideOn(double clock) => guide != null && clock < GuideUntil;
     public void DrawGuide(Overlay o, Graphics g, double clock, double petX, double feet) { if (GuideOn(clock)) o.DrawNoteAt(g, petX, feet, Field, guide!); }
     public void DirtyGuide(Overlay o, List<Rectangle> rs, double clock, double petX, double feet) { if (GuideOn(clock)) rs.Add(o.Client(o.NoteRect(petX, feet, Field, guide!))); }
+    // 안내 자리 (시계와 상관없이): 안내가 꺼지는 프레임에 한 번 더 지울 때
+    public Rectangle GuideBox(Overlay o, double petX, double feet) => guide == null ? Rectangle.Empty : o.NoteRect(petX, feet, Field, guide);
 
     // ── 끝내기 ──
     public bool Closed { get; private set; }

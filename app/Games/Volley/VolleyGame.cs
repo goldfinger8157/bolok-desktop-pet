@@ -172,9 +172,16 @@ sealed partial class VolleyGame : IGameMode
         return new Rectangle(centerX - courtW / 2, floorY - courtH, courtW, courtH);
     }
 
+    // 조작 안내 말풍선 (판이 열리고 4초): 시작 자리 볼록이 옆에 고정 (움직여도 따라가지 않아 지울 자리가 하나)
+    static readonly string[] GuideKeys = { "note.volley_move", "note.volley_jump", "note.esc" };
+    double guideX, guideFeet;
+    bool guideShown, guideEnded;
+
     internal void Open(VolleySim w, Session s, bool events = true)
     {
         (sim, ses) = (w, s);
+        (guideShown, guideEnded) = (false, false);
+        if (events) { s.Guide(GuideKeys); (guideX, guideFeet) = (w.PlayerX, w.PlayerY); }
         if (string.IsNullOrEmpty(RivalSpecies)) InitRival(w.Rnd);
 
         var b = host.Pet;
@@ -329,6 +336,8 @@ sealed partial class VolleyGame : IGameMode
         w.Update(dt, axisX, jump, spike);
         Sync();
         Track();
+        bool gOn = s.GuideOn(w.Clock);
+        (guideEnded, guideShown) = (guideShown && !gOn, gOn);
 
         // 결과 화면: 약 2.5초 대기 (0.2초 이후 클릭하면 바로 닫힘)
         if (w.Done)
@@ -369,6 +378,11 @@ sealed partial class VolleyGame : IGameMode
 
     public void Dirty(Overlay o, List<Rectangle> r)
     {
+        if (ses is { } gs && (guideShown || guideEnded))
+        {
+            var gr = o.Client(gs.GuideBox(o, guideX, guideFeet));
+            if (!gr.IsEmpty) r.Add(gr);
+        }
         foreach (var rect in dirty)
         {
             var cr = o.Client(rect);
@@ -629,6 +643,9 @@ sealed partial class VolleyGame : IGameMode
             crown.Put(o, g, winnerX, winnerY - 14 * k);
             star.Put(o, g, winnerX, winnerY);
         }
+
+        // 11. 조작 안내 (맨 위)
+        ses?.DrawGuide(o, g, w.Clock, guideX, guideFeet);
     }
 
     void DrawScorePips(Overlay o, Graphics g, VolleySim w)

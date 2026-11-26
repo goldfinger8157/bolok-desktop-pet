@@ -539,6 +539,30 @@
   "pt": "←→: Pular para a folha",
   "ru": "←→: на следующий лист"
  },
+ "note.volley_move": {
+  "en": "←→: Move (hold toward a low ball to dive)",
+  "ko": "←→: 움직이기 (낮은 공 쪽으로 쥐면 슬라이딩)",
+  "ja": "←→: 移動 (低いボールの方へ押し続けるとスライディング)",
+  "zh-Hans": "←→:移动(朝低球方向按住即可飞扑)",
+  "zh-Hant": "←→:移動(朝低球方向按住即可飛撲)",
+  "es": "←→: Moverse (mantén hacia una bola baja para lanzarte)",
+  "de": "←→: Laufen (zum tiefen Ball halten = Hechtsprung)",
+  "fr": "←→ : Bouger (maintenir vers une balle basse pour plonger)",
+  "pt": "←→: Mover (segure na direção de uma bola baixa para mergulhar)",
+  "ru": "←→: ходить (держите к низкому мячу — нырок)"
+ },
+ "note.volley_jump": {
+  "en": "↑: Jump (touch a high ball to spike)",
+  "ko": "↑: 점프 (높은 공에 닿으면 스파이크)",
+  "ja": "↑: ジャンプ (高いボールに触れるとスパイク)",
+  "zh-Hans": "↑:跳跃(碰到高球就会扣球)",
+  "zh-Hant": "↑:跳躍(碰到高球就會扣球)",
+  "es": "↑: Saltar (toca una bola alta para rematar)",
+  "de": "↑: Springen (hohen Ball berühren = Schmettern)",
+  "fr": "↑ : Sauter (toucher une balle haute pour smasher)",
+  "pt": "↑: Pular (toque numa bola alta para cortar)",
+  "ru": "↑: прыжок (коснитесь высокого мяча — удар)"
+ },
  "note.shoot_aim": {
   "en": "Mouse: Aim",
   "ko": "마우스: 조준",
